@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h> //free
 #include <assert.h>
 #include <stdint.h> //uint8_t
 #include <sys/mman.h> //mmap
@@ -8,74 +9,95 @@
 //each page is 4k 
 #define PAGE_SIZE 4096
 
-//each object is 2 double words (32 bytes) - assuming a word to be 16 bytes
-#define OBJ_SIZE 32
+//actual data in our page
+typedef struct Block{
+    struct Block* next;
+    void* data;
+    int is_free;
+}Block;
 
-#define NUM_OBJS (PAGE_SIZE / OBJ_SIZE)
-
+//our big chunk of contiguous memory
 typedef struct Page{
-    uint8_t* page_start;
-
-    //effectively a boolean array that we use to check if a slot in our page
-    //is used or not
-    int free_slots[NUM_OBJS];
+    struct Page* next;
+    struct Block* block_list_head;
 } Page;
 
-Page* create_page() {
-    Page* p_ptr = NULL;
-    
+Page* allocate_page() {
     //we create our page with 4096 size blocks allowing read and writes,
     //private and anon mapping since we dont need to worry about inter
     //process comms for now, and fd offset 0 for simplicity
-    p_ptr = (Page*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE ,
+    Page* p_ptr = (Page*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE ,
             MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
     assert(p_ptr != MAP_FAILED);
 
-    //we set the start of our page to AFTER the pages meta data
-    p_ptr->page_start = (uint8_t*)p_ptr + sizeof(Page);
+    //pointer to first element of block list
+    p_ptr->block_list_head = (Block*)((char*)p_ptr + sizeof(Page));
+
+    printf("SIZE OF BLOCK %i\n", sizeof(Block));
+    int num_blocks = PAGE_SIZE / sizeof(Block);
+
+    //initialize our page
+    Block* cur_block = p_ptr->block_list_head;
+    for(int i = 0; i < num_blocks - 1; i++){
+        cur_block->next = (Block*)((char*)cur_block + sizeof(Block)); 
+        cur_block->is_free = 1;
+        cur_block = cur_block->next;
+    }
+    //last block in the page
+    cur_block->next = NULL; 
+    cur_block->is_free = 1;
+
 #ifdef DEBUG_LOG
-    printf("Created page at address: 0x%x\n", p_ptr->page_start);
+    printf("Created page at: %p\n", p_ptr);
+    printf("Block List starts at: %p\n", p_ptr->block_list_head);
 #endif
     return p_ptr;
 }
 
-void allocate_obj(Page* p) {
-    static uint32_t obj = 0x0000; //our 32 byte object of irrelevent data
-    uint8_t* data = p->page_start;
-
-    //we find closest to base ptr available memory 
-    for(int i = 0; i < NUM_OBJS; i++){
-        if(p->free_slots[i] == 0){
-            //instead of indexing p as an array, we create a block manually
-            //to keep consistent offsets
-            //this might not be necessary?
-            uint32_t* block = (uint32_t*)(data + (i * OBJ_SIZE));
-            *block = obj;
+void* allocate_block(Page* p) {
+    Block* cur = p->block_list_head; //ptr to head of block list
+    while(cur){
+        if(cur->is_free){
+            cur->is_free = 0;
 #ifdef DEBUG_LOG
-    printf("Created block at address: 0x%x\n", block);
-    printf("Data at said block: 0x%x\n", *block);
+    printf("Allocated block at address: %p\n", cur);
 #endif
-            p->free_slots[i] = 1;
-            obj++;
-            break;
+            return cur;
         }
+        cur = cur->next;
     }
+    return NULL;
 }
 
-void free_obj() {
-
+void free_block(Page* p, void* obj) {
+    Block* block = (Block*)obj;
+    block->is_free = 1;
+#ifdef DEBUG_LOG
+    printf("Freed block at: %p\n", block);
+#endif
 }
 
-void destroy_page() {
-
+void destroy_page(Page* p) {
+#ifdef DEBUG_LOG
+    printf("Destroyed page: %p\n", p);
+#endif
+    munmap(p, PAGE_SIZE);
 }
 
 int main(){
-    Page* test_page = create_page();
-    
-    //allocate two objects (incremental data) to our page
-    allocate_obj(test_page);
-    allocate_obj(test_page);
+    Page* page = allocate_page();
+   
+    //for now our blocks contain no data, allocate_block just allows us
+    //to know that something was placed in mem here (is_free = 0)
+    void* object_one = allocate_block(page);
+    void* object_two = allocate_block(page);
 
+    //if either are null we should make a new page - fine for now
+    if(object_one != NULL && object_two != NULL){
+        free_block(page, object_one);
+        free_block(page, object_two);
+    }
+
+    destroy_page(page);
     return 0;
 }
