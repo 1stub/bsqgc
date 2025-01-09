@@ -1,15 +1,9 @@
 #pragma once
 
-#include <stdint.h>
-#include <assert.h>
-#include <sys/mman.h> //mmap
+#include "../common.h"
 
-//DEFAULT ENABLED WHILE LOTS OF DEVELOPMENT!!!!
-#define BSQ_GC_CHECK_ENABLED
-#define MEM_STATS
 
 #ifdef BSQ_GC_CHECK_ENABLED
-#define ALLOC_DEBUG_STW_GC
 #define ALLOC_DEBUG_MEM_INITIALIZE
 #define ALLOC_DEBUG_CANARY
 #endif
@@ -42,6 +36,25 @@
 #define MIN_ALLOCATED_ADDRESS 2147483648ul
 #define MAX_ALLOCATED_ADDRESS 281474976710656ul
 
-typedef struct block_header{
-    
-} block_header;
+alignas(BSQ_MEM_ALIGNMENT) typedef struct FreeListEntry {
+   struct FreeListEntry* next;
+} FreeListEntry;
+
+static_assert(sizeof(FreeListEntry) <= sizeof(MetaData), "BlockHeader size is not 8 bytes");
+
+typedef uint16_t PageStateInfo;
+#define PageStateInfo_GroundState 0x0
+#define AllocPageInfo_ActiveAllocation 0x1
+#define AllocPageInfo_ActiveEvacuation 0x2
+
+typedef struct PageInfo
+{
+    FreeListEntry* freelist; //allocate from here until nullptr
+
+    uint16_t entrysize; //size of the alloc entries in this page (excluding metadata)
+    uint16_t entrycount; //max number of objects that can be allocated from this Page
+
+    uint16_t freecount;
+
+    PageStateInfo pagestate;
+} PageInfo;

@@ -3,6 +3,7 @@ BUILD_DIR=$(MAKE_PATH)/
 BIN_DIR=$(MAKE_PATH)/../bin/
 SRC_DIR=$(MAKE_PATH)/../src/
 
+RUNTIME_DIR=$(SRC_DIR)runtime/
 MEMORY_DIR=$(SRC_DIR)runtime/memory/
 
 OUT_EXE=$(BUILD_DIR)output/
@@ -23,7 +24,7 @@ CFLAGS_OPT.release=-O3 -fno-omit-frame-pointer -march=x86-64-v3
 CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
 CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}
 
-MEMORY_HEADERS=$(MEMORY_DIR)common.h
+MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(MEMORY_DIR)allocator.h
 MEMORY_SOURCES=$(MEMORY_DIR)allocator.c
 MEMORY_OBJS=$(OUT_OBJ)allocator.o
 

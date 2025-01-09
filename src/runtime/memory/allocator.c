@@ -1,4 +1,20 @@
+#include "allocator.h"
 
+static void initializePage(void* page, uint16_t entrysize) {
+    PageInfo* pinfo = (PageInfo*)page;
+    pinfo->freelist = (FreeListEntry*)((char*)page + sizeof(PageInfo));
+    pinfo->entrysize = entrysize;
+    pinfo->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - sizeof(PageInfo)) / (entrysize + sizeof(MetaData));
+    pinfo->freecount = pinfo->entrycount;
+    pinfo->pagestate = PageStateInfo_GroundState;
+
+    FreeListEntry* current = pinfo->freelist;
+    for(int i = 0; i < pinfo->entrycount - 1; i++) {
+        current->next = (FreeListEntry*)((char*)current + entrysize + sizeof(MetaData));
+        current = current->next;
+    }
+    current->next = NULL;
+}
 
 #if 0
 #include <stdio.h>
