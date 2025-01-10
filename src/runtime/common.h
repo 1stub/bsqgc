@@ -15,14 +15,16 @@
 #define BSQ_MEM_ALIGNMENT 8
 
 #ifdef VERBOSE_HEADER
-alignas(BSQ_MEM_ALIGNMENT) typedef struct MetaData {
+typedef struct MetaData 
+{
     bool isalloc;
     bool isyoung;
 
     uint8_t padding[6]; //ensure at least 8 bytes in size
 } MetaData;
 #else
-typedef struct MetaData {
+typedef struct MetaData 
+{
     FILL IN HERE!!!!
 } MetaData;
 

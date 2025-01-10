@@ -1,10 +1,17 @@
 #include "allocator.h"
 
-static void initializePage(void* page, uint16_t entrysize) {
+#ifdef ALLOC_DEBUG_CANARY
+#define REAL_ENTRY_SIZE(ESIZE) (ALLOC_DEBUG_CANARY_SIZE + ESIZE + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
+#else
+#define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
+#endif
+
+static PageInfo* initializePage(void* page, uint16_t entrysize)
+{
     PageInfo* pinfo = (PageInfo*)page;
     pinfo->freelist = (FreeListEntry*)((char*)page + sizeof(PageInfo));
     pinfo->entrysize = entrysize;
-    pinfo->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - sizeof(PageInfo)) / (entrysize + sizeof(MetaData));
+    pinfo->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - sizeof(PageInfo)) / REAL_ENTRY_SIZE(entrysize);
     pinfo->freecount = pinfo->entrycount;
     pinfo->pagestate = PageStateInfo_GroundState;
 
@@ -14,80 +21,31 @@ static void initializePage(void* page, uint16_t entrysize) {
         current = current->next;
     }
     current->next = NULL;
+
+    return pinfo;
+}
+
+static PageInfo* allocateFreshPage(uint16_t entrysize)
+{
+    void* page = mmap(NULL, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+    assert(page != MAP_FAILED);
+
+    return initializePage(page, entrysize);
+}
+
+void getFreshPageForAllocator(AllocatorBin* alloc /*TODO need collector as well to rotate old page into*/)
+{
+    if(alloc->page != NULL) {
+        //TODO handle old page here
+    }
+    
+    alloc->page = allocateFreshPage(alloc->entrysize);
+    alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
+
+    alloc->freelist = alloc->page->freelist;
 }
 
 #if 0
-#include <stdio.h>
-#include <stdlib.h> //free
-#include <stdint.h>
-#include <assert.h>
-#include <sys/mman.h> //mmap
-#include <math.h>
-
-#define DEBUG_LOG
-
-//each page is 4k 
-#define PAGE_SIZE 4096
-
-//the whole block including header and metadata
-#define BLOCK_SIZE 32
-
-#define NUM_BLOCKS_PER_PAGE     PAGE_SIZE / BLOCK_SIZE
-
-//actual data in our page, will be 24 bytes
-typedef struct block_header{
-    struct block_header* next;
-    
-    //pointer to data segment of this block
-    void* data;
-}block_header;
-
-//our big chunk of contiguous memory
-typedef struct Page{
-    uint8_t free_list[NUM_BLOCKS_PER_PAGE];
-    struct Page* next;
-    struct block_header* block_list_head;
-    struct block_header* block_list_tail;
-} Page;
-
-//Allocates a 4k page with NUM_BLOCKS_PER_PAGE supported number of blocks.
-//All blocks are alligned to 32 bytes. Data about where a block can be allocated
-//is stored in the free_list, to be used in fool_alloc(). We store a pointer
-//to the beginning and end of our current list of blocks for usage with
-//freeing blocks no longer in use and returing memory to the OS
-Page* allocate_page() {
-    //we create our page with 4096 + page header size size blocks allowing read and writes,
-    //private and anon mapping since we dont need to worry about inter
-    //process comms for now, and fd offset 0 for simplicity
-    Page* p_ptr = (Page*)mmap(NULL, PAGE_SIZE + sizeof(Page), PROT_READ | PROT_WRITE ,
-            MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-    assert(p_ptr != MAP_FAILED);
-
-    //pointer to first element of block list
-    p_ptr->block_list_head = (block_header*)((char*)p_ptr + sizeof(Page));
-
-    //tail is what we use to keep track of where we are in the page
-    p_ptr->block_list_tail = p_ptr->block_list_head;
-
-#ifdef DEBUG_LOG
-    printf("Size of block_header %i\n", sizeof(block_header));
-    printf("Number of bytes of data per block %i\n", (int)(BLOCK_SIZE - sizeof(block_header)));
-#endif
-
-    //initialize our page, all blocks to free
-    for(int i = 0; i < NUM_BLOCKS_PER_PAGE; i++){
-        p_ptr->free_list[i] = 1;
-    }
-
-#ifdef DEBUG_LOG
-    printf("Created page at: %p\n", p_ptr);
-    printf("Block list starts at: %p\n\n", p_ptr->block_list_head);
-#endif
-
-    return p_ptr;
-}
-
-
 void* fool_alloc(Page* p, size_t size) {
     if(((char*)p->block_list_head + (int)size) - (char*)(p->block_list_head) > PAGE_SIZE){
 

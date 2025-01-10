@@ -36,9 +36,11 @@
 #define MIN_ALLOCATED_ADDRESS 2147483648ul
 #define MAX_ALLOCATED_ADDRESS 281474976710656ul
 
-alignas(BSQ_MEM_ALIGNMENT) typedef struct FreeListEntry {
+struct FreeListEntry
+{
    struct FreeListEntry* next;
-} FreeListEntry;
+};
+typedef struct FreeListEntry FreeListEntry;
 
 static_assert(sizeof(FreeListEntry) <= sizeof(MetaData), "BlockHeader size is not 8 bytes");
 
@@ -58,3 +60,49 @@ typedef struct PageInfo
 
     PageStateInfo pagestate;
 } PageInfo;
+
+typedef struct AllocatorBin
+{
+    FreeListEntry* freelist;
+    uint16_t entrysize;
+    PageInfo* page;
+} AllocatorBin;
+
+/**
+ * When needed, get a fresh page from mmap to allocate from 
+ **/
+void getFreshPageForAllocator(AllocatorBin* alloc /*TODO need collector as well to rotate old page into*/);
+
+/**
+ * Allocate a block of memory of size `size` from the given page
+ **/
+inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
+{
+    if(alloc->freelist == NULL) {
+        getFreshPageForAllocator(alloc);
+    }
+
+    FreeListEntry* ret = alloc->freelist;
+    alloc->freelist = ret->next;
+
+    #ifndef ALLOC_DEBUG_CANARY
+    MetaData* meta = (MetaData*)ret;
+    void* obj = (void*)((uint8_t*)ret + sizeof(MetaData));
+    #else
+    //todo factor this out into slow path
+    uint64_t* pre = (uint64_t*)ret;
+    *pre = ALLOC_DEBUG_CANARY_VALUE;
+
+    uint64_t* post = (uint64_t*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + alloc->entrysize);
+    *post = ALLOC_DEBUG_CANARY_VALUE;
+
+    MetaData* meta = (MetaData*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE);
+    void* obj = (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+    #endif
+
+    //todo make this nice macros
+    meta->isalloc = true;
+    meta->isyoung = true;
+
+    return (void*)obj;
+}
