@@ -33,16 +33,29 @@ static PageInfo* allocateFreshPage(uint16_t entrysize)
     return initializePage(page, entrysize);
 }
 
-void getFreshPageForAllocator(AllocatorBin* alloc /*TODO need collector as well to rotate old page into*/)
+void getFreshPageForAllocator(AllocatorBin* alloc)
 {
     if(alloc->page != NULL) {
-        //TODO handle old page here
+        //need to rotate our old page into the collector, now alloc->page
+        //exists in the needs_collection list
+        alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
+        alloc->page->next = alloc->block_allocator->need_collection;
+        alloc->block_allocator->need_collection = alloc->page;
     }
     
-    alloc->page = allocateFreshPage(alloc->entrysize);
+    alloc->page->next = allocateFreshPage(alloc->entrysize);
+
+    alloc->page = alloc->page->next;
     alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
 
+    //add new page to head of all pages list
+    alloc->page->next = alloc->block_allocator->all_pages;
+    alloc->block_allocator->all_pages = alloc->page;
+
     alloc->freelist = alloc->page->freelist;
+    
+    //this would be null already from allocateFreshPage, left incase i incorrect
+    //alloc->page->next = NULL;
 }
 
 #if 0

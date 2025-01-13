@@ -25,7 +25,7 @@ typedef struct MetaData
 #else
 typedef struct MetaData 
 {
-    FILL IN HERE!!!!
+    uint64_t meta; //8 byte bit vector
 } MetaData;
 
 static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
