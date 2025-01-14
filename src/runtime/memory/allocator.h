@@ -3,7 +3,7 @@
 #include "../common.h"
 
 #include <stdlib.h> //malloc - not sure if this should be used
-#include <stdio.h>
+#include <stdio.h> //printf
 
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
@@ -85,24 +85,10 @@ typedef struct AllocatorBin
 } AllocatorBin;
 
 /**
- * Slow path for debugging stuffs
- **/
-static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
-    uint64_t* pre = (uint64_t*)ret;
-    *pre = ALLOC_DEBUG_CANARY_VALUE;
-
-    uint64_t* post = (uint64_t*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + alloc->entrysize);
-    *post = ALLOC_DEBUG_CANARY_VALUE;
-
-    *meta = (MetaData*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE);
-    return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
-}
-
-/**
  * TODO - Validation function impl. Needs to check canaries and isyoung/isalloc
  * flags to determine if an error has occured. if so throw error. 
  **/
-static inline bool validate()
+static inline bool validate(void* obj, AllocatorBin* bin)
 {
     //i guess this would be good to call after allocating?
     //then we check the canaries and stuff, if we are good we 
@@ -111,6 +97,19 @@ static inline bool validate()
     //also need to create some test objects to allocate and
     //see wha happens when they fail. just some super simple
     //tests like I already ran for my initial fool_alloc impl
+
+    //check canary before metadata and canary after data
+    uint64_t* pre_canary = (uint64_t*)((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE);
+    uint64_t* post_canary = (uint64_t*)((char*)obj + bin->entrysize);
+
+    printf("Pre Canary %p: %lx\n", pre_canary, *pre_canary);
+    printf("Post Canary %p: %lx\n", post_canary, *post_canary);
+
+    if(*post_canary != ALLOC_DEBUG_CANARY_VALUE || *pre_canary != ALLOC_DEBUG_CANARY_VALUE){
+        return false;
+    }
+
+
 
     return true;
 }
@@ -130,6 +129,21 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
  * we have a list of all pages and those that have stuff in them
  **/
 PageManager* initializePageManager();
+
+/**
+ * Slow path for debugging stuffs
+ **/
+static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
+    uint64_t* pre = (uint64_t*)ret;
+    *pre = ALLOC_DEBUG_CANARY_VALUE;
+
+    uint64_t* post = (uint64_t*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + alloc->entrysize);
+    *post = ALLOC_DEBUG_CANARY_VALUE;
+
+    *meta = (MetaData*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE);
+
+    return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+}
 
 /**
  * Allocate a block of memory of size `size` from the given page
@@ -154,10 +168,6 @@ static inline void* allocate(AllocatorBin* alloc) //is metadata necessary arg?
     #endif
 
     SETUP_META_FLAGS(meta);
-
-    #ifdef ALLOC_DEBUG_CANARY
-    assert(validate() && "Memory Validation Failed!");
-    #endif
 
     return (void*)obj;
 }

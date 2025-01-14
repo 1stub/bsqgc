@@ -99,14 +99,38 @@ void runTests(){
     PageManager* pm = initializePageManager();
     assert(pm != NULL);
     
-    AllocatorBin* bin = initializeAllocatorBin(8, pm);
+    //just storing the size of canary here for simplicity
+    AllocatorBin* bin = initializeAllocatorBin(128, pm);
     assert(bin != NULL);
 
-    void* obj = allocate(bin);
-    assert(obj != NULL);
+    //we are going to make 3 objects, where the last will clobber a canary
+    int num_objs = 3;
+    for( ; num_objs > 0; num_objs--){
+        long unsigned int* obj = (long unsigned int*)allocate(bin);
+        assert(obj != NULL);
 
-    printf("CURRENT PAGE AT ADDRESS: %p\n", bin->page);
-    printf("OBJECT ALLOCATED AT ADDRESS: %p\n", obj);
+        #ifdef MEM_STATS
+        printf("CURRENT PAGE AT ADDRESS: %p\n", bin->page);
+        printf("OBJECT ALLOCATED AT ADDRESS: %p\n", obj);
+
+        if(num_objs == 1){
+            //now lets try putting something malicious at this addr...
+            size_t overflow_size = 136;
+            for (size_t i = 0; i < overflow_size; i++){
+                obj[i] = 0xAA;
+            }
+        }else{
+            *obj = 0xAAAAAAAAAAAAAAA;
+        }
+
+        //how to underflow attack?
+
+        //now did we actually alloc dead beef???
+        printf("DATA STORED AT %p: %lx\n", obj, *obj); //too long so we only get half (8 bytes)
+        
+        assert(validate(obj, bin)); 
+    }
+    #endif
 }
 
 #if 0
