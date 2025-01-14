@@ -6,6 +6,8 @@
 #define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
 #endif
 
+
+
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
     PageInfo* pinfo = (PageInfo*)page;
@@ -33,16 +35,6 @@ static PageInfo* allocateFreshPage(uint16_t entrysize)
     return initializePage(page, entrysize);
 }
 
-void initializeAllocatorBin(AllocatorBin* allocator_bin, uint16_t entrysize)
-{
-
-}
-
-void initializePageManager(PageManager* page_manager)
-{
-    
-}
-
 void getFreshPageForAllocator(AllocatorBin* alloc)
 {
     if(alloc->page != NULL) {
@@ -66,6 +58,55 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
     
     //this would be null already from allocateFreshPage, left incase i incorrect
     //alloc->page->next = NULL;
+}
+
+
+PageManager* initializePageManager()
+{
+    //concerned about malloc usage here
+    PageManager* manager = (PageManager*)malloc(sizeof(PageManager));
+    if (manager == NULL) {
+        exit(EXIT_FAILURE);
+    }
+
+    manager->all_pages = NULL;
+    manager->need_collection = NULL;
+
+    return manager;
+}
+
+AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manager)
+{
+    if (entrysize == 0 || page_manager == NULL) {
+        return NULL;
+    }
+
+    //also concerned about malloc usage here - is it necessary? should I be doing something with allocate?
+    AllocatorBin* bin = (AllocatorBin*)malloc(sizeof(AllocatorBin));
+    if (bin == NULL) {
+        exit(EXIT_FAILURE);
+    }
+
+    bin->freelist = NULL;
+    bin->entrysize = entrysize;
+    bin->page = allocateFreshPage(entrysize); //make sure we have a page to work with
+    bin->page_manager = page_manager;
+
+    return bin;
+}
+
+void runTests(){
+    PageManager* pm = initializePageManager();
+    assert(pm != NULL);
+    
+    AllocatorBin* bin = initializeAllocatorBin(8, pm);
+    assert(bin != NULL);
+
+    void* obj = allocate(bin);
+    assert(obj != NULL);
+
+    printf("CURRENT PAGE AT ADDRESS: %p\n", bin->page);
+    printf("OBJECT ALLOCATED AT ADDRESS: %p\n", obj);
 }
 
 #if 0

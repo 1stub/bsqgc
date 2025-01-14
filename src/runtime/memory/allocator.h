@@ -2,6 +2,8 @@
 
 #include "../common.h"
 
+#include <stdlib.h> //malloc - not sure if this should be used
+#include <stdio.h>
 
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
@@ -31,7 +33,7 @@ do {                      \
 } while(0)
 
 ////////////////////////////////
-//Memory allocator
+//Memory allocatorv
 
 #define BSQ_STACK_ALLOC(SIZE) ((SIZE) == 0 ? nullptr : alloca(SIZE))
 
@@ -85,7 +87,7 @@ typedef struct AllocatorBin
 /**
  * Slow path for debugging stuffs
  **/
-inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
+static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
     uint64_t* pre = (uint64_t*)ret;
     *pre = ALLOC_DEBUG_CANARY_VALUE;
 
@@ -100,7 +102,7 @@ inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** m
  * TODO - Validation function impl. Needs to check canaries and isyoung/isalloc
  * flags to determine if an error has occured. if so throw error. 
  **/
-inline bool validate()
+static inline bool validate()
 {
     //i guess this would be good to call after allocating?
     //then we check the canaries and stuff, if we are good we 
@@ -121,18 +123,18 @@ void getFreshPageForAllocator(AllocatorBin* alloc);
 /**
  * For our allocator to be usable, the AllocatorBin must be initialized
  **/
-void initializeAllocatorBin(AllocatorBin* allocator_bin, uint16_t entrysize);
+AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manager);
 
 /**
  * Setup pointers for managing our pages 
  * we have a list of all pages and those that have stuff in them
  **/
-void initializeAllocatorBin(AllocatorBin* allocator_bin, uint16_t entrysize);
+PageManager* initializePageManager();
 
 /**
  * Allocate a block of memory of size `size` from the given page
  **/
-inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
+static inline void* allocate(AllocatorBin* alloc) //is metadata necessary arg?
 {
     if(alloc->freelist == NULL) {
         getFreshPageForAllocator(alloc);
@@ -159,3 +161,5 @@ inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
 
     return (void*)obj;
 }
+
+extern void runTests();
