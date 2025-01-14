@@ -33,14 +33,24 @@ static PageInfo* allocateFreshPage(uint16_t entrysize)
     return initializePage(page, entrysize);
 }
 
+void initializeAllocatorBin(AllocatorBin* allocator_bin, uint16_t entrysize)
+{
+
+}
+
+void initializePageManager(PageManager* page_manager)
+{
+    
+}
+
 void getFreshPageForAllocator(AllocatorBin* alloc)
 {
     if(alloc->page != NULL) {
         //need to rotate our old page into the collector, now alloc->page
         //exists in the needs_collection list
         alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
-        alloc->page->next = alloc->block_allocator->need_collection;
-        alloc->block_allocator->need_collection = alloc->page;
+        alloc->page->next = alloc->page_manager->need_collection;
+        alloc->page_manager->need_collection = alloc->page;
     }
     
     alloc->page->next = allocateFreshPage(alloc->entrysize);
@@ -49,8 +59,8 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
     alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
 
     //add new page to head of all pages list
-    alloc->page->next = alloc->block_allocator->all_pages;
-    alloc->block_allocator->all_pages = alloc->page;
+    alloc->page->next = alloc->page_manager->all_pages;
+    alloc->page_manager->all_pages = alloc->page;
 
     alloc->freelist = alloc->page->freelist;
     

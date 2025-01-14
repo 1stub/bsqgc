@@ -69,17 +69,17 @@ typedef struct PageInfo
     struct PageInfo* next; //need this for allocator page management
 } PageInfo;
 
-typedef struct BlockAllocator{
+typedef struct PageManager{
     PageInfo* all_pages;
     PageInfo* need_collection; 
-} BlockAllocator;
+} PageManager;
 
 typedef struct AllocatorBin
 {
     FreeListEntry* freelist;
     uint16_t entrysize;
     PageInfo* page;
-    BlockAllocator* block_allocator;
+    PageManager* page_manager;
 } AllocatorBin;
 
 /**
@@ -100,12 +100,34 @@ inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** m
  * TODO - Validation function impl. Needs to check canaries and isyoung/isalloc
  * flags to determine if an error has occured. if so throw error. 
  **/
+inline bool validate()
+{
+    //i guess this would be good to call after allocating?
+    //then we check the canaries and stuff, if we are good we 
+    //return true, otherwise false and send that to allocate()
+    //using an assert to be like hey this no good stop that
+    //also need to create some test objects to allocate and
+    //see wha happens when they fail. just some super simple
+    //tests like I already ran for my initial fool_alloc impl
 
+    return true;
+}
 
 /**
  * When needed, get a fresh page from mmap to allocate from 
  **/
 void getFreshPageForAllocator(AllocatorBin* alloc);
+
+/**
+ * For our allocator to be usable, the AllocatorBin must be initialized
+ **/
+void initializeAllocatorBin(AllocatorBin* allocator_bin, uint16_t entrysize);
+
+/**
+ * Setup pointers for managing our pages 
+ * we have a list of all pages and those that have stuff in them
+ **/
+void initializeAllocatorBin(AllocatorBin* allocator_bin, uint16_t entrysize);
 
 /**
  * Allocate a block of memory of size `size` from the given page
@@ -130,6 +152,10 @@ inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
     #endif
 
     SETUP_META_FLAGS(meta);
+
+    #ifdef ALLOC_DEBUG_CANARY
+    assert(validate() && "Memory Validation Failed!");
+    #endif
 
     return (void*)obj;
 }
