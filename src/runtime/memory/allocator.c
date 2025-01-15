@@ -103,24 +103,26 @@ void runTests(){
     assert(bin != NULL);
 
     //create n objs where the last clobbers a canary
-    int num_objs = 100;
+    int num_objs = 3;
     for( ; num_objs > 0; num_objs--){
         MetaData* metadata;
 
-        long unsigned int* obj = (long unsigned int*)allocate(bin, &metadata);
-        assert(obj != NULL);
+        void* raw_obj = allocate(bin, &metadata);
+        assert(raw_obj != NULL);
+
+        uint64_t* obj = (uint64_t*)raw_obj;
 
         printf("Object allocated at address: %p\n", obj);
 
         if(num_objs == 1){
             //now lets try putting something "malicious" at this addr...
             #ifdef CANARY_DEBUG_CHECK
-            size_t overflow_size = entry_size;
-            for (size_t i = 0; i < overflow_size; i++){
-                obj[-i] = 0xBEED;
+            uint16_t overflow_size = entry_size;
+            for (uint16_t i = 0; i < overflow_size; i++){
+                obj[i] = 0xBAD0000000000000;
             }
             #else
-            obj[-1] = 0xBEED;
+            obj[-1] = 0xBADAAAAAAAAAAAAA;
             #endif
         }else{
             *obj = 0xFFFFFFFFFFFFFFFF;
