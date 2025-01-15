@@ -60,16 +60,15 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
     //alloc->page->next = NULL;
 }
 
-
-PageManager* initializePageManager()
+PageManager* initializePageManager(uint16_t entry_size)
 {
-    //concerned about malloc usage here
-    PageManager* manager = (PageManager*)malloc(sizeof(PageManager));
+    PageInfo* pi = allocateFreshPage(entry_size);
+    
+    PageManager* manager = (PageManager*)pi;
     if (manager == NULL) {
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
-    manager->all_pages = NULL;
     manager->need_collection = NULL;
 
     return manager;
@@ -81,26 +80,25 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
         return NULL;
     }
 
-    //also concerned about malloc usage here - is it necessary? should I be doing something with allocate?
-    AllocatorBin* bin = (AllocatorBin*)malloc(sizeof(AllocatorBin));
+    AllocatorBin* bin = (AllocatorBin*)page_manager->all_pages->freelist;
     if (bin == NULL) {
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
-    bin->freelist = NULL;
+    bin->page = page_manager->all_pages; //make sure we have a page to work with
     bin->entrysize = entrysize;
-    bin->page = allocateFreshPage(entrysize); //make sure we have a page to work with
     bin->page_manager = page_manager;
 
     return bin;
 }
 
 void runTests(){
-    PageManager* pm = initializePageManager();
-    assert(pm != NULL);
-    
     //need sizeof(canary) else we do not bump ptr enough and segfault
     uint16_t entry_size = 16 + ALLOC_DEBUG_CANARY_SIZE;
+
+    PageManager* pm = initializePageManager(entry_size);
+    assert(pm != NULL);
+    
     AllocatorBin* bin = initializeAllocatorBin(entry_size, pm);
     assert(bin != NULL);
 

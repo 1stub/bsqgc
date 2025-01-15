@@ -2,8 +2,6 @@
 
 #include "../common.h"
 
-#include <stdlib.h> //malloc - not sure if this should be used
-
 #ifdef MEM_STATS
 #include <stdio.h> //printf
 #endif
@@ -74,6 +72,11 @@ typedef struct PageInfo
     struct PageInfo* next; //need this for allocator page management
 } PageInfo;
 
+/**
+ * The layout of these structs is critical. We rely on the fact that the address of the struct
+ * matches the address of its first element (PageInfo in PageManager) to avoid using malloc.
+ * If the layout changes, this initialization method may break
+ **/
 typedef struct PageManager{
     PageInfo* all_pages;
     PageInfo* need_collection; 
@@ -133,7 +136,7 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
  * Setup pointers for managing our pages 
  * we have a list of all pages and those that have stuff in them
  **/
-PageManager* initializePageManager();
+PageManager* initializePageManager(uint16_t entry_size);
 
 /**
  * Slow path for debugging stuffs
