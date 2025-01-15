@@ -6,7 +6,7 @@
 #define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
 #endif
 
-
+#define CANARY_DEBUG_CHECK
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
@@ -56,7 +56,7 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
 
     alloc->freelist = alloc->page->freelist;
     
-    //this would be null already from allocateFreshPage, left incase i incorrect
+    //this would be null already from allocateFreshPage, left incase im incorrect
     //alloc->page->next = NULL;
 }
 
@@ -99,38 +99,39 @@ void runTests(){
     PageManager* pm = initializePageManager();
     assert(pm != NULL);
     
-    //just storing the size of canary here for simplicity
-    AllocatorBin* bin = initializeAllocatorBin(128, pm);
+    //need sizeof(canary) else we do not bump ptr enough and segfault
+    uint16_t entry_size = 16 + ALLOC_DEBUG_CANARY_SIZE;
+    AllocatorBin* bin = initializeAllocatorBin(entry_size, pm);
     assert(bin != NULL);
 
-    //we are going to make 3 objects, where the last will clobber a canary
-    int num_objs = 3;
+    //create n objs where the last clobbers a canary
+    int num_objs = 100;
     for( ; num_objs > 0; num_objs--){
-        long unsigned int* obj = (long unsigned int*)allocate(bin);
+        MetaData* metadata;
+
+        long unsigned int* obj = (long unsigned int*)allocate(bin, &metadata);
         assert(obj != NULL);
 
-        #ifdef MEM_STATS
-        printf("CURRENT PAGE AT ADDRESS: %p\n", bin->page);
-        printf("OBJECT ALLOCATED AT ADDRESS: %p\n", obj);
+        printf("Object allocated at address: %p\n", obj);
 
         if(num_objs == 1){
-            //now lets try putting something malicious at this addr...
-            size_t overflow_size = 136;
+            //now lets try putting something "malicious" at this addr...
+            #ifdef CANARY_DEBUG_CHECK
+            size_t overflow_size = entry_size;
             for (size_t i = 0; i < overflow_size; i++){
-                obj[i] = 0xAA;
+                obj[-i] = 0xBEED;
             }
+            #else
+            obj[-1] = 0xBEED;
+            #endif
         }else{
-            *obj = 0xAAAAAAAAAAAAAAA;
+            *obj = 0xFFFFFFFFFFFFFFFF;
         }
-
-        //how to underflow attack?
-
-        //now did we actually alloc dead beef???
-        printf("DATA STORED AT %p: %lx\n", obj, *obj); //too long so we only get half (8 bytes)
+        printf("Data stored at %p: %lx\n", obj, *obj); 
         
-        assert(validate(obj, bin)); 
+        assert(validate(obj, bin, metadata)); 
+        printf("\n");
     }
-    #endif
 }
 
 #if 0

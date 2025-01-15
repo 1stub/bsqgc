@@ -3,7 +3,10 @@
 #include "../common.h"
 
 #include <stdlib.h> //malloc - not sure if this should be used
+
+#ifdef MEM_STATS
 #include <stdio.h> //printf
+#endif
 
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
@@ -28,12 +31,12 @@
 
 #define SETUP_META_FLAGS(meta)  \
 do {                      \
-    meta->isalloc = true; \
-    meta->isyoung = true; \
+    (*meta)->isalloc = true; \
+    (*meta)->isyoung = true; \
 } while(0)
 
 ////////////////////////////////
-//Memory allocatorv
+//Memory allocator
 
 #define BSQ_STACK_ALLOC(SIZE) ((SIZE) == 0 ? nullptr : alloca(SIZE))
 
@@ -85,18 +88,14 @@ typedef struct AllocatorBin
 } AllocatorBin;
 
 /**
- * TODO - Validation function impl. Needs to check canaries and isyoung/isalloc
- * flags to determine if an error has occured. if so throw error. 
+ * Validation to check canary failures and meta flag issues
  **/
-static inline bool validate(void* obj, AllocatorBin* bin)
+#ifdef ALLOC_DEBUG_CANARY
+static inline bool validate(void* obj, AllocatorBin* bin, MetaData* meta)
 {
-    //i guess this would be good to call after allocating?
-    //then we check the canaries and stuff, if we are good we 
-    //return true, otherwise false and send that to allocate()
-    //using an assert to be like hey this no good stop that
-    //also need to create some test objects to allocate and
-    //see wha happens when they fail. just some super simple
-    //tests like I already ran for my initial fool_alloc impl
+    if (obj == NULL || meta == NULL || bin == NULL) {
+        return false;
+    }
 
     //check canary before metadata and canary after data
     uint64_t* pre_canary = (uint64_t*)((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE);
@@ -106,13 +105,19 @@ static inline bool validate(void* obj, AllocatorBin* bin)
     printf("Post Canary %p: %lx\n", post_canary, *post_canary);
 
     if(*post_canary != ALLOC_DEBUG_CANARY_VALUE || *pre_canary != ALLOC_DEBUG_CANARY_VALUE){
+        printf("[ERROR] Canary check failed!: pre=%lx, post=%lx\n", *pre_canary, *post_canary);
         return false;
     }
 
-
+    //now lets check metadata, bpth should be true given we run this just after allocation
+    if(!meta->isalloc || !meta->isyoung){
+        printf("[ERROR] MetaData Check Failed!\n");
+        return false;
+    }
 
     return true;
 }
+#endif
 
 /**
  * When needed, get a fresh page from mmap to allocate from 
@@ -148,7 +153,7 @@ static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaD
 /**
  * Allocate a block of memory of size `size` from the given page
  **/
-static inline void* allocate(AllocatorBin* alloc) //is metadata necessary arg?
+static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
 {
     if(alloc->freelist == NULL) {
         getFreshPageForAllocator(alloc);
@@ -157,19 +162,20 @@ static inline void* allocate(AllocatorBin* alloc) //is metadata necessary arg?
     FreeListEntry* ret = alloc->freelist;
     alloc->freelist = ret->next;
 
-    MetaData* meta;
     void* obj;
 
     #ifndef ALLOC_DEBUG_CANARY
-    meta = (MetaData*)ret;
+    *metadata = (MetaData*)ret;
     obj = (void*)((uint8_t*)ret + sizeof(MetaData));
     #else
-    obj = setupSlowPath(ret, alloc, &meta);
+    obj = setupSlowPath(ret, alloc, metadata);
     #endif
 
-    SETUP_META_FLAGS(meta);
+    SETUP_META_FLAGS(metadata);
 
     return (void*)obj;
 }
 
+#ifdef ALLOC_DEBUG_CANARY
 extern void runTests();
+#endif
