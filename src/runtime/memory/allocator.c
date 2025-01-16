@@ -10,6 +10,8 @@
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
+    printf("New page!\n");
+
     PageInfo* pinfo = (PageInfo*)page;
     pinfo->freelist = (FreeListEntry*)((char*)page + sizeof(PageInfo));
     pinfo->entrysize = entrysize;
@@ -18,10 +20,20 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
     pinfo->pagestate = PageStateInfo_GroundState;
 
     FreeListEntry* current = pinfo->freelist;
+
+    #ifndef ALLOC_DEBUG_CANARY
     for(int i = 0; i < pinfo->entrycount - 1; i++) {
         current->next = (FreeListEntry*)((char*)current + entrysize + sizeof(MetaData));
         current = current->next;
     }
+    #else
+    for(int i = 0; i < pinfo->entrycount - 1; i++) {
+        printf("Current freelist pointer: %p\n", current);
+        current->next = (FreeListEntry*)((char*)current + REAL_ENTRY_SIZE(entrysize));
+        current = current->next;
+    }
+    #endif
+
     current->next = NULL;
 
     return pinfo;
@@ -61,14 +73,13 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
 }
 
 PageManager* initializePageManager(uint16_t entry_size)
-{
-    PageInfo* pi = allocateFreshPage(entry_size);
-    
-    PageManager* manager = (PageManager*)pi;
+{    
+    PageManager* manager = (PageManager*)malloc(sizeof(PageManager));
     if (manager == NULL) {
         return NULL;
     }
 
+    manager->all_pages = NULL;
     manager->need_collection = NULL;
 
     return manager;
@@ -80,21 +91,67 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
         return NULL;
     }
 
-    AllocatorBin* bin = (AllocatorBin*)page_manager->all_pages->freelist;
+    AllocatorBin* bin = (AllocatorBin*)malloc(sizeof(AllocatorBin));
     if (bin == NULL) {
         return NULL;
     }
 
-    bin->page = page_manager->all_pages; //make sure we have a page to work with
     bin->entrysize = entrysize;
     bin->page_manager = page_manager;
+
+    bin->page = allocateFreshPage(entrysize);
+    bin->freelist = bin->page->freelist;
+
+    bin->page->next = page_manager->all_pages;
+    page_manager->all_pages = bin->page;
 
     return bin;
 }
 
+#ifdef ALLOC_DEBUG_CANARY
+static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
+{
+    uint64_t* pre_canary = (uint64_t*)(block);
+    uint64_t* post_canary = (uint64_t*)(block + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
+
+    if (*pre_canary != ALLOC_DEBUG_CANARY_VALUE || *post_canary != ALLOC_DEBUG_CANARY_VALUE)
+    {
+        printf("[ERROR] Canary corrupted at block %p\n", (void*)block);
+        printf("Data in pre-canary: %lx, data in post-canary: %lx\n", *pre_canary, *post_canary);
+        return false;
+    }
+    return true;
+}
+
+static void verifyCanariesInPage(PageInfo* page)
+{
+    char* base_address = (char*)page + sizeof(PageInfo);
+
+    for (uint16_t i = 0; i < page->entrycount; i++) {
+        char* block_address = base_address + (i * REAL_ENTRY_SIZE(page->entrysize));
+        MetaData* metadata = (MetaData*)(block_address + ALLOC_DEBUG_CANARY_SIZE);
+
+        if (metadata->isalloc) {
+            assert(verifyCanariesInBlock(block_address, page->entrysize));
+        }
+    }
+}
+
+static void verifyAllCanaries(PageManager* page_manager)
+{
+    PageInfo* current_page = page_manager->all_pages;
+
+    printf("PageManager all_pages head address: %p\n", current_page);
+
+    while (current_page) {
+        verifyCanariesInPage(current_page);
+        current_page = current_page->next;
+    }
+}
+#endif
+
 void runTests(){
-    //need sizeof(canary) else we do not bump ptr enough and segfault
-    uint16_t entry_size = 16 + ALLOC_DEBUG_CANARY_SIZE;
+    uint16_t entry_size = 16;
 
     PageManager* pm = initializePageManager(entry_size);
     assert(pm != NULL);
@@ -103,7 +160,7 @@ void runTests(){
     assert(bin != NULL);
 
     //create n objs where the last clobbers a canary
-    int num_objs = 3;
+    int num_objs = 256;
     for( ; num_objs > 0; num_objs--){
         MetaData* metadata;
 
@@ -113,7 +170,7 @@ void runTests(){
         uint64_t* obj = (uint64_t*)raw_obj;
 
         printf("Object allocated at address: %p\n", obj);
-
+        
         if(num_objs == 1){
             //now lets try putting something "malicious" at this addr...
             #ifdef CANARY_DEBUG_CHECK
@@ -122,16 +179,22 @@ void runTests(){
                 obj[i] = 0xBAD0000000000000;
             }
             #else
-            obj[-1] = 0xBADAAAAAAAAAAAAA;
+            //doesnt seem to work for destroying data at the canary header
+            obj[-2] = 0xBADAAAAAAAAAAAAA;
             #endif
         }else{
-            *obj = 0xFFFFFFFFFFFFFFFF;
+            *obj = ALLOC_DEBUG_MEM_INITIALIZE_VALUE;
         }
+
         printf("Data stored at %p: %lx\n", obj, *obj); 
         
-        assert(validate(obj, bin, metadata)); 
+        //assert(validate(obj, bin, metadata)); 
         printf("\n");
     }
+
+    #ifdef ALLOC_DEBUG_CANARY
+    verifyAllCanaries(pm);
+    #endif
 }
 
 #if 0

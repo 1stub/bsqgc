@@ -6,6 +6,8 @@
 #include <stdio.h> //printf
 #endif
 
+#include <stdlib.h>
+
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
 #define ALLOC_DEBUG_CANARY
@@ -72,11 +74,6 @@ typedef struct PageInfo
     struct PageInfo* next; //need this for allocator page management
 } PageInfo;
 
-/**
- * The layout of these structs is critical. We rely on the fact that the address of the struct
- * matches the address of its first element (PageInfo in PageManager) to avoid using malloc.
- * If the layout changes, this initialization method may break
- **/
 typedef struct PageManager{
     PageInfo* all_pages;
     PageInfo* need_collection; 
@@ -92,6 +89,8 @@ typedef struct AllocatorBin
 
 /**
  * Validation to check canary failures and meta flag issues
+ * This method was designed to be used right after allocation
+ * Probably not too useful
  **/
 #ifdef ALLOC_DEBUG_CANARY
 static inline bool validate(void* obj, AllocatorBin* bin, MetaData* meta)
