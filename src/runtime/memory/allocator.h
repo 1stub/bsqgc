@@ -2,6 +2,11 @@
 
 #include "../common.h"
 
+#ifdef MEM_STATS
+#include <stdio.h> //printf
+#endif
+
+#include <stdlib.h>
 
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
@@ -26,8 +31,8 @@
 
 #define SETUP_META_FLAGS(meta)  \
 do {                      \
-    meta->isalloc = true; \
-    meta->isyoung = true; \
+    (*meta)->isalloc = true; \
+    (*meta)->isyoung = true; \
 } while(0)
 
 ////////////////////////////////
@@ -69,37 +74,18 @@ typedef struct PageInfo
     struct PageInfo* next; //need this for allocator page management
 } PageInfo;
 
-typedef struct BlockAllocator{
+typedef struct PageManager{
     PageInfo* all_pages;
     PageInfo* need_collection; 
-} BlockAllocator;
+} PageManager;
 
 typedef struct AllocatorBin
 {
     FreeListEntry* freelist;
     uint16_t entrysize;
     PageInfo* page;
-    BlockAllocator* block_allocator;
+    PageManager* page_manager;
 } AllocatorBin;
-
-/**
- * Slow path for debugging stuffs
- **/
-inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
-    uint64_t* pre = (uint64_t*)ret;
-    *pre = ALLOC_DEBUG_CANARY_VALUE;
-
-    uint64_t* post = (uint64_t*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + alloc->entrysize);
-    *post = ALLOC_DEBUG_CANARY_VALUE;
-
-    *meta = (MetaData*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE);
-    return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
-}
-
-/**
- * TODO - Validation function impl. Needs to check canaries and isyoung/isalloc
- * flags to determine if an error has occured. if so throw error. 
- **/
 
 
 /**
@@ -108,9 +94,35 @@ inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** m
 void getFreshPageForAllocator(AllocatorBin* alloc);
 
 /**
+ * For our allocator to be usable, the AllocatorBin must be initialized
+ **/
+AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manager);
+
+/**
+ * Setup pointers for managing our pages 
+ * we have a list of all pages and those that have stuff in them
+ **/
+PageManager* initializePageManager(uint16_t entry_size);
+
+/**
+ * Slow path for usage with canaries --- debug
+ **/
+static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
+    uint64_t* pre = (uint64_t*)ret;
+    *pre = ALLOC_DEBUG_CANARY_VALUE;
+
+    uint64_t* post = (uint64_t*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + alloc->entrysize);
+    *post = ALLOC_DEBUG_CANARY_VALUE;
+
+    *meta = (MetaData*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE);
+
+    return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+}
+
+/**
  * Allocate a block of memory of size `size` from the given page
  **/
-inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
+static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
 {
     if(alloc->freelist == NULL) {
         getFreshPageForAllocator(alloc);
@@ -119,17 +131,20 @@ inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
     FreeListEntry* ret = alloc->freelist;
     alloc->freelist = ret->next;
 
-    MetaData* meta;
     void* obj;
 
     #ifndef ALLOC_DEBUG_CANARY
-    meta = (MetaData*)ret;
+    *metadata = (MetaData*)ret;
     obj = (void*)((uint8_t*)ret + sizeof(MetaData));
     #else
-    obj = setupSlowPath(ret, alloc, &meta);
+    obj = setupSlowPath(ret, alloc, metadata);
     #endif
 
-    SETUP_META_FLAGS(meta);
+    SETUP_META_FLAGS(metadata);
 
     return (void*)obj;
 }
+
+#ifdef ALLOC_DEBUG_CANARY
+extern void runTests();
+#endif
