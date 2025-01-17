@@ -87,39 +87,6 @@ typedef struct AllocatorBin
     PageManager* page_manager;
 } AllocatorBin;
 
-/**
- * Validation to check canary failures and meta flag issues
- * This method was designed to be used right after allocation
- * Probably not too useful
- **/
-#ifdef ALLOC_DEBUG_CANARY
-static inline bool validate(void* obj, AllocatorBin* bin, MetaData* meta)
-{
-    if (obj == NULL || meta == NULL || bin == NULL) {
-        return false;
-    }
-
-    //check canary before metadata and canary after data
-    uint64_t* pre_canary = (uint64_t*)((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE);
-    uint64_t* post_canary = (uint64_t*)((char*)obj + bin->entrysize);
-
-    printf("Pre Canary %p: %lx\n", pre_canary, *pre_canary);
-    printf("Post Canary %p: %lx\n", post_canary, *post_canary);
-
-    if(*post_canary != ALLOC_DEBUG_CANARY_VALUE || *pre_canary != ALLOC_DEBUG_CANARY_VALUE){
-        printf("[ERROR] Canary check failed!: pre=%lx, post=%lx\n", *pre_canary, *post_canary);
-        return false;
-    }
-
-    //now lets check metadata, bpth should be true given we run this just after allocation
-    if(!meta->isalloc || !meta->isyoung){
-        printf("[ERROR] MetaData Check Failed!\n");
-        return false;
-    }
-
-    return true;
-}
-#endif
 
 /**
  * When needed, get a fresh page from mmap to allocate from 
@@ -138,7 +105,7 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
 PageManager* initializePageManager(uint16_t entry_size);
 
 /**
- * Slow path for debugging stuffs
+ * Slow path for usage with canaries --- debug
  **/
 static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){
     uint64_t* pre = (uint64_t*)ret;
