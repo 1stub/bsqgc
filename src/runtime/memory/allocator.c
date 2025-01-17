@@ -7,6 +7,12 @@
 #endif
 
 #define CANARY_DEBUG_CHECK
+//for future impls that can have multiple different entry sizes we can create an 
+//array of pre defined allocator bins for a given size
+#define DEFAULT_ENTRY_SIZE 16 //for now our blocks are all have dataseg of 16 bytes
+
+AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
+PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
@@ -52,7 +58,7 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
     if(alloc->page != NULL) {
         //need to rotate our old page into the collector, now alloc->page
         //exists in the needs_collection list
-        alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
+        alloc->page->pagestate = AllocPageInfo_ActiveEvacuation;
         alloc->page->next = alloc->page_manager->need_collection;
         alloc->page_manager->need_collection = alloc->page;
     }
@@ -74,7 +80,7 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
 
 PageManager* initializePageManager(uint16_t entry_size)
 {    
-    PageManager* manager = (PageManager*)malloc(sizeof(PageManager));
+    PageManager* manager = &p_mgr;
     if (manager == NULL) {
         return NULL;
     }
@@ -91,12 +97,8 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
         return NULL;
     }
 
-    AllocatorBin* bin = (AllocatorBin*)malloc(sizeof(AllocatorBin));
-    if (bin == NULL) {
-        return NULL;
-    }
+    AllocatorBin* bin = &a_bin;
 
-    bin->entrysize = entrysize;
     bin->page_manager = page_manager;
 
     bin->page = allocateFreshPage(entrysize);
@@ -156,12 +158,10 @@ static void verifyAllCanaries(PageManager* page_manager)
 }
 
 void runTests(){
-    uint16_t entry_size = 16;
-
-    PageManager* pm = initializePageManager(entry_size);
+    PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
     assert(pm != NULL);
     
-    AllocatorBin* bin = initializeAllocatorBin(entry_size, pm);
+    AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE, pm);
     assert(bin != NULL);
 
     int num_objs = 256;
@@ -178,7 +178,7 @@ void runTests(){
         uint16_t overflow_size = 3; //3 always writes to either pre or post
         
         //this value doesnt matter, just need to destroy a canary somewhere
-        if(num_objs == entry_size + 1){
+        if(num_objs == DEFAULT_ENTRY_SIZE + 1){
             //now lets try putting something "malicious" at this addr...
             #ifdef CANARY_DEBUG_CHECK
             for (uint16_t i = 0; i < overflow_size; i++){

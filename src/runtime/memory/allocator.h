@@ -6,8 +6,6 @@
 #include <stdio.h> //printf
 #endif
 
-#include <stdlib.h>
-
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
 #define ALLOC_DEBUG_CANARY
@@ -76,8 +74,9 @@ typedef struct PageInfo
 
 typedef struct PageManager{
     PageInfo* all_pages;
-    PageInfo* need_collection; 
+    PageInfo* need_collection; //Array List?
 } PageManager;
+extern PageManager p_mgr;
 
 typedef struct AllocatorBin
 {
@@ -86,6 +85,7 @@ typedef struct AllocatorBin
     PageInfo* page;
     PageManager* page_manager;
 } AllocatorBin;
+extern AllocatorBin a_bin;
 
 
 /**
