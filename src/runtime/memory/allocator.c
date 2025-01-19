@@ -16,7 +16,7 @@ PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
-    printf("New page!\n");
+    debug_print("New page!\n");
 
     PageInfo* pinfo = (PageInfo*)page;
     pinfo->freelist = (FreeListEntry*)((char*)page + sizeof(PageInfo));
@@ -34,7 +34,7 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
     }
     #else
     for(int i = 0; i < pinfo->entrycount - 1; i++) {
-        printf("Current freelist pointer: %p\n", current);
+        debug_print("Current freelist pointer: %p\n", current);
         current->next = (FreeListEntry*)((char*)current + REAL_ENTRY_SIZE(entrysize));
         current = current->next;
     }
@@ -110,6 +110,21 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
     return bin;
 }
 
+bool isPtr(void* obj) {
+    // TODO: Implement actual logic to determine if obj is a valid pointer
+    return true; // For now, assume all objects are valid pointers
+}
+
+void mark(void* obj)
+{
+
+}
+
+void markFromRoots()
+{
+
+}
+
 #ifdef ALLOC_DEBUG_CANARY
 static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {
@@ -118,8 +133,8 @@ static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 
     if (*pre_canary != ALLOC_DEBUG_CANARY_VALUE || *post_canary != ALLOC_DEBUG_CANARY_VALUE)
     {
-        printf("[ERROR] Canary corrupted at block %p\n", (void*)block);
-        printf("Data in pre-canary: %lx, data in post-canary: %lx\n", *pre_canary, *post_canary);
+        debug_print("[ERROR] Canary corrupted at block %p\n", (void*)block);
+        debug_print("Data in pre-canary: %lx, data in post-canary: %lx\n", *pre_canary, *post_canary);
         return false;
     }
     return true;
@@ -127,6 +142,7 @@ static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 
 static void verifyCanariesInPage(PageInfo* page)
 {
+    FreeListEntry* list = page->freelist;
     char* base_address = (char*)page + sizeof(PageInfo);
     uint16_t alloced_blocks = 0;
     uint16_t free_blocks = 0;
@@ -138,10 +154,19 @@ static void verifyCanariesInPage(PageInfo* page)
         if (metadata->isalloc) {
             alloced_blocks++;
             assert(verifyCanariesInBlock(block_address, page->entrysize));
-        }else{
-            free_blocks++;
         }
     }
+
+    while(list){
+        MetaData* metadata = (MetaData*)((char*)list + ALLOC_DEBUG_CANARY_SIZE);
+        if(metadata->isalloc){
+            debug_print("[ERROR] Block in free list was allocated");
+            assert(0);
+        }
+        free_blocks++;
+        list = list->next;
+    }   
+
     //make sure no blocks are lost
     assert((free_blocks + alloced_blocks) == page->entrycount);
 }
@@ -151,11 +176,20 @@ static void verifyAllCanaries(PageManager* page_manager)
     PageInfo* current_page = page_manager->all_pages;
 
     while (current_page) {
-        printf("PageManager all_pages head address: %p\n", current_page);
+        debug_print("PageManager all_pages head address: %p\n", current_page);
         verifyCanariesInPage(current_page);
         current_page = current_page->next;
     }
+
 }
+
+//the following methods are just to verify the functionality of this collector.
+//we need to (as of now) be able to create linked objects of varrying depth and breadth,
+//verify that no canaries were smashed in the process for each object, and
+//starting at a root node (directly accessable in the page) mark all necessary nodes
+typedef struct Object{
+    void* nextobj;
+}Object;
 
 void runTests(){
     PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
@@ -173,7 +207,7 @@ void runTests(){
 
         uint64_t* obj = (uint64_t*)raw_obj;
 
-        printf("Object allocated at address: %p\n", obj);
+        debug_print("Object allocated at address: %p\n", obj);
         
         uint16_t overflow_size = 3; //3 always writes to either pre or post
         
@@ -191,11 +225,8 @@ void runTests(){
             *obj = ALLOC_DEBUG_MEM_INITIALIZE_VALUE;
         }
 
-        printf("Data stored at %p: %lx\n\n", obj, *obj);         
+        debug_print("Data stored at %p: %lx\n\n", obj, *obj);         
     }
     verifyAllCanaries(pm);
 }
 #endif
-
-
-

@@ -27,10 +27,11 @@
 #define MEM_STATS_ARG(X)
 #endif
 
-#define SETUP_META_FLAGS(meta)  \
-do {                      \
-    (*meta)->isalloc = true; \
-    (*meta)->isyoung = true; \
+#define SETUP_META_FLAGS(meta) \
+do {                           \
+    (*meta)->isalloc = true;   \
+    (*meta)->isyoung = true;   \
+    (*meta)->ismarked = false; \
 } while(0)
 
 ////////////////////////////////

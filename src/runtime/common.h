@@ -14,13 +14,24 @@
 
 #define BSQ_MEM_ALIGNMENT 8
 
+#define DEBUG
+
+#ifdef DEBUG
+#define debug_print(fmt, ...) \
+            fprintf(stderr, fmt, ##__VA_ARGS__)
+#else
+#define debug_print(fmt, ...) \
+            do { } while (0)
+#endif
+
 #ifdef VERBOSE_HEADER
 typedef struct MetaData 
 {
     bool isalloc;
     bool isyoung;
+    bool ismarked;
 
-    uint8_t padding[6]; //ensure at least 8 bytes in size
+    uint8_t padding[5]; //ensure at least 8 bytes in size
 } MetaData;
 #else
 typedef struct MetaData 
