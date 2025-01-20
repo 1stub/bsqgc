@@ -8,13 +8,13 @@
 
 #define CANARY_DEBUG_CHECK
 
-//for future impls that can have multiple different entry sizes we can create an 
-//array of pre defined allocator bins for a given size
-#define DEFAULT_ENTRY_SIZE sizeof(Object) 
+size_t root_count = 0;
 
+/* Static declarations of our allocator bin and page manager structures */
 AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
 PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
 
+/* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
@@ -113,6 +113,16 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
     return bin;
 }
 
+bool isRoot(void* obj) 
+{
+    /** 
+    * TODO: Actually implement logic for determining whether a pointer is root,
+    * this would be logic that comes into play AFTER we implement type systems.
+    * --- I think ;)
+    **/
+    return true; // For now, assume all objects are valid pointers
+}
+
 void mark(Object* obj)
 {
     MetaData* meta = META_FROM_OBJECT(obj);
@@ -126,6 +136,7 @@ void mark(Object* obj)
     }
 }
 
+/* TODO: Traverse roots list in a BFS manner */
 void markFromRoots()
 {
     for(size_t i = 0; i < root_count; i++){
@@ -133,8 +144,7 @@ void markFromRoots()
     }
 }
 
-#ifdef ALLOC_DEBUG_CANARY
-static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
+bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {
     uint64_t* pre_canary = (uint64_t*)(block);
     uint64_t* post_canary = (uint64_t*)(block + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
@@ -148,7 +158,7 @@ static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
     return true;
 }
 
-static void verifyCanariesInPage(AllocatorBin* bin)
+void verifyCanariesInPage(AllocatorBin* bin)
 {
     PageInfo* page = bin->page;
     FreeListEntry* list = bin->freelist;
@@ -158,7 +168,9 @@ static void verifyCanariesInPage(AllocatorBin* bin)
 
     for (uint16_t i = 0; i < page->entrycount; i++) {
         char* block_address = base_address + (i * REAL_ENTRY_SIZE(page->entrysize));
+        debug_print("Checking block: %p\n", block_address);
         MetaData* metadata = (MetaData*)(block_address + ALLOC_DEBUG_CANARY_SIZE);
+        debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
 
         if (metadata->isalloc) {
             alloced_blocks++;
@@ -166,8 +178,10 @@ static void verifyCanariesInPage(AllocatorBin* bin)
         }
     }
 
+    debug_print("\n");
+
     while(list){
-        debug_print("Checking block: %p\n", (void*)list);
+        debug_print("Checking freelist block: %p\n", (void*)list);
         MetaData* metadata = (MetaData*)((char*)list + ALLOC_DEBUG_CANARY_SIZE);
         debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
         if(metadata->isalloc){
@@ -180,9 +194,11 @@ static void verifyCanariesInPage(AllocatorBin* bin)
 
     //make sure no blocks are lost
     assert((free_blocks + alloced_blocks) == page->entrycount);
+
+    debug_print("\n");
 }
 
-static void verifyAllCanaries(AllocatorBin* bin)
+void verifyAllCanaries(AllocatorBin* bin)
 {
     PageInfo* current_page = bin->page_manager->all_pages;
 
@@ -192,24 +208,3 @@ static void verifyAllCanaries(AllocatorBin* bin)
         current_page = current_page->next;
     }
 }
-
-void test_mark_single_object() {
-    PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
-    assert(pm != NULL);
-
-    AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE, pm);
-    assert(bin != NULL);
-
-    MetaData* metadata;
-    Object* obj = (Object*)allocate(bin, &metadata);
-    debug_print("Allcoated object at address : %p, %p\n", obj, metadata);
-    assert(obj != NULL);
-
-    markFromRoots();
-    assert(metadata->ismarked == true);
-
-    verifyAllCanaries(bin);
-
-    debug_print("Test Case 1 Passed: Single object marked successfully.\n");
-}
-#endif

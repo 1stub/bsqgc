@@ -93,25 +93,14 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
-//just for testing our marking
-typedef struct Object{
-    struct Object** children;
-    uint16_t num_children;
-}Object;
-
 extern Object* root_stack[MAX_ROOTS];
-static size_t root_count = 0;
+extern size_t root_count;
 
 /**
  * Always returns true (for now) since it only gets called from allcoate.
  * If we call from allocate method we know it must be a root. 
  **/
-static bool isRoot(void* obj) {
-    // TODO: Implement actual logic to determine if obj is a valid pointer
-    return true; // For now, assume all objects are valid pointers
-}
-
-
+bool isRoot(void* obj);
 /**
  * When needed, get a fresh page from mmap to allocate from 
  **/
@@ -128,7 +117,22 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
  **/
 PageManager* initializePageManager(uint16_t entry_size);
 
-extern void test_mark_single_object();
+/**
+ * Methods for iterating through the root stack and marking all elements
+ * inside said stack.
+ **/
+void mark(Object* obj);
+void markFromRoots();
+
+/**
+ * Traverse pages and freelists ensuring no canaries are clobbered and that
+ * our freelists contain no already allocated objects.
+ **/
+#ifdef ALLOC_DEBUG_CANARY
+void verifyAllCanaries(AllocatorBin* bin);
+void verifyCanariesInPage(AllocatorBin* bin);
+bool verifyCanariesInBlock(char* block, uint16_t entry_size);
+#endif
 
 /**
  * Slow path for usage with canaries --- debug
@@ -166,21 +170,12 @@ static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
     obj = setupSlowPath(ret, alloc, metadata);
     #endif
 
+    // Do I really want this to always create an object of the same
+    // format as our object struct (in common.h)? design choice...
     Object* new_obj = (Object*)obj;
     new_obj->num_children = 0;
-    if(isRoot(obj))
-    {
-        if(root_count < MAX_ROOTS){
-            root_stack[root_count] = new_obj;
-            root_count++;
-        }
-    }
 
     SETUP_META_FLAGS(metadata);
 
     return (void*)obj;
 }
-
-#ifdef ALLOC_DEBUG_CANARY
-extern void runTests();
-#endif
