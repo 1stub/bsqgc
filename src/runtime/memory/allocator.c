@@ -7,12 +7,15 @@
 #endif
 
 #define CANARY_DEBUG_CHECK
+
 //for future impls that can have multiple different entry sizes we can create an 
 //array of pre defined allocator bins for a given size
-#define DEFAULT_ENTRY_SIZE 16 //for now our blocks are all have dataseg of 16 bytes
+#define DEFAULT_ENTRY_SIZE sizeof(Object) 
 
 AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
 PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
+
+Object* root_stack[MAX_ROOTS];
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
@@ -110,19 +113,24 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
     return bin;
 }
 
-bool isPtr(void* obj) {
-    // TODO: Implement actual logic to determine if obj is a valid pointer
-    return true; // For now, assume all objects are valid pointers
-}
-
-void mark(void* obj)
+void mark(Object* obj)
 {
+    MetaData* meta = META_FROM_OBJECT(obj);
+    if(obj == NULL || meta->ismarked){
+        return ;
+    }
 
+    meta->ismarked = true;
+    for(size_t i = 0; i < obj->num_children; i++){
+        mark(obj->children[i]);
+    }
 }
 
 void markFromRoots()
 {
-
+    for(size_t i = 0; i < root_count; i++){
+        mark(root_stack[i]);
+    }
 }
 
 #ifdef ALLOC_DEBUG_CANARY
@@ -140,9 +148,10 @@ static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
     return true;
 }
 
-static void verifyCanariesInPage(PageInfo* page)
+static void verifyCanariesInPage(AllocatorBin* bin)
 {
-    FreeListEntry* list = page->freelist;
+    PageInfo* page = bin->page;
+    FreeListEntry* list = bin->freelist;
     char* base_address = (char*)page + sizeof(PageInfo);
     uint16_t alloced_blocks = 0;
     uint16_t free_blocks = 0;
@@ -158,9 +167,11 @@ static void verifyCanariesInPage(PageInfo* page)
     }
 
     while(list){
+        debug_print("Checking block: %p\n", (void*)list);
         MetaData* metadata = (MetaData*)((char*)list + ALLOC_DEBUG_CANARY_SIZE);
+        debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
         if(metadata->isalloc){
-            debug_print("[ERROR] Block in free list was allocated");
+            debug_print("[ERROR] Block in free list was allocated\n");
             assert(0);
         }
         free_blocks++;
@@ -171,62 +182,34 @@ static void verifyCanariesInPage(PageInfo* page)
     assert((free_blocks + alloced_blocks) == page->entrycount);
 }
 
-static void verifyAllCanaries(PageManager* page_manager)
+static void verifyAllCanaries(AllocatorBin* bin)
 {
-    PageInfo* current_page = page_manager->all_pages;
+    PageInfo* current_page = bin->page_manager->all_pages;
 
     while (current_page) {
         debug_print("PageManager all_pages head address: %p\n", current_page);
-        verifyCanariesInPage(current_page);
+        verifyCanariesInPage(bin);
         current_page = current_page->next;
     }
-
 }
 
-//the following methods are just to verify the functionality of this collector.
-//we need to (as of now) be able to create linked objects of varrying depth and breadth,
-//verify that no canaries were smashed in the process for each object, and
-//starting at a root node (directly accessable in the page) mark all necessary nodes
-typedef struct Object{
-    void* nextobj;
-}Object;
-
-void runTests(){
+void test_mark_single_object() {
     PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
     assert(pm != NULL);
-    
+
     AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE, pm);
     assert(bin != NULL);
 
-    int num_objs = 256;
-    for( ; num_objs > 0; num_objs--){
-        MetaData* metadata;
+    MetaData* metadata;
+    Object* obj = (Object*)allocate(bin, &metadata);
+    debug_print("Allcoated object at address : %p, %p\n", obj, metadata);
+    assert(obj != NULL);
 
-        void* raw_obj = allocate(bin, &metadata);
-        assert(raw_obj != NULL);
+    markFromRoots();
+    assert(metadata->ismarked == true);
 
-        uint64_t* obj = (uint64_t*)raw_obj;
+    verifyAllCanaries(bin);
 
-        debug_print("Object allocated at address: %p\n", obj);
-        
-        uint16_t overflow_size = 3; //3 always writes to either pre or post
-        
-        //this value doesnt matter, just need to destroy a canary somewhere
-        if(num_objs == DEFAULT_ENTRY_SIZE + 1){
-            //now lets try putting something "malicious" at this addr...
-            #ifdef CANARY_DEBUG_CHECK
-            for (uint16_t i = 0; i < overflow_size; i++){
-                obj[i] = 0xBAD0000000000000;
-            }
-            #else
-            obj[-overflow_size] = 0xBADAAAAAAAAAAAAA;
-            #endif
-        }else{
-            *obj = ALLOC_DEBUG_MEM_INITIALIZE_VALUE;
-        }
-
-        debug_print("Data stored at %p: %lx\n\n", obj, *obj);         
-    }
-    verifyAllCanaries(pm);
+    debug_print("Test Case 1 Passed: Single object marked successfully.\n");
 }
 #endif

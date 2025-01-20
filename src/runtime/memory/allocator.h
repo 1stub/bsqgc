@@ -18,6 +18,11 @@
 #define ALLOC_DEBUG_CANARY_SIZE 16
 #define ALLOC_DEBUG_CANARY_VALUE 0xDEADBEEFDEADBEEFul
 
+#define MAX_ROOTS 100
+
+/*Negative offset to find metadata assuming obj is the start of data seg*/
+#define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
+
 #ifdef MEM_STATS
 #define ENABLE_MEM_STATS
 #define MEM_STATS_OP(X) X
@@ -88,6 +93,24 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
+//just for testing our marking
+typedef struct Object{
+    struct Object** children;
+    uint16_t num_children;
+}Object;
+
+extern Object* root_stack[MAX_ROOTS];
+static size_t root_count = 0;
+
+/**
+ * Always returns true (for now) since it only gets called from allcoate.
+ * If we call from allocate method we know it must be a root. 
+ **/
+static bool isRoot(void* obj) {
+    // TODO: Implement actual logic to determine if obj is a valid pointer
+    return true; // For now, assume all objects are valid pointers
+}
+
 
 /**
  * When needed, get a fresh page from mmap to allocate from 
@@ -104,6 +127,8 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
  * we have a list of all pages and those that have stuff in them
  **/
 PageManager* initializePageManager(uint16_t entry_size);
+
+extern void test_mark_single_object();
 
 /**
  * Slow path for usage with canaries --- debug
@@ -140,6 +165,16 @@ static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
     #else
     obj = setupSlowPath(ret, alloc, metadata);
     #endif
+
+    Object* new_obj = (Object*)obj;
+    new_obj->num_children = 0;
+    if(isRoot(obj))
+    {
+        if(root_count < MAX_ROOTS){
+            root_stack[root_count] = new_obj;
+            root_count++;
+        }
+    }
 
     SETUP_META_FLAGS(metadata);
 

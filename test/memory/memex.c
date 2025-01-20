@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "../../src/runtime/memory/allocator.h" //not good to do i think (the ../../ stuff)
+#include "../test.h" //not good to do i think (the ../../ stuff)
 
 int main()
 {
