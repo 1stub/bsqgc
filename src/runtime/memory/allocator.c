@@ -110,7 +110,6 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
     return bin;
 }
 
-#ifdef ALLOC_DEBUG_CANARY
 static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {
     uint64_t* pre_canary = (uint64_t*)(block);
@@ -156,46 +155,3 @@ static void verifyAllCanaries(PageManager* page_manager)
         current_page = current_page->next;
     }
 }
-
-void runTests(){
-    PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
-    assert(pm != NULL);
-    
-    AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE, pm);
-    assert(bin != NULL);
-
-    int num_objs = 256;
-    for( ; num_objs > 0; num_objs--){
-        MetaData* metadata;
-
-        void* raw_obj = allocate(bin, &metadata);
-        assert(raw_obj != NULL);
-
-        uint64_t* obj = (uint64_t*)raw_obj;
-
-        printf("Object allocated at address: %p\n", obj);
-        
-        uint16_t overflow_size = 3; //3 always writes to either pre or post
-        
-        //this value doesnt matter, just need to destroy a canary somewhere
-        if(num_objs == DEFAULT_ENTRY_SIZE + 1){
-            //now lets try putting something "malicious" at this addr...
-            #ifdef CANARY_DEBUG_CHECK
-            for (uint16_t i = 0; i < overflow_size; i++){
-                obj[i] = 0xBAD0000000000000;
-            }
-            #else
-            obj[-overflow_size] = 0xBADAAAAAAAAAAAAA;
-            #endif
-        }else{
-            *obj = ALLOC_DEBUG_MEM_INITIALIZE_VALUE;
-        }
-
-        printf("Data stored at %p: %lx\n\n", obj, *obj);         
-    }
-    verifyAllCanaries(pm);
-}
-#endif
-
-
-
