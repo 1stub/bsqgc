@@ -16,6 +16,12 @@ PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
 
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
+//for future impls that can have multiple different entry sizes we can create an 
+//array of pre defined allocator bins for a given size
+#define DEFAULT_ENTRY_SIZE 16 //for now our blocks are all have dataseg of 16 bytes
+
+AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
+PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
@@ -62,6 +68,7 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
         //need to rotate our old page into the collector, now alloc->page
         //exists in the needs_collection list
         alloc->page->pagestate = AllocPageInfo_ActiveEvacuation;
+        alloc->page->pagestate = AllocPageInfo_ActiveEvacuation;
         alloc->page->next = alloc->page_manager->need_collection;
         alloc->page_manager->need_collection = alloc->page;
     }
@@ -83,6 +90,7 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
 PageManager* initializePageManager(uint16_t entry_size)
 {    
     PageManager* manager = &p_mgr;
+    PageManager* manager = &p_mgr;
     if (manager == NULL) {
         return NULL;
     }
@@ -99,6 +107,7 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
         return NULL;
     }
 
+    AllocatorBin* bin = &a_bin;
     AllocatorBin* bin = &a_bin;
 
     bin->page_manager = page_manager;
@@ -199,6 +208,7 @@ void mark_from_roots()
 }
 
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)
+static inline bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {
     uint64_t* pre_canary = (uint64_t*)(block);
     uint64_t* post_canary = (uint64_t*)(block + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
