@@ -58,7 +58,7 @@ void test_mark_single_object(AllocatorBin* bin, PageManager* pm)
 
     Object* child = create_child(bin, obj);
 
-    markFromRoots();
+    mark_from_roots();
     assert( META_FROM_OBJECT(obj)->ismarked == true );
     assert( META_FROM_OBJECT(child)->ismarked == true );
 
@@ -85,7 +85,7 @@ void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
     Object* random_unmarked_obj = (Object*)allocate(bin, &rdm_md);
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
 
-    markFromRoots();
+    mark_from_roots();
 
     assert( META_FROM_OBJECT(obj1)->ismarked == true);
     assert( META_FROM_OBJECT(obj2)->ismarked == true);
@@ -105,12 +105,77 @@ void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
     debug_print("Test Case 2 Passed: Object graph marked successfully.\n\n");
 }
 
-void runTests()
+void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm)
+{
+    Object* obj1 = create_root(bin);
+    Object* obj2 = create_root(bin);
+    Object* obj3 = create_root(bin);
+
+    assert(obj1 != NULL && obj2 != NULL && obj3 != NULL);
+
+    Object* child1 = create_child(bin, obj1);
+    Object* child2 = create_child(bin, obj2);
+    Object* child3 = create_child(bin, obj3);
+
+    Object* child_child1 = create_child(bin, child1);
+    Object* child_child2 = create_child(bin, child1);
+    Object* child_child3 = create_child(bin, child1);
+
+    // Create cycles
+    child1->children[child1->num_children] = obj2; 
+    child1->num_children++;
+
+    child2->children[child2->num_children] = obj3; 
+    child2->num_children++;
+
+    child3->children[child3->num_children] = obj1; 
+    child3->num_children++;
+
+    // Nested cycle
+    child_child1->children[child_child1->num_children] = child1; 
+    child_child1->num_children++;
+
+    MetaData* rdm_md;
+    Object* random_unmarked_obj = (Object*)allocate(bin, &rdm_md);
+    Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
+
+    mark_from_roots();
+
+    assert(META_FROM_OBJECT(obj1)->ismarked == true);
+    assert(META_FROM_OBJECT(obj2)->ismarked == true);
+    assert(META_FROM_OBJECT(obj3)->ismarked == true);
+    assert(META_FROM_OBJECT(child1)->ismarked == true);
+    assert(META_FROM_OBJECT(child2)->ismarked == true);
+    assert(META_FROM_OBJECT(child3)->ismarked == true);
+    assert(META_FROM_OBJECT(child_child1)->ismarked == true);
+    assert(META_FROM_OBJECT(child_child2)->ismarked == true);
+    assert(META_FROM_OBJECT(child_child3)->ismarked == true);
+
+    assert(rdm_md->ismarked == false);
+    assert( META_FROM_OBJECT(random_unmarked_child)->ismarked == false);
+
+    debug_print("Test Case 3 Passed: Object graph with cycles marked correctly.\n");
+}
+
+void test_canary_failure(AllocatorBin *bin, PageManager *pm)
+{
+    MetaData* metadata;
+    uint64_t* canary_cobber = (uint64_t*)allocate(bin, &metadata);
+
+    debug_print("Allocated test object at address %p\n", canary_cobber);
+
+    /* Write some random data to pre canary */
+    canary_cobber[-3] = 0xBADBADBADBADBADB;
+}
+
+void run_tests()
 {
     PageManager* pm = setup_pagemgr();
     AllocatorBin* bin = setup_bin(pm);
     test_mark_single_object(bin, pm);
     test_mark_object_graph(bin, pm);
+    test_mark_cyclic_graph(bin, pm);
+    test_canary_failure(bin,  pm);
 
     verifyAllCanaries(bin);
 }

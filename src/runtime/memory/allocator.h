@@ -20,6 +20,9 @@
 
 #define MAX_ROOTS 100
 
+/* This queue size will need to be tinkered with */
+#define WORKLIST_CAPACITY 1024
+
 /*Negative offset to find metadata assuming obj is the start of data seg*/
 #define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
 
@@ -93,6 +96,11 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
+typedef struct {
+    Object* data[WORKLIST_CAPACITY];
+    size_t size;
+} Worklist;
+
 extern Object* root_stack[MAX_ROOTS];
 extern size_t root_count;
 
@@ -118,11 +126,10 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
 PageManager* initializePageManager(uint16_t entry_size);
 
 /**
- * Methods for iterating through the root stack and marking all elements
+ * Method(s) for iterating through the root stack and marking all elements
  * inside said stack.
  **/
-void mark(Object* obj);
-void markFromRoots();
+void mark_from_roots();
 
 /**
  * Traverse pages and freelists ensuring no canaries are clobbered and that

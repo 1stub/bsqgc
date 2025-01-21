@@ -71,14 +71,13 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
     alloc->page = alloc->page->next;
     alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
 
-    //add new page to head of all pages list
+    /* add new page to head of all pages list */
     alloc->page->next = alloc->page_manager->all_pages;
     alloc->page_manager->all_pages = alloc->page;
 
     alloc->freelist = alloc->page->freelist;
     
-    //this would be null already from allocateFreshPage, left incase im incorrect
-    //alloc->page->next = NULL;
+    alloc->page->next = NULL;
 }
 
 PageManager* initializePageManager(uint16_t entry_size)
@@ -123,24 +122,79 @@ bool isRoot(void* obj)
     return true; // For now, assume all objects are valid pointers
 }
 
-void mark(Object* obj)
+/* Worklist helpers */
+static void initialize_worklist(Worklist* worklist) 
 {
-    MetaData* meta = META_FROM_OBJECT(obj);
-    if(obj == NULL || meta->ismarked){
-        return ;
-    }
-
-    meta->ismarked = true;
-    for(size_t i = 0; i < obj->num_children; i++){
-        mark(obj->children[i]);
-    }
+    worklist->size = 0;
 }
 
-/* TODO: Traverse roots list in a BFS manner */
-void markFromRoots()
+static bool add_to_worklist(Worklist* worklist, Object* obj) 
 {
-    for(size_t i = 0; i < root_count; i++){
-        mark(root_stack[i]);
+    if (worklist->size >= WORKLIST_CAPACITY) {
+        /* Worklist is full */
+        debug_print("Worklist overflow!\n");
+        return false;
+    }
+    worklist->data[worklist->size++] = obj;
+    return true;
+}
+
+static Object* remove_from_worklist(Worklist* worklist) 
+{
+    if (worklist->size == 0) {
+        return NULL;
+    }
+    return worklist->data[--worklist->size]; //prefix decrement crucial here
+}
+
+static bool is_worklist_empty(Worklist* worklist) 
+{
+    return worklist->size == 0;
+}
+
+/* Algorithm 2.2 from The Gargage Collection Handbook */
+void mark_from_roots()
+{
+    Worklist worklist;
+    initialize_worklist(&worklist);
+
+    /* Add all root objects to the worklist */
+    for (size_t i = 0; i < root_count; i++)
+    {
+        Object* root = root_stack[i];
+        MetaData* meta = META_FROM_OBJECT(root);
+        if (root != NULL && !meta->ismarked) 
+        {
+            meta->ismarked = true;
+            if (!add_to_worklist(&worklist, root)) 
+            {
+                return ; // Abort marking if worklist overflows
+            }
+        }
+    }
+    root_count = 0;
+
+    /* Process the worklist in a BFS manner */
+    while (!is_worklist_empty(&worklist)) 
+    {
+        Object* obj = remove_from_worklist(&worklist);
+
+        for (size_t i = 0; i < obj->num_children; i++) 
+        {
+            Object* child = obj->children[i];
+            if (child != NULL) 
+            {
+                MetaData* child_meta = META_FROM_OBJECT(child);
+                if (!child_meta->ismarked) 
+                {
+                    child_meta->ismarked = true;
+                    if (!add_to_worklist(&worklist, child)) 
+                    {
+                        return; // Abort marking if worklist overflows
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -192,7 +246,7 @@ void verifyCanariesInPage(AllocatorBin* bin)
         list = list->next;
     }   
 
-    //make sure no blocks are lost
+    // Make sure no blocks are lost
     assert((free_blocks + alloced_blocks) == page->entrycount);
 
     debug_print("\n");

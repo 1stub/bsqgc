@@ -5,7 +5,7 @@ int main()
 {
     printf("hello world\n");
 
-    runTests();
+    run_tests();
 
     return 0;
 }
