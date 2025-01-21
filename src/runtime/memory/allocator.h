@@ -18,6 +18,14 @@
 #define ALLOC_DEBUG_CANARY_SIZE 16
 #define ALLOC_DEBUG_CANARY_VALUE 0xDEADBEEFDEADBEEFul
 
+#define MAX_ROOTS 100
+
+/* This queue size will need to be tinkered with */
+#define WORKLIST_CAPACITY 1024
+
+/*Negative offset to find metadata assuming obj is the start of data seg*/
+#define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
+
 #ifdef MEM_STATS
 #define ENABLE_MEM_STATS
 #define MEM_STATS_OP(X) X
@@ -27,10 +35,11 @@
 #define MEM_STATS_ARG(X)
 #endif
 
-#define SETUP_META_FLAGS(meta)  \
-do {                      \
-    (*meta)->isalloc = true; \
-    (*meta)->isyoung = true; \
+#define SETUP_META_FLAGS(meta) \
+do {                           \
+    (*meta)->isalloc = true;   \
+    (*meta)->isyoung = true;   \
+    (*meta)->ismarked = false; \
 } while(0)
 
 ////////////////////////////////
@@ -87,7 +96,19 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
+typedef struct {
+    Object* data[WORKLIST_CAPACITY];
+    size_t size;
+} Worklist;
 
+extern Object* root_stack[MAX_ROOTS];
+extern size_t root_count;
+
+/**
+ * Always returns true (for now) since it only gets called from allcoate.
+ * If we call from allocate method we know it must be a root. 
+ **/
+bool isRoot(void* obj);
 /**
  * When needed, get a fresh page from mmap to allocate from 
  **/
@@ -103,6 +124,22 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
  * we have a list of all pages and those that have stuff in them
  **/
 PageManager* initializePageManager(uint16_t entry_size);
+
+/**
+ * Method(s) for iterating through the root stack and marking all elements
+ * inside said stack.
+ **/
+void mark_from_roots();
+
+/**
+ * Traverse pages and freelists ensuring no canaries are clobbered and that
+ * our freelists contain no already allocated objects.
+ **/
+#ifdef ALLOC_DEBUG_CANARY
+void verifyAllCanaries(AllocatorBin* bin);
+void verifyCanariesInPage(AllocatorBin* bin);
+bool verifyCanariesInBlock(char* block, uint16_t entry_size);
+#endif
 
 /**
  * Slow path for usage with canaries --- debug
@@ -140,11 +177,12 @@ static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
     obj = setupSlowPath(ret, alloc, metadata);
     #endif
 
+    // Do I really want this to always create an object of the same
+    // format as our object struct (in common.h)? design choice...
+    Object* new_obj = (Object*)obj;
+    new_obj->num_children = 0;
+
     SETUP_META_FLAGS(metadata);
 
     return (void*)obj;
 }
-
-#ifdef ALLOC_DEBUG_CANARY
-extern void runTests();
-#endif
