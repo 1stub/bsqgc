@@ -15,6 +15,8 @@ void* create_root(AllocatorBin* bin)
         }
     }
 
+    metadata->isroot = true;
+
     return (void*)obj; //maybe no need for void*?
 }
 

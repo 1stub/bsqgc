@@ -12,7 +12,7 @@ size_t root_count = 0;
 
 /* Static declarations of our allocator bin and page manager structures */
 AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
-PageManager p_mgr = {.all_pages = NULL, .need_collection = NULL};
+PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
 
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
@@ -62,8 +62,8 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
         //need to rotate our old page into the collector, now alloc->page
         //exists in the needs_collection list
         alloc->page->pagestate = AllocPageInfo_ActiveEvacuation;
-        alloc->page->next = alloc->page_manager->need_collection;
-        alloc->page_manager->need_collection = alloc->page;
+        alloc->page->next = alloc->page_manager->filled_pages;
+        alloc->page_manager->filled_pages = alloc->page;
     }
     
     alloc->page->next = allocateFreshPage(alloc->entrysize);
@@ -88,7 +88,8 @@ PageManager* initializePageManager(uint16_t entry_size)
     }
 
     manager->all_pages = NULL;
-    manager->need_collection = NULL;
+    manager->filled_pages = NULL;
+    manager->evacuate_page = NULL;
 
     return manager;
 }
@@ -152,11 +153,27 @@ static bool is_worklist_empty(Worklist* worklist)
     return worklist->size == 0;
 }
 
+/**
+* For now this brute force checks all children of all objects (?)
+* to find a given objects parent, if the old child matches, we update to new child
+**/
+void update_parent_pointers(Object* old_obj, Object* new_obj) {
+    
+}
+
+void evacuate(Worklist* marked_nodes_list) 
+{
+    while(!is_worklist_empty(marked_nodes_list)) {
+        //we will simply memcpy to new evac list
+
+    }
+}
+
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots()
 {
-    Worklist worklist;
-    initialize_worklist(&worklist);
+    Worklist marked_nodes_list;
+    initialize_worklist(&marked_nodes_list);
 
     /* Add all root objects to the worklist */
     for (size_t i = 0; i < root_count; i++)
@@ -166,7 +183,7 @@ void mark_from_roots()
         if (root != NULL && !meta->ismarked) 
         {
             meta->ismarked = true;
-            if (!add_to_worklist(&worklist, root)) 
+            if (!add_to_worklist(&marked_nodes_list, root)) 
             {
                 return ; // Abort marking if worklist overflows
             }
@@ -175,9 +192,9 @@ void mark_from_roots()
     root_count = 0;
 
     /* Process the worklist in a BFS manner */
-    while (!is_worklist_empty(&worklist)) 
+    while (!is_worklist_empty(&marked_nodes_list)) 
     {
-        Object* obj = remove_from_worklist(&worklist);
+        Object* obj = remove_from_worklist(&marked_nodes_list);
 
         for (size_t i = 0; i < obj->num_children; i++) 
         {
@@ -188,7 +205,7 @@ void mark_from_roots()
                 if (!child_meta->ismarked) 
                 {
                     child_meta->ismarked = true;
-                    if (!add_to_worklist(&worklist, child)) 
+                    if (!add_to_worklist(&marked_nodes_list, child)) 
                     {
                         return; // Abort marking if worklist overflows
                     }
@@ -261,4 +278,5 @@ void verifyAllCanaries(AllocatorBin* bin)
         verifyCanariesInPage(bin);
         current_page = current_page->next;
     }
+
 }

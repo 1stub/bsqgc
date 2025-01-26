@@ -35,11 +35,13 @@
 #define MEM_STATS_ARG(X)
 #endif
 
-#define SETUP_META_FLAGS(meta) \
-do {                           \
-    (*meta)->isalloc = true;   \
-    (*meta)->isyoung = true;   \
-    (*meta)->ismarked = false; \
+#define SETUP_META_FLAGS(meta)           \
+do {                                     \
+    (*meta)->isalloc = true;             \
+    (*meta)->isyoung = true;             \
+    (*meta)->ismarked = false;           \
+    (*meta)->isroot = false;             \
+    (*meta)->forward_index = UINT32_MAX; \
 } while(0)
 
 ////////////////////////////////
@@ -83,7 +85,8 @@ typedef struct PageInfo
 
 typedef struct PageManager{
     PageInfo* all_pages;
-    PageInfo* need_collection; //Array List?
+    PageInfo* evacuate_page;
+    PageInfo* filled_pages; //Array list?
 } PageManager;
 extern PageManager p_mgr;
 
@@ -106,9 +109,9 @@ extern size_t root_count;
 
 /**
  * Always returns true (for now) since it only gets called from allcoate.
- * If we call from allocate method we know it must be a root. 
  **/
 bool isRoot(void* obj);
+
 /**
  * When needed, get a fresh page from mmap to allocate from 
  **/
@@ -124,6 +127,14 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manag
  * we have a list of all pages and those that have stuff in them
  **/
 PageManager* initializePageManager(uint16_t entry_size);
+
+
+/**
+ * We have a list containing all children nodes that will need to be moved
+ * over to our evacuate page(s). Traverse this list, move nodes, update
+ * pointers from their parents.
+ **/
+void evacuate(Worklist* marked_nodes_list); 
 
 /**
  * Method(s) for iterating through the root stack and marking all elements

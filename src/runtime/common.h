@@ -51,9 +51,9 @@ typedef struct MetaData
     bool isalloc;
     bool isyoung;
     bool ismarked;
-
-    uint8_t padding[5]; //ensure at least 8 bytes in size
-} MetaData;
+    bool isroot;
+    uint32_t forward_index;
+} MetaData; // We want meta to be 8 bytes 
 #else
 typedef struct MetaData 
 {
