@@ -170,6 +170,51 @@ void test_canary_failure(AllocatorBin *bin, PageManager *pm)
     canary_cobber[-3] = 0xBADBADBADBADBADB;
 }
 
+void test_evacuation(AllocatorBin* bin, PageManager* pm) {
+    PageInfo* cur_alloc_page = pm->all_pages;
+    PageInfo* cur_evac_page = pm->evacuate_page;
+
+    // Lets make sure only roots are in our allocate pages
+    while(cur_alloc_page) {
+        for(uint16_t i = 0; i < cur_alloc_page->entrycount; i++) {
+            Object* obj = (Object*)((char*)cur_alloc_page + sizeof(PageInfo) + 
+                (i * REAL_ENTRY_SIZE(DEFAULT_ENTRY_SIZE)));
+            MetaData* meta = META_FROM_OBJECT(obj);
+            
+            /** 
+            * After evacuation all objects still in alloc pages should only be roots,
+            * be allocated, be marked, and have a non set forward index.
+            **/
+            assert(meta->isroot); 
+            assert(meta->forward_index == UINT32_MAX); //not forwarded
+            assert(meta->ismarked);
+            assert(meta->isalloc);
+        }
+
+        cur_alloc_page = cur_alloc_page->next;
+    }
+
+    // Now lets check that no roots made it to evac page
+    while(cur_evac_page) {
+        for(uint16_t i = 0; i < cur_evac_page->entrycount; i++) {
+            Object* obj = (Object*)((char*)cur_evac_page + sizeof(PageInfo) + 
+                (i * REAL_ENTRY_SIZE(DEFAULT_ENTRY_SIZE)));
+            MetaData* meta = META_FROM_OBJECT(obj);
+            
+            /** 
+            * After evacuation all objects moved to evac page should not be roots,
+            * be allocated, be marked, and have a set forward index.
+            **/
+            assert(!meta->isroot); 
+            assert(meta->forward_index != UINT32_MAX); //forwarded
+            assert(meta->ismarked);
+            assert(meta->isalloc);
+        }
+
+        cur_evac_page = cur_evac_page->next;
+    }
+}
+
 void run_tests()
 {
     PageManager* pm = setup_pagemgr();
@@ -178,6 +223,7 @@ void run_tests()
     test_mark_object_graph(bin, pm);
     test_mark_cyclic_graph(bin, pm);
     test_canary_failure(bin,  pm);
+    test_evacuation(bin, pm);
 
     verifyAllCanaries(bin);
 }

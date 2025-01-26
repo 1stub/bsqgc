@@ -45,6 +45,13 @@ typedef struct Object{
 **/
 #define DEFAULT_ENTRY_SIZE sizeof(Object) 
 
+// Allows us to correctly determine pointer offsets
+#ifdef ALLOC_DEBUG_CANARY
+#define REAL_ENTRY_SIZE(ESIZE) (ALLOC_DEBUG_CANARY_SIZE + ESIZE + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
+#else
+#define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
+#endif
+
 #ifdef VERBOSE_HEADER
 typedef struct MetaData 
 {

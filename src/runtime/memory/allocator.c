@@ -1,11 +1,5 @@
 #include "allocator.h"
 
-#ifdef ALLOC_DEBUG_CANARY
-#define REAL_ENTRY_SIZE(ESIZE) (ALLOC_DEBUG_CANARY_SIZE + ESIZE + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
-#else
-#define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
-#endif
-
 #define CANARY_DEBUG_CHECK
 
 size_t root_count = 0;
@@ -158,11 +152,24 @@ static bool is_worklist_empty(Worklist* worklist)
 * to find a given objects parent, if the old child matches, we update to new child
 **/
 void update_parent_pointers(Object* old_obj, Object* new_obj) {
-    
+
 }
 
 void evacuate(Worklist* marked_nodes_list) 
 {
+    /** 
+    * General approach: Iterate through the entire marked_nodes_list. Every non-root object will
+    * be moved to the evacuation pages. For each moved object:
+    * - Update its forward_index to reflect its new location in the evacuation pages.
+    * - The forward_index stores the address (or index) of the moved object.
+    * 
+    * After moving the object, we need to update the parent pointers that reference this object:
+    * - For each parent of this object, we use the forward_index to find the object's new location 
+    *   in the evacuation pages and update the parent's reference (pointer) to the new location.
+    **/
+
+    /* Now an even better question is how to efficiently find the parents of this object... */
+
     while(!is_worklist_empty(marked_nodes_list)) {
         //we will simply memcpy to new evac list
 
