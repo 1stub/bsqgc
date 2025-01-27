@@ -12,6 +12,11 @@
 #define MEM_STATS
 #define VERBOSE_HEADER
 
+#ifdef BSQ_GC_CHECK_ENABLED
+#define ALLOC_DEBUG_MEM_INITIALIZE
+#define ALLOC_DEBUG_CANARY
+#endif
+
 #define BSQ_MEM_ALIGNMENT 8
 
 #define DEBUG
@@ -52,6 +57,8 @@ typedef struct Object{
 #define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
 #endif
 
+#define MAX_FWD_INDEX UINT32_MAX
+
 #ifdef VERBOSE_HEADER
 typedef struct MetaData 
 {
@@ -66,6 +73,6 @@ typedef struct MetaData
 {
     uint64_t meta; //8 byte bit vector
 } MetaData;
-
 static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #endif
+

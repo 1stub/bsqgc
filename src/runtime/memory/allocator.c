@@ -1,4 +1,5 @@
 #include "allocator.h"
+#include <stdio.h>
 
 #define CANARY_DEBUG_CHECK
 
@@ -10,6 +11,9 @@ PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = N
 
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
+
+/* To be used with updating pointers after moving to evac page */
+Worklist* forward_table;
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
@@ -83,7 +87,7 @@ PageManager* initializePageManager(uint16_t entry_size)
 
     manager->all_pages = NULL;
     manager->filled_pages = NULL;
-    manager->evacuate_page = NULL;
+    manager->evacuate_page = allocateFreshPage(entry_size);
 
     return manager;
 }
@@ -123,6 +127,19 @@ static void initialize_worklist(Worklist* worklist)
     worklist->size = 0;
 }
 
+#if 0
+static Object* worklist_top(Worklist* worklist)
+{
+    assert(worklist->size > 0);
+
+    if(worklist->size > 0) {
+        return worklist->data[worklist->size - 1];
+    } else {
+        return worklist->data[0];
+    }
+}
+#endif
+
 static bool add_to_worklist(Worklist* worklist, Object* obj) 
 {
     if (worklist->size >= WORKLIST_CAPACITY) {
@@ -134,6 +151,7 @@ static bool add_to_worklist(Worklist* worklist, Object* obj)
     return true;
 }
 
+// Dont need this methid quite yet
 static Object* remove_from_worklist(Worklist* worklist) 
 {
     if (worklist->size == 0) {
@@ -147,40 +165,12 @@ static bool is_worklist_empty(Worklist* worklist)
     return worklist->size == 0;
 }
 
-/**
-* For now this brute force checks all children of all objects (?)
-* to find a given objects parent, if the old child matches, we update to new child
-**/
-void update_parent_pointers(Object* old_obj, Object* new_obj) {
-
-}
-
-void evacuate(Worklist* marked_nodes_list) 
-{
-    /** 
-    * General approach: Iterate through the entire marked_nodes_list. Every non-root object will
-    * be moved to the evacuation pages. For each moved object:
-    * - Update its forward_index to reflect its new location in the evacuation pages.
-    * - The forward_index stores the address (or index) of the moved object.
-    * 
-    * After moving the object, we need to update the parent pointers that reference this object:
-    * - For each parent of this object, we use the forward_index to find the object's new location 
-    *   in the evacuation pages and update the parent's reference (pointer) to the new location.
-    **/
-
-    /* Now an even better question is how to efficiently find the parents of this object... */
-
-    while(!is_worklist_empty(marked_nodes_list)) {
-        //we will simply memcpy to new evac list
-
-    }
-}
-
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots()
 {
-    Worklist marked_nodes_list;
+    Worklist marked_nodes_list, worklist;
     initialize_worklist(&marked_nodes_list);
+    initialize_worklist(&worklist);
 
     /* Add all root objects to the worklist */
     for (size_t i = 0; i < root_count; i++)
@@ -190,7 +180,7 @@ void mark_from_roots()
         if (root != NULL && !meta->ismarked) 
         {
             meta->ismarked = true;
-            if (!add_to_worklist(&marked_nodes_list, root)) 
+            if (!add_to_worklist(&worklist, root)) 
             {
                 return ; // Abort marking if worklist overflows
             }
@@ -199,9 +189,9 @@ void mark_from_roots()
     root_count = 0;
 
     /* Process the worklist in a BFS manner */
-    while (!is_worklist_empty(&marked_nodes_list)) 
+    while (!is_worklist_empty(&worklist)) 
     {
-        Object* obj = remove_from_worklist(&marked_nodes_list);
+        Object* obj = remove_from_worklist(&worklist);
 
         for (size_t i = 0; i < obj->num_children; i++) 
         {
@@ -212,14 +202,18 @@ void mark_from_roots()
                 if (!child_meta->ismarked) 
                 {
                     child_meta->ismarked = true;
-                    if (!add_to_worklist(&marked_nodes_list, child)) 
+                    if (!add_to_worklist(&worklist, child)) 
                     {
                         return; // Abort marking if worklist overflows
                     }
                 }
             }
         }
+        // We finished processing this node, add to mark list
+        add_to_worklist(&marked_nodes_list,  obj);
     }
+
+    debug_print("Size of marked work list %li\n", marked_nodes_list.size);
 }
 
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)

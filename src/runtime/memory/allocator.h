@@ -6,10 +6,7 @@
 #include <stdio.h> //printf
 #endif
 
-#ifdef BSQ_GC_CHECK_ENABLED
-#define ALLOC_DEBUG_MEM_INITIALIZE
-#define ALLOC_DEBUG_CANARY
-#endif
+#include <string.h> //memcpy
 
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
@@ -35,13 +32,13 @@
 #define MEM_STATS_ARG(X)
 #endif
 
-#define SETUP_META_FLAGS(meta)           \
-do {                                     \
-    (*meta)->isalloc = true;             \
-    (*meta)->isyoung = true;             \
-    (*meta)->ismarked = false;           \
-    (*meta)->isroot = false;             \
-    (*meta)->forward_index = UINT32_MAX; \
+#define SETUP_META_FLAGS(meta)              \
+do {                                        \
+    (*meta)->isalloc = true;                \
+    (*meta)->isyoung = true;                \
+    (*meta)->ismarked = false;              \
+    (*meta)->isroot = false;                \
+    (*meta)->forward_index = MAX_FWD_INDEX; \
 } while(0)
 
 ////////////////////////////////
@@ -134,11 +131,10 @@ PageManager* initializePageManager(uint16_t entry_size);
  * over to our evacuate page(s). Traverse this list, move nodes, update
  * pointers from their parents.
  **/
-void evacuate(Worklist* marked_nodes_list); 
+void evacuate(Worklist* marked_nodes_list, AllocatorBin* bin); 
 
 /**
- * Method(s) for iterating through the root stack and marking all elements
- * inside said stack.
+ * Process all objects starting from roots in BFS manner
  **/
 void mark_from_roots();
 

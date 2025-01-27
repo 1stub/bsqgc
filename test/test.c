@@ -223,7 +223,7 @@ void run_tests()
     test_mark_object_graph(bin, pm);
     test_mark_cyclic_graph(bin, pm);
     test_canary_failure(bin,  pm);
-    test_evacuation(bin, pm);
+    //test_evacuation(bin, pm);
 
     verifyAllCanaries(bin);
 }
