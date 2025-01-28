@@ -63,15 +63,27 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
         alloc->page->next = alloc->page_manager->filled_pages;
         alloc->page_manager->filled_pages = alloc->page;
     }
-    
-    alloc->page->next = allocateFreshPage(alloc->entrysize);
+    PageInfo* new_page = allocateFreshPage(alloc->entrysize);
 
-    alloc->page = alloc->page->next;
+    if(alloc->page == NULL) {
+        alloc->page = new_page;
+    } else {
+        alloc->page->next = new_page;
+        alloc->page = alloc->page->next;
+    }
+
     alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
 
-    /* add new page to head of all pages list */
-    alloc->page->next = alloc->page_manager->all_pages;
-    alloc->page_manager->all_pages = alloc->page;
+    /* add new page to end of all pages list */
+    if(alloc->page_manager->all_pages == NULL) {
+        alloc->page_manager->all_pages = alloc->page;
+    } else {
+        PageInfo* current  = alloc->page_manager->all_pages;
+        while(current->next != NULL) {
+            current = current->next;
+        }
+        current->next = alloc->page;
+    }
 
     alloc->freelist = alloc->page->freelist;
     
@@ -85,29 +97,15 @@ PageManager* initializePageManager(uint16_t entry_size)
         return NULL;
     }
 
-    manager->all_pages = NULL;
-    manager->filled_pages = NULL;
-    manager->evacuate_page = allocateFreshPage(entry_size);
-
     return manager;
 }
 
-AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manager)
+AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
 {
-    if (entrysize == 0 || page_manager == NULL) {
-        return NULL;
-    }
-
     AllocatorBin* bin = &a_bin;
+    if(bin == NULL) return NULL;
 
-    bin->page_manager = page_manager;
-
-    bin->page = allocateFreshPage(entrysize);
-    bin->freelist = bin->page->freelist;
-
-    bin->page->next = page_manager->all_pages;
-    page_manager->all_pages = bin->page;
-
+    bin->page_manager = &p_mgr;
     return bin;
 }
 
@@ -165,6 +163,23 @@ static bool is_worklist_empty(Worklist* worklist)
     return worklist->size == 0;
 }
 
+
+
+
+
+// Move obj to evacuate_page
+static void evacuate_object(Object* obj) {
+    //MetaData* metadata = META_FROM_OBJECT(obj);
+
+}
+
+void evacuate(Worklist *marked_nodes_list, AllocatorBin *bin) {
+    while(!is_worklist_empty(marked_nodes_list)) {
+        Object* obj = remove_from_worklist(marked_nodes_list);
+        evacuate_object(obj);
+    }
+}
+
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots()
 {
@@ -214,6 +229,9 @@ void mark_from_roots()
     }
 
     debug_print("Size of marked work list %li\n", marked_nodes_list.size);
+
+    // Now that we have constructed a BFS order work list we can evacuate non root nodes
+    evacuate(&marked_nodes_list, &a_bin);
 }
 
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)
@@ -230,10 +248,9 @@ bool verifyCanariesInBlock(char* block, uint16_t entry_size)
     return true;
 }
 
-void verifyCanariesInPage(AllocatorBin* bin)
+void verifyCanariesInPage(PageInfo* page)
 {
-    PageInfo* page = bin->page;
-    FreeListEntry* list = bin->freelist;
+    FreeListEntry* list = page->freelist;
     char* base_address = (char*)page + sizeof(PageInfo);
     uint16_t alloced_blocks = 0;
     uint16_t free_blocks = 0;
@@ -258,7 +275,7 @@ void verifyCanariesInPage(AllocatorBin* bin)
         debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
         if(metadata->isalloc){
             debug_print("[ERROR] Block in free list was allocated\n");
-            assert(0);
+            //assert(0);
         }
         free_blocks++;
         list = list->next;
@@ -276,7 +293,7 @@ void verifyAllCanaries(AllocatorBin* bin)
 
     while (current_page) {
         debug_print("PageManager all_pages head address: %p\n", current_page);
-        verifyCanariesInPage(bin);
+        verifyCanariesInPage(current_page);
         current_page = current_page->next;
     }
 

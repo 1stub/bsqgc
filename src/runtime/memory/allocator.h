@@ -34,11 +34,11 @@
 
 #define SETUP_META_FLAGS(meta)              \
 do {                                        \
-    (*meta)->isalloc = true;                \
-    (*meta)->isyoung = true;                \
-    (*meta)->ismarked = false;              \
-    (*meta)->isroot = false;                \
-    (*meta)->forward_index = MAX_FWD_INDEX; \
+    (meta)->isalloc = true;                \
+    (meta)->isyoung = true;                \
+    (meta)->ismarked = false;              \
+    (meta)->isroot = false;                \
+    (meta)->forward_index = MAX_FWD_INDEX; \
 } while(0)
 
 ////////////////////////////////
@@ -117,7 +117,7 @@ void getFreshPageForAllocator(AllocatorBin* alloc);
 /**
  * For our allocator to be usable, the AllocatorBin must be initialized
  **/
-AllocatorBin* initializeAllocatorBin(uint16_t entrysize, PageManager* page_manager);
+AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
 
 /**
  * Setup pointers for managing our pages 
@@ -144,7 +144,7 @@ void mark_from_roots();
  **/
 #ifdef ALLOC_DEBUG_CANARY
 void verifyAllCanaries(AllocatorBin* bin);
-void verifyCanariesInPage(AllocatorBin* bin);
+void verifyCanariesInPage(PageInfo* page);
 bool verifyCanariesInBlock(char* block, uint16_t entry_size);
 #endif
 
@@ -164,10 +164,13 @@ static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaD
 }
 
 /**
- * Allocate a block of memory of size `size` from the given page
+ * Allocate a block of memory of size `size` from the given page. If preserve_meta is true 
+ * we are using allocate for moving object to new pages.
  **/
-static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
+static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
 {
+    bool preserve_meta = (metadata != NULL);
+
     if(alloc->freelist == NULL) {
         getFreshPageForAllocator(alloc);
     }
@@ -175,13 +178,25 @@ static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
     FreeListEntry* ret = alloc->freelist;
     alloc->freelist = ret->next;
 
+    /**
+    * Need to investigate further why our freelist for the current page does not update
+    * when we move the freelist pointer in our allocator. They are directly assigned
+    * so I am not completly sure why this is the case. alloc->freelist is just a pointer
+    * to the current pages freelist. Maybe make it the address of our pages freelist?
+    **/
+    alloc->page->freelist = ret->next;
+
     void* obj;
 
     #ifndef ALLOC_DEBUG_CANARY
-    *metadata = (MetaData*)ret;
+    if(!preserve_meta) *metadata = (MetaData*)ret;
     obj = (void*)((uint8_t*)ret + sizeof(MetaData));
     #else
-    obj = setupSlowPath(ret, alloc, metadata);
+    if (preserve_meta) {
+        obj = (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+    } else {
+        obj = setupSlowPath(ret, alloc, &metadata);
+    }    
     #endif
 
     // Do I really want this to always create an object of the same
@@ -189,7 +204,10 @@ static inline void* allocate(AllocatorBin* alloc, MetaData** metadata)
     Object* new_obj = (Object*)obj;
     new_obj->num_children = 0;
 
-    SETUP_META_FLAGS(metadata);
+    // If meta was created initialize object
+    if(!preserve_meta) {
+        SETUP_META_FLAGS(metadata);
+    }
 
     return (void*)obj;
 }

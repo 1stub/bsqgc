@@ -2,8 +2,7 @@
 
 void* create_root(AllocatorBin* bin) 
 {
-    MetaData* metadata;
-    Object* obj = (Object*)allocate(bin, &metadata);
+    Object* obj = (Object*)allocate(bin, NULL);
     assert(obj != NULL);
     debug_print("Allcoated root at address : %p\n", obj);
 
@@ -15,6 +14,7 @@ void* create_root(AllocatorBin* bin)
         }
     }
 
+    MetaData* metadata = META_FROM_OBJECT(obj);
     metadata->isroot = true;
 
     return (void*)obj; //maybe no need for void*?
@@ -22,8 +22,7 @@ void* create_root(AllocatorBin* bin)
 
 Object* create_child(AllocatorBin* bin, Object* parent)
 {
-    MetaData* metadata;
-    Object* child = (Object*)allocate(bin, &metadata);
+    Object* child = (Object*)allocate(bin, NULL);
     assert(child != NULL);
     debug_print("Allcoated child at address : %p\n", child);
 
@@ -31,27 +30,6 @@ Object* create_child(AllocatorBin* bin, Object* parent)
     parent->num_children++;
 
     return child;
-}
-
-/** 
-* I suspect it would be better to just use direct references to our static
-* bin and page manager from allocator rather than calling initialize methods,
-* however it does not appear to have any negative impact
-**/
-AllocatorBin* setup_bin(PageManager* pm)
-{
-    AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE, pm);
-    assert(bin != NULL);
-
-    return bin;
-}
-
-PageManager* setup_pagemgr()
-{
-    PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
-    assert(pm != NULL);
-
-    return pm;
 }
 
 void test_mark_single_object(AllocatorBin* bin, PageManager* pm) 
@@ -83,9 +61,9 @@ void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
     Object* child_child2 = create_child(bin, child1);
     Object* child_child3 = create_child(bin, child1);
 
-    MetaData* rdm_md;
-    Object* random_unmarked_obj = (Object*)allocate(bin, &rdm_md);
+    Object* random_unmarked_obj = (Object*)allocate(bin, NULL);
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
+    MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
 
     mark_from_roots();
 
@@ -137,9 +115,9 @@ void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm)
     child_child1->children[child_child1->num_children] = child1; 
     child_child1->num_children++;
 
-    MetaData* rdm_md;
-    Object* random_unmarked_obj = (Object*)allocate(bin, &rdm_md);
+    Object* random_unmarked_obj = (Object*)allocate(bin, NULL);
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
+    MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
 
     mark_from_roots();
 
@@ -161,8 +139,7 @@ void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm)
 
 void test_canary_failure(AllocatorBin *bin, PageManager *pm)
 {
-    MetaData* metadata;
-    uint64_t* canary_cobber = (uint64_t*)allocate(bin, &metadata);
+    uint64_t* canary_cobber = (uint64_t*)allocate(bin, NULL);
 
     debug_print("Allocated test object at address %p\n", canary_cobber);
 
@@ -217,8 +194,8 @@ void test_evacuation(AllocatorBin* bin, PageManager* pm) {
 
 void run_tests()
 {
-    PageManager* pm = setup_pagemgr();
-    AllocatorBin* bin = setup_bin(pm);
+    PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
+    AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
     test_mark_single_object(bin, pm);
     test_mark_object_graph(bin, pm);
     test_mark_cyclic_graph(bin, pm);
