@@ -9,11 +9,11 @@ size_t root_count = 0;
 AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
 PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
 
+/* To be used with updating pointers after moving to evac page */
+Worklist f_table = {.size = 0};
+
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
-
-/* To be used with updating pointers after moving to evac page */
-Worklist* forward_table;
 
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
@@ -97,6 +97,8 @@ PageManager* initializePageManager(uint16_t entry_size)
         return NULL;
     }
 
+    manager->evacuate_page = allocateFreshPage(DEFAULT_ENTRY_SIZE);
+
     return manager;
 }
 
@@ -149,7 +151,6 @@ static bool add_to_worklist(Worklist* worklist, Object* obj)
     return true;
 }
 
-// Dont need this methid quite yet
 static Object* remove_from_worklist(Worklist* worklist) 
 {
     if (worklist->size == 0) {
@@ -158,27 +159,100 @@ static Object* remove_from_worklist(Worklist* worklist)
     return worklist->data[--worklist->size]; //prefix decrement crucial here
 }
 
+// I really feel that there are better choices than this
+static Object* remove_oldest_from_worklist(Worklist* worklist) {
+    if (worklist->size == 0) {
+        return NULL;
+    }
+    
+    Object* oldest = worklist->data[0];
+    
+    // Shift all elements to the left
+    for (size_t i = 1; i < worklist->size; i++) {
+        worklist->data[i - 1] = worklist->data[i];
+    }
+    
+    worklist->size--;
+    return oldest;
+}
+
 static bool is_worklist_empty(Worklist* worklist) 
 {
     return worklist->size == 0;
 }
 
+// Move object to evacuate_page and reset old metadata
+static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_table) {
+    FreeListEntry* start_of_evac = bin->page_manager->evacuate_page->freelist;
+    FreeListEntry* next_evac_freelist_object = start_of_evac->next;
 
+    // Direct copy of data from original page to evacuation page
+    void* evac_obj_base = memcpy(start_of_evac, (char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE, REAL_ENTRY_SIZE(DEFAULT_ENTRY_SIZE));
 
+    //update freelist of evac page, memcpy was destroying pointers in our freelist for evac page so I had to manually store and assign after memcpy
+    bin->page_manager->evacuate_page->freelist = next_evac_freelist_object;
 
+    debug_print("[DEBUG] Object moved from %p to %p in evac page\n", obj, evac_obj_base);
 
-// Move obj to evacuate_page
-static void evacuate_object(Object* obj) {
-    //MetaData* metadata = META_FROM_OBJECT(obj);
+    Object* evac_obj_data = (Object*)((char*)evac_obj_base + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE);
+    MetaData* evac_obj_meta = (MetaData*)((char*)evac_obj_data - sizeof(MetaData));
+    
+    // Insert evacuated object into forward table and set index in meta
+    evac_obj_meta->forward_index = forward_table->size;
+    add_to_worklist(forward_table, evac_obj_data);
 
+    // Update the freelist of the original page to point to the newly freed block
+    FreeListEntry* new_freelist_entry = (FreeListEntry*)((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE);
+    new_freelist_entry->next = bin->freelist;
+    bin->freelist = new_freelist_entry;
+
+    //Have to manually set freelist of bin and page -- not totally sure why.
+    bin->page->freelist = bin->freelist;
+
+    MetaData* old_metadata = (MetaData*)((char*)bin->freelist + ALLOC_DEBUG_CANARY_SIZE);
+    RESET_METADATA_FOR_OBJECT(old_metadata);
+
+    return evac_obj_data;
 }
 
 void evacuate(Worklist *marked_nodes_list, AllocatorBin *bin) {
+    Worklist worklist;
+    initialize_worklist(&worklist);
+
+    Worklist* forward_table = &f_table;
+    if(!forward_table) {
+        initialize_worklist(forward_table);
+    }
+
     while(!is_worklist_empty(marked_nodes_list)) {
         Object* obj = remove_from_worklist(marked_nodes_list);
-        evacuate_object(obj);
+        
+        if(META_FROM_OBJECT(obj)->isroot == false) {
+            if(obj->num_children == 0) {
+                add_to_worklist(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
+            } else {
+                // If the object we are trying to evacuate has children we will first update its children pointers then evacuate.
+                for (int i = 0; i < obj->num_children; i++) {
+                    // We want the OLDEST element in the worklist here -- not sure how to do so. It would also have to be removed.
+                    Object* oldest = remove_oldest_from_worklist(&worklist);
+                    obj->children[i] = forward_table->data[META_FROM_OBJECT(oldest)->forward_index];
+                }
+                add_to_worklist(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
+            }
+        } else{
+            Object* root = remove_oldest_from_worklist(&worklist);
+            MetaData* root_meta = META_FROM_OBJECT(root);
+
+            // If the object we are trying to evacuate has children we will first update its children pointers then evacuate.
+            for (int i = 0; i < obj->num_children; i++) {
+                obj->children[i] = forward_table->data[root_meta->forward_index];
+            }
+            add_to_worklist(&worklist, obj);
+        }
     }
 }
+
+Looks like this fella does not generate our marked nodes list in correct order :(
 
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots()
@@ -227,7 +301,6 @@ void mark_from_roots()
         // We finished processing this node, add to mark list
         add_to_worklist(&marked_nodes_list,  obj);
     }
-
     debug_print("Size of marked work list %li\n", marked_nodes_list.size);
 
     // Now that we have constructed a BFS order work list we can evacuate non root nodes
@@ -275,7 +348,7 @@ void verifyCanariesInPage(PageInfo* page)
         debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
         if(metadata->isalloc){
             debug_print("[ERROR] Block in free list was allocated\n");
-            //assert(0);
+            assert(0);
         }
         free_blocks++;
         list = list->next;
@@ -290,11 +363,18 @@ void verifyCanariesInPage(PageInfo* page)
 void verifyAllCanaries(AllocatorBin* bin)
 {
     PageInfo* current_page = bin->page_manager->all_pages;
+    PageInfo* evac_page = bin->page_manager->evacuate_page;
 
     while (current_page) {
         debug_print("PageManager all_pages head address: %p\n", current_page);
         verifyCanariesInPage(current_page);
         current_page = current_page->next;
+    }
+
+    while (evac_page) {
+        debug_print("PageManager evac_page head address: %p\n", evac_page);
+        verifyCanariesInPage(evac_page);
+        evac_page = evac_page->next;
     }
 
 }

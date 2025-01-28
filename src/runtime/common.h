@@ -76,3 +76,13 @@ typedef struct MetaData
 static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #endif
 
+// After we evacuate an object we need to update the original metadata
+#define RESET_METADATA_FOR_OBJECT(meta)              \
+do {                                                 \
+    (meta)->isalloc = false;                         \
+    (meta)->isyoung = false;                         \
+    (meta)->ismarked = false;                        \
+    (meta)->isroot = false;                          \
+    (meta)->forward_index = MAX_FWD_INDEX;           \
+} while(0)
+

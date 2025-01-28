@@ -100,6 +100,7 @@ typedef struct {
     Object* data[WORKLIST_CAPACITY];
     size_t size;
 } Worklist;
+extern Worklist f_table;
 
 extern Object* root_stack[MAX_ROOTS];
 extern size_t root_count;
