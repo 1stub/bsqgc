@@ -80,6 +80,8 @@ void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
     create_child(bin, child3);
 
     Object* random_unmarked_obj = (Object*)allocate(bin, NULL);
+    debug_print("[DEBUG] Created non root random object at %p\n", random_unmarked_obj);
+    
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
     MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
 

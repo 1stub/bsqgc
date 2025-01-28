@@ -1,4 +1,5 @@
 #include "allocator.h"
+#include <stdint.h>
 #include <stdio.h>
 
 #define CANARY_DEBUG_CHECK
@@ -98,6 +99,7 @@ PageManager* initializePageManager(uint16_t entry_size)
     }
 
     manager->evacuate_page = allocateFreshPage(DEFAULT_ENTRY_SIZE);
+    debug_print("Created page for evacuation at %p\n", manager->evacuate_page);
 
     return manager;
 }
@@ -252,7 +254,44 @@ void evacuate(Worklist *marked_nodes_list, AllocatorBin *bin) {
     }
 }
 
-Looks like this fella does not generate our marked nodes list in correct order :(
+void rebuild_freelist(PageInfo* page) {
+    page->freelist = NULL;
+    page->freecount = 0;
+
+    for(size_t i = 0; i < page->entrycount; i++) {
+        FreeListEntry* new_freelist_entry = (FreeListEntry*)((char*)page + sizeof(PageInfo) + (i * REAL_ENTRY_SIZE(page->entrysize)));
+        MetaData* meta = (MetaData*)((char*)new_freelist_entry + ALLOC_DEBUG_CANARY_SIZE);
+
+        if(meta->isalloc == false) {
+            new_freelist_entry->next = page->freelist;
+            page->freelist = new_freelist_entry;
+
+            page->freecount++;
+        }
+    }
+}
+
+// Just run through all pages and flag nodes that arent marked as non allocated
+void clean_nonref_nodes() {
+    PageInfo* current_page = p_mgr.all_pages;
+
+    while(current_page != NULL) {
+        for(uint16_t i = 0; i < current_page->entrycount; i++) {
+            Object* current_object = (Object*)((char*)current_page + sizeof(PageInfo) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) +
+                (i * REAL_ENTRY_SIZE(current_page->entrysize)));
+            MetaData* current_object_meta = META_FROM_OBJECT(current_object);
+
+            debug_print("[DEBUG] Checking object at %p is not allocated and not marked\n", current_object);
+
+            if(current_object_meta->ismarked == false && current_object_meta->isalloc == true) {
+                debug_print("[DEBUG] Found non marked object at %p\n", current_object);
+                RESET_METADATA_FOR_OBJECT(current_object_meta);
+            }
+        }
+        rebuild_freelist(current_page);
+        current_page = current_page->next;
+    }
+}
 
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots()
@@ -280,7 +319,7 @@ void mark_from_roots()
     /* Process the worklist in a BFS manner */
     while (!is_worklist_empty(&worklist)) 
     {
-        Object* obj = remove_from_worklist(&worklist);
+        Object* obj = remove_oldest_from_worklist(&worklist);
 
         for (size_t i = 0; i < obj->num_children; i++) 
         {
@@ -303,8 +342,14 @@ void mark_from_roots()
     }
     debug_print("Size of marked work list %li\n", marked_nodes_list.size);
 
+    for(size_t i = 0; i < marked_nodes_list.size; i++) {
+        debug_print("node %p\n", marked_nodes_list.data[i]);
+    }
+
     // Now that we have constructed a BFS order work list we can evacuate non root nodes
     evacuate(&marked_nodes_list, &a_bin);
+
+    clean_nonref_nodes();
 }
 
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)
