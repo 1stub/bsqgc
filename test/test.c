@@ -118,13 +118,13 @@ void assert_all_marked(Object* obj) {
     }
 }
 
-void test_mark_single_object(AllocatorBin* bin, PageManager* pm) 
+void test_mark_single_object(AllocatorBin* bin) 
 {
     Object* obj = create_root(bin);
 
     Object* child = create_child(bin, obj);
 
-    mark_from_roots();
+    mark_from_roots(bin);
 
     assert_all_marked(obj);
 
@@ -136,7 +136,7 @@ void test_mark_single_object(AllocatorBin* bin, PageManager* pm)
     debug_print("Test Case 1 Passed: Single object marked successfully.\n\n");
 }
 
-void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
+void test_mark_object_graph(AllocatorBin *bin)
 {
     Object* obj1 = create_root(bin);
     Object* obj2 = create_root(bin);
@@ -158,7 +158,7 @@ void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
     MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
 
-    mark_from_roots();
+    mark_from_roots(bin);
 
     assert_all_marked(obj1);
     assert_all_marked(obj2);
@@ -170,7 +170,7 @@ void test_mark_object_graph(AllocatorBin *bin, PageManager *pm)
     debug_print("Test Case 2 Passed: Object graph marked successfully.\n\n");
 }
 
-void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm)
+void test_mark_cyclic_graph(AllocatorBin* bin)
 {
     Object* obj1 = create_root(bin);
     Object* obj2 = create_root(bin);
@@ -204,7 +204,7 @@ void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm)
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
     MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
 
-    mark_from_roots();
+    mark_from_roots(bin);
 
     assert(META_FROM_OBJECT(obj1)->ismarked == true);
     assert(META_FROM_OBJECT(obj2)->ismarked == true);
@@ -222,7 +222,7 @@ void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm)
     debug_print("Test Case 3 Passed: Object graph with cycles marked correctly.\n");
 }
 
-void test_canary_failure(AllocatorBin *bin, PageManager *pm)
+void test_canary_failure(AllocatorBin *bin)
 {
     uint64_t* canary_cobber = (uint64_t*)allocate(bin, NULL);
 
@@ -232,9 +232,9 @@ void test_canary_failure(AllocatorBin *bin, PageManager *pm)
     canary_cobber[-3] = 0xBADBADBADBADBADB;
 }
 
-void test_evacuation(AllocatorBin* bin, PageManager* pm) {
-    PageInfo* cur_alloc_page = pm->all_pages;
-    PageInfo* cur_evac_page = pm->evacuate_page;
+void test_evacuation(AllocatorBin* bin) {
+    PageInfo* cur_alloc_page = bin->page_manager->all_pages;
+    PageInfo* cur_evac_page = bin->page_manager->evacuate_page;
 
     // Lets make sure only roots are in our allocate pages
     while(cur_alloc_page) {
@@ -295,13 +295,12 @@ void test_evacuation(AllocatorBin* bin, PageManager* pm) {
 
 void run_tests()
 {
-    PageManager* pm = initializePageManager(DEFAULT_ENTRY_SIZE);
     AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
-    test_mark_single_object(bin, pm);
-    test_mark_object_graph(bin, pm);
-    ///test_mark_cyclic_graph(bin, pm);
-    //test_canary_failure(bin,  pm);
-    test_evacuation(bin, pm);
+    test_mark_single_object(bin);
+    test_mark_object_graph(bin);
+    ///test_mark_cyclic_graph(bin);
+    //test_canary_failure(bin);
+    test_evacuation(bin);
 
     verifyAllCanaries(bin);
 }

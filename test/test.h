@@ -5,11 +5,11 @@
 /**
  * Our varrying tests for properly marking objects 
  **/
-void test_mark_single_object(AllocatorBin* bin, PageManager* pm);
-void test_mark_object_graph(AllocatorBin* bin, PageManager* pm);
-void test_mark_cyclic_graph(AllocatorBin* bin, PageManager* pm);
-void test_canary_failure(AllocatorBin* bin, PageManager* pm);
-void test_evacuation(AllocatorBin* bin, PageManager* pm);
+void test_mark_single_object(AllocatorBin* bin);
+void test_mark_object_graph(AllocatorBin* bin);
+void test_mark_cyclic_graph(AllocatorBin* bin);
+void test_canary_failure(AllocatorBin* bin);
+void test_evacuation(AllocatorBin* bin);
 
 /**
  * Traverse pages and freelists ensuring no canaries are clobbered and that

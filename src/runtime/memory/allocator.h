@@ -126,7 +126,7 @@ void evacuate(Worklist* marked_nodes_list, AllocatorBin* bin);
 /**
  * Process all objects starting from roots in BFS manner
  **/
-void mark_from_roots();
+void mark_from_roots(AllocatorBin* bin);
 
 /**
  * Slow path for usage with canaries --- debug
@@ -158,14 +158,6 @@ static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
 
     FreeListEntry* ret = alloc->freelist;
     alloc->freelist = ret->next;
-
-    /**
-    * Need to investigate further why our freelist for the current page does not update
-    * when we move the freelist pointer in our allocator. They are directly assigned
-    * so I am not completly sure why this is the case. alloc->freelist is just a pointer
-    * to the current pages freelist. Maybe make it the address of our pages freelist?
-    **/
-    alloc->page->freelist = ret->next;
 
     void* obj;
 

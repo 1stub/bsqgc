@@ -1,4 +1,5 @@
 #include "allocator.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -29,18 +30,10 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
 
     FreeListEntry* current = pinfo->freelist;
 
-    #ifndef ALLOC_DEBUG_CANARY
     for(int i = 0; i < pinfo->entrycount - 1; i++) {
-        current->next = (FreeListEntry*)((char*)current + entrysize + sizeof(MetaData));
-        current = current->next;
-    }
-    #else
-    for(int i = 0; i < pinfo->entrycount - 1; i++) {
-        debug_print("Current freelist pointer: %p\n", current);
         current->next = (FreeListEntry*)((char*)current + REAL_ENTRY_SIZE(entrysize));
         current = current->next;
     }
-    #endif
 
     current->next = NULL;
 
@@ -66,42 +59,13 @@ void getFreshPageForAllocator(AllocatorBin* alloc)
     }
     PageInfo* new_page = allocateFreshPage(alloc->entrysize);
 
-    if(alloc->page == NULL) {
-        alloc->page = new_page;
-    } else {
-        alloc->page->next = new_page;
-        alloc->page = alloc->page->next;
-    }
+    // Add new page to all pages list
+    new_page->next = alloc->page_manager->all_pages;
+    alloc->page_manager->all_pages = new_page;
 
-    alloc->page->pagestate = AllocPageInfo_ActiveAllocation;
-
-    /* add new page to end of all pages list */
-    if(alloc->page_manager->all_pages == NULL) {
-        alloc->page_manager->all_pages = alloc->page;
-    } else {
-        PageInfo* current  = alloc->page_manager->all_pages;
-        while(current->next != NULL) {
-            current = current->next;
-        }
-        current->next = alloc->page;
-    }
-
-    alloc->freelist = alloc->page->freelist;
-    
-    alloc->page->next = NULL;
-}
-
-PageManager* initializePageManager(uint16_t entry_size)
-{    
-    PageManager* manager = &p_mgr;
-    if (manager == NULL) {
-        return NULL;
-    }
-
-    manager->evacuate_page = allocateFreshPage(DEFAULT_ENTRY_SIZE);
-    debug_print("Created page for evacuation at %p\n", manager->evacuate_page);
-
-    return manager;
+    // Make sure the current alloc page points to this entry in the list
+    alloc->page = new_page;
+    alloc->freelist = new_page->freelist;
 }
 
 AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
@@ -110,6 +74,7 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
     if(bin == NULL) return NULL;
 
     bin->page_manager = &p_mgr;
+    bin->page_manager->evacuate_page = allocateFreshPage(DEFAULT_ENTRY_SIZE);
     return bin;
 }
 
@@ -143,16 +108,7 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_t
     evac_obj_meta->forward_index = forward_table->size;
     add_to_worklist(forward_table, evac_obj_data);
 
-    // Update the freelist of the original page to point to the newly freed block
-    // I suspect I could handle this freelist stuff within my rebuild freelist method.
-    FreeListEntry* new_freelist_entry = (FreeListEntry*)(BLOCK_START_FROM_OBJ(obj));
-    new_freelist_entry->next = bin->freelist;
-    bin->freelist = new_freelist_entry;
-
-    //Have to manually set freelist of bin and page -- not totally sure why.
-    bin->page->freelist = bin->freelist;
-
-    MetaData* old_metadata = (MetaData*)((char*)bin->freelist + ALLOC_DEBUG_CANARY_SIZE);
+    MetaData* old_metadata = META_FROM_OBJECT(obj);
     RESET_METADATA_FOR_OBJECT(old_metadata);
 
     return evac_obj_data;
@@ -194,31 +150,43 @@ void evacuate(Worklist *marked_nodes_list, AllocatorBin *bin) {
     }
 }
 
+THIS METHOD DOES NOT PROPERLY UPDATE THE HEAD POINTER FOR OUR FREELIST, IT JUST KEEPS
+ADDING MORE ELEMENTS
 void rebuild_freelist(PageInfo* page) {
     page->freelist = NULL;
     page->freecount = 0;
+    
+     FreeListEntry* last_freelist_entry = NULL;
+    bool first_nonalloc_block = true;
 
-    for(size_t i = 0; i < page->entrycount; i++) {
-        FreeListEntry* new_freelist_entry = (FreeListEntry*)(PAGE_OFFSET(page) + (i * REAL_ENTRY_SIZE(page->entrysize)));
-        MetaData* meta = (MetaData*)((char*)new_freelist_entry + ALLOC_DEBUG_CANARY_SIZE);
+    for (size_t i = 0; i < page->entrycount; i++) {
+        FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(page, i);
+        MetaData* meta = META_FROM_FREELIST_ENTRY(new_freelist_entry);
 
-        if(meta->isalloc == false) {
-            new_freelist_entry->next = page->freelist;
-            page->freelist = new_freelist_entry;
-
+        if (!meta->isalloc) {
+            if(first_nonalloc_block) {
+                page->freelist = new_freelist_entry;
+                new_freelist_entry->next = NULL;
+                first_nonalloc_block = false;
+            } else {
+                last_freelist_entry->next = new_freelist_entry;
+                new_freelist_entry->next = NULL; 
+            }
+            last_freelist_entry = new_freelist_entry;
+            
             page->freecount++;
         }
     }
-}
 
+    debug_print("[DEBUG] Rebuilt freelist for page %p with %d free blocks\n", page, page->freecount);
+}
 // Just run through all pages and flag nodes that arent marked as non allocated --- may not be necessary
-void clean_nonref_nodes() {
-    PageInfo* current_page = p_mgr.all_pages;
+void clean_nonref_nodes(AllocatorBin* bin) {
+    PageInfo* current_page = bin->page;
 
     while(current_page != NULL) {
         for(uint16_t i = 0; i < current_page->entrycount; i++) {
-            Object* current_object = (Object*)(PAGE_OFFSET(current_page) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) +
-                (i * REAL_ENTRY_SIZE(current_page->entrysize)));
+            Object* current_object = OBJECT_AT(current_page, i);
             MetaData* current_object_meta = META_FROM_OBJECT(current_object);
 
             debug_print("[DEBUG] Checking object at %p is not allocated and not marked\n", current_object);
@@ -228,13 +196,14 @@ void clean_nonref_nodes() {
                 RESET_METADATA_FOR_OBJECT(current_object_meta);
             }
         }
+
         rebuild_freelist(current_page);
         current_page = current_page->next;
     }
 }
 
 /* Algorithm 2.2 from The Gargage Collection Handbook */
-void mark_from_roots()
+void mark_from_roots(AllocatorBin* bin)
 {
     Worklist marked_nodes_list, worklist;
     initialize_worklist(&marked_nodes_list);
@@ -287,7 +256,7 @@ void mark_from_roots()
     }
 
     // Now that we have constructed a BFS order work list we can evacuate non root nodes
-    evacuate(&marked_nodes_list, &a_bin);
+    evacuate(&marked_nodes_list, bin);
 
-    clean_nonref_nodes();
+    clean_nonref_nodes(bin);
 }

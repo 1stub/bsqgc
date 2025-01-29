@@ -51,6 +51,11 @@ typedef struct Object{
 }Object;
 
 #define PAGE_OFFSET(p) (char*)p + sizeof(PageInfo)
+#define OBJECT_AT(page, index) \
+    ((Object*)(PAGE_OFFSET(page) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + \
+    ((index) * REAL_ENTRY_SIZE((page)->entrysize))))
+#define FREE_LIST_ENTRY_AT(page, index) \
+((FreeListEntry*)(PAGE_OFFSET(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
 
 #ifdef ALLOC_DEBUG_CANARY
 //Gives us the beginning of block (just before canary in case of canaries enabled)
@@ -58,9 +63,12 @@ typedef struct Object{
 
 //Start of our object from the begginning of block (address returned from allocate())
 #define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
+#define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)((char*)f_entry + ALLOC_DEBUG_CANARY_SIZE))
 #else
 #define BLOCK_START_FROM_OBJ(obj) ((char*)obj - sizeof(MetaData))
 #define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData))
+#define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)f_entry)
+
 #endif
 
 
