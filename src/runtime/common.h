@@ -29,6 +29,12 @@
             do { } while (0)
 #endif
 
+/* Maximum number of roots on our root stack */
+#define MAX_ROOTS 100
+
+/*Negative offset to find metadata assuming obj is the start of data seg*/
+#define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
+
 /** 
 * Hard defining maximum number of possible children for an obj,
 * I suspect this should not be the case but works for testing.
@@ -43,6 +49,20 @@ typedef struct Object{
     struct Object* children[MAX_CHILDREN];
     uint16_t num_children;
 }Object;
+
+#define PAGE_OFFSET(p) (char*)p + sizeof(PageInfo)
+
+#ifdef ALLOC_DEBUG_CANARY
+//Gives us the beginning of block (just before canary in case of canaries enabled)
+#define BLOCK_START_FROM_OBJ(obj) ((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE)
+
+//Start of our object from the begginning of block (address returned from allocate())
+#define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
+#else
+#define BLOCK_START_FROM_OBJ(obj) ((char*)obj - sizeof(MetaData))
+#define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData))
+#endif
+
 
 /** 
 * As this project grows it would be best if we instead predefine multiple

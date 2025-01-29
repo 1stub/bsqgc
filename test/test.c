@@ -32,6 +32,79 @@ Object* create_child(AllocatorBin* bin, Object* parent)
     return child;
 }
 
+/* Following 3 methods verify integrity of canaries */
+bool verifyCanariesInBlock(char* block, uint16_t entry_size)
+{
+    uint64_t* pre_canary = (uint64_t*)(block);
+    uint64_t* post_canary = (uint64_t*)(block + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
+
+    if (*pre_canary != ALLOC_DEBUG_CANARY_VALUE || *post_canary != ALLOC_DEBUG_CANARY_VALUE)
+    {
+        debug_print("[ERROR] Canary corrupted at block %p\n", (void*)block);
+        debug_print("Data in pre-canary: %lx, data in post-canary: %lx\n", *pre_canary, *post_canary);
+        return false;
+    }
+    return true;
+}
+
+void verifyCanariesInPage(PageInfo* page)
+{
+    FreeListEntry* list = page->freelist;
+    char* base_address = (char*)page + sizeof(PageInfo);
+    uint16_t alloced_blocks = 0;
+    uint16_t free_blocks = 0;
+
+    for (uint16_t i = 0; i < page->entrycount; i++) {
+        char* block_address = base_address + (i * REAL_ENTRY_SIZE(page->entrysize));
+        debug_print("Checking block: %p\n", block_address);
+        MetaData* metadata = (MetaData*)(block_address + ALLOC_DEBUG_CANARY_SIZE);
+        debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
+
+        if (metadata->isalloc) {
+            alloced_blocks++;
+            assert(verifyCanariesInBlock(block_address, page->entrysize));
+        }
+    }
+
+    debug_print("\n");
+
+    while(list){
+        debug_print("Checking freelist block: %p\n", (void*)list);
+        MetaData* metadata = (MetaData*)((char*)list + ALLOC_DEBUG_CANARY_SIZE);
+        debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
+        if(metadata->isalloc){
+            debug_print("[ERROR] Block in free list was allocated\n");
+            assert(0);
+        }
+        free_blocks++;
+        list = list->next;
+    }   
+
+    // Make sure no blocks are lost
+    assert((free_blocks + alloced_blocks) == page->entrycount);
+
+    debug_print("\n");
+}
+
+void verifyAllCanaries(AllocatorBin* bin)
+{
+    PageInfo* current_page = bin->page_manager->all_pages;
+    PageInfo* evac_page = bin->page_manager->evacuate_page;
+
+    while (current_page) {
+        debug_print("PageManager all_pages head address: %p\n", current_page);
+        verifyCanariesInPage(current_page);
+        current_page = current_page->next;
+    }
+
+    while (evac_page) {
+        debug_print("PageManager evac_page head address: %p\n", evac_page);
+        verifyCanariesInPage(evac_page);
+        evac_page = evac_page->next;
+    }
+
+}
+
 // Helper function to recursively assert that all objects in the graph are marked
 void assert_all_marked(Object* obj) {
     if (obj == NULL) {

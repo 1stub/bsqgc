@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../common.h"
+#include "../worklist.h"
 
 #ifdef MEM_STATS
 #include <stdio.h> //printf
@@ -14,14 +15,6 @@
 //Must be multiple of 8
 #define ALLOC_DEBUG_CANARY_SIZE 16
 #define ALLOC_DEBUG_CANARY_VALUE 0xDEADBEEFDEADBEEFul
-
-#define MAX_ROOTS 100
-
-/* This queue size will need to be tinkered with */
-#define WORKLIST_CAPACITY 1024
-
-/*Negative offset to find metadata assuming obj is the start of data seg*/
-#define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
 
 #ifdef MEM_STATS
 #define ENABLE_MEM_STATS
@@ -96,12 +89,9 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
-typedef struct {
-    Object* data[WORKLIST_CAPACITY];
-    size_t size;
-} Worklist;
 extern Worklist f_table;
 
+/* A collection of roots we can read from when marking */
 extern Object* root_stack[MAX_ROOTS];
 extern size_t root_count;
 
@@ -126,7 +116,6 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
  **/
 PageManager* initializePageManager(uint16_t entry_size);
 
-
 /**
  * We have a list containing all children nodes that will need to be moved
  * over to our evacuate page(s). Traverse this list, move nodes, update
@@ -138,16 +127,6 @@ void evacuate(Worklist* marked_nodes_list, AllocatorBin* bin);
  * Process all objects starting from roots in BFS manner
  **/
 void mark_from_roots();
-
-/**
- * Traverse pages and freelists ensuring no canaries are clobbered and that
- * our freelists contain no already allocated objects.
- **/
-#ifdef ALLOC_DEBUG_CANARY
-void verifyAllCanaries(AllocatorBin* bin);
-void verifyCanariesInPage(PageInfo* page);
-bool verifyCanariesInBlock(char* block, uint16_t entry_size);
-#endif
 
 /**
  * Slow path for usage with canaries --- debug
@@ -170,6 +149,7 @@ static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaD
  **/
 static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
 {
+    /* If meta is not null we do not want to overwrite any data in it */
     bool preserve_meta = (metadata != NULL);
 
     if(alloc->freelist == NULL) {
