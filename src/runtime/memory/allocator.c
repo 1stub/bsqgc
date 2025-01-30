@@ -18,6 +18,16 @@ Worklist f_table = {.size = 0};
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
 
+static void setup_freelist(PageInfo* pinfo, uint16_t entrysize) {
+    FreeListEntry* current = pinfo->freelist;
+
+    for(int i = 0; i < pinfo->entrycount - 1; i++) {
+        current->next = (FreeListEntry*)((char*)current + REAL_ENTRY_SIZE(entrysize));
+        current = current->next;
+    }
+    current->next = NULL;
+}
+
 static PageInfo* initializePage(void* page, uint16_t entrysize)
 {
     debug_print("New page!\n");
@@ -29,14 +39,7 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
     pinfo->freecount = pinfo->entrycount;
     pinfo->pagestate = PageStateInfo_GroundState;
 
-    FreeListEntry* current = pinfo->freelist;
-
-    for(int i = 0; i < pinfo->entrycount - 1; i++) {
-        current->next = (FreeListEntry*)((char*)current + REAL_ENTRY_SIZE(entrysize));
-        current = current->next;
-    }
-
-    current->next = NULL;
+    setup_freelist(pinfo, pinfo->entrysize);
 
     return pinfo;
 }
@@ -92,6 +95,14 @@ bool isRoot(void* obj)
     return true; // For now, assume all objects are valid pointers
 }
 
+static void update_evacuation_freelist(AllocatorBin *bin) {
+    if (bin->page_manager->evacuate_page->freelist == NULL) {
+        bin->page_manager->evacuate_page->next = allocateFreshPage(bin->page_manager->evacuate_page->entrysize);
+        bin->page_manager->evacuate_page = bin->page_manager->evacuate_page->next;
+        bin->page_manager->evacuate_page->next = NULL;
+    }
+}
+
 // Move object to evacuate_page and reset old metadata
 static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_table) {
     FreeListEntry* start_of_evac = bin->page_manager->evacuate_page->freelist;
@@ -102,11 +113,7 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_t
 
     //update freelist of evac page, memcpy was destroying pointers in our freelist for evac page so I had to manually store and assign after memcpy
     bin->page_manager->evacuate_page->freelist = next_evac_freelist_object;
-    if(bin->page_manager->evacuate_page->freelist == NULL) {
-        bin->page_manager->evacuate_page->next = allocateFreshPage(bin->page_manager->evacuate_page->entrysize);
-        bin->page_manager->evacuate_page = bin->page_manager->evacuate_page->next;
-        bin->page_manager->evacuate_page->next = NULL;
-    }
+    update_evacuation_freelist(bin);
 
     debug_print("[DEBUG] Object moved from %p to %p in evac page\n", obj, evac_obj_base);
 
@@ -187,6 +194,14 @@ void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
         }
     }
 
+    /**
+    * Currently I have no idea why I need to manually set the bins page here,
+    * I feel like manually doing this setting could create some really weird
+    * problems when running larger tests. It seems that modifying the current 
+    * page in bin through our page manager does not properly reflect in
+    * bin->page/freelist itself. hmm...
+    **/
+
     /* Now update the current page for bin if there are freeblocks */
     if(page->freecount > 0) {
         bin->page = page;
@@ -205,15 +220,12 @@ void clean_nonref_nodes(AllocatorBin* bin) {
             Object* current_object = OBJECT_AT(current_page, i);
             MetaData* current_object_meta = META_FROM_OBJECT(current_object);
 
-            debug_print("[DEBUG] Checking object at %p is not allocated and not marked\n", current_object);
-
             if(current_object_meta->ismarked == false && current_object_meta->isalloc == true) {
-                debug_print("[DEBUG] Found non marked object at %p\n", current_object);
                 RESET_METADATA_FOR_OBJECT(current_object_meta);
             }
         }
 
-            debug_print("[DEBUG] bin->freelist before rebuilding: %p\n", bin->freelist);
+        debug_print("[DEBUG] bin->freelist before rebuilding: %p\n", bin->freelist);
         rebuild_freelist(bin, current_page);
         debug_print("[DEBUG] bin->freelist after rebuilding: %p\n", bin->freelist);
         current_page = current_page->next;
@@ -269,11 +281,15 @@ void mark_from_roots(AllocatorBin* bin)
     }
     debug_print("Size of marked work list %li\n", marked_nodes_list.size);
 
+    /* Make sure objects are in correct order in marked nodes list */
     for(size_t i = 0; i < marked_nodes_list.size; i++) {
         debug_print("node %p\n", marked_nodes_list.data[i]);
     }
 
-    // Now that we have constructed a BFS order work list we can evacuate non root nodes
+    /** 
+    * Since this algorithm generates marked_nodes_list in BFS manner, we can 
+    * take a much easier and faster approach to updating parent pointers correctly
+    **/
     evacuate(&marked_nodes_list, bin);
 
     clean_nonref_nodes(bin);

@@ -38,10 +38,13 @@ bool verifyCanariesInBlock(char* block, uint16_t entry_size)
     uint64_t* pre_canary = (uint64_t*)(block);
     uint64_t* post_canary = (uint64_t*)(block + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
 
+    debug_print("[CANARY_CHECK] Verifying canaries for block at %p\n", (void*)block);
+    debug_print("\tPre-canary value: %lx\n", *pre_canary);
+    debug_print("\tPost-canary value: %lx\n", *post_canary);
+
     if (*pre_canary != ALLOC_DEBUG_CANARY_VALUE || *post_canary != ALLOC_DEBUG_CANARY_VALUE)
     {
-        debug_print("[ERROR] Canary corrupted at block %p\n", (void*)block);
-        debug_print("Data in pre-canary: %lx, data in post-canary: %lx\n", *pre_canary, *post_canary);
+        debug_print("[ERROR] Canary corruption detected at block %p\n", (void*)block);
         return false;
     }
     return true;
@@ -54,26 +57,30 @@ void verifyCanariesInPage(PageInfo* page)
     uint16_t alloced_blocks = 0;
     uint16_t free_blocks = 0;
 
+    debug_print("[CANARY_CHECK] Verifying canaries for page at %p\n", (void*)page);
+
     for (uint16_t i = 0; i < page->entrycount; i++) {
         char* block_address = base_address + (i * REAL_ENTRY_SIZE(page->entrysize));
-        debug_print("Checking block: %p\n", block_address);
+        debug_print("\tChecking block %d at address %p\n", i, block_address);
         MetaData* metadata = (MetaData*)(block_address + ALLOC_DEBUG_CANARY_SIZE);
-        debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
+        debug_print("\tBlock %d metadata state: isalloc=%d\n", i, metadata->isalloc);
 
         if (metadata->isalloc) {
+            debug_print("\tAllocated block detected, verifying canaries...\n");
             alloced_blocks++;
             assert(verifyCanariesInBlock(block_address, page->entrysize));
         }
     }
-
     debug_print("\n");
 
+    debug_print("[CANARY_CHECK] Verifying freelist for page at %p\n", (void*)page);
     while(list){
-        debug_print("Checking freelist block: %p\n", (void*)list);
+        debug_print("\tChecking freelist block at %p\n", (void*)list);
         MetaData* metadata = (MetaData*)((char*)list + ALLOC_DEBUG_CANARY_SIZE);
-        debug_print("Metadata state: isalloc=%d\n", metadata->isalloc);
+        debug_print("\tFreelist block metadata state: isalloc=%d\n", metadata->isalloc);
+
         if(metadata->isalloc){
-            debug_print("[ERROR] Block in free list was allocated\n");
+            debug_print("[ERROR] Block in free list was allocated at %p\n", (void*)list);
             assert(0);
         }
         free_blocks++;
@@ -91,14 +98,16 @@ void verifyAllCanaries(AllocatorBin* bin)
     PageInfo* current_page = bin->page_manager->all_pages;
     PageInfo* evac_page = bin->page_manager->evacuate_page;
 
+    debug_print("[CANARY_CHECK] Verifying all pages in bin\n");
+
     while (current_page) {
-        debug_print("PageManager all_pages head address: %p\n", current_page);
+        debug_print("[CANARY_CHECK] Verifying canaries in page at %p (all_pages)\n", (void*)current_page);
         verifyCanariesInPage(current_page);
         current_page = current_page->next;
     }
 
     while (evac_page) {
-        debug_print("PageManager evac_page head address: %p\n", evac_page);
+        debug_print("[CANARY_CHECK] Verifying canaries in page at %p (evacuate_page)\n", (void*)evac_page);
         verifyCanariesInPage(evac_page);
         evac_page = evac_page->next;
     }
@@ -133,11 +142,17 @@ void test_mark_single_object(AllocatorBin* bin)
     // And that our object was successfully moved to evac page
     assert( reset_child_meta->ismarked == false );
 
-    debug_print("Test Case 1 Passed: Single object marked successfully.\n\n");
+    debug_print("[SUCCESS] Test Case 1 Passed: Single object marked successfully.\n\n");
 }
 /* Maybe have these args allow us to easily modify graph? */
 void test_mark_object_graph(AllocatorBin *bin, int num_roots, int num_children_per_node, int max_depth)
 {
+    /** 
+    * TODO: Allow these args (num_* and max_depth) to actually be used so we can 
+    * test a bunch of weirdly sized graphs and do more stress testing on the
+    * allocation and current gc code.
+    **/
+
     Object* obj1 = create_root(bin);
     Object* obj2 = create_root(bin);
     Object* obj3 = create_root(bin);
@@ -167,14 +182,14 @@ void test_mark_object_graph(AllocatorBin *bin, int num_roots, int num_children_p
     assert( rdm_md->ismarked == false);
     assert( META_FROM_OBJECT(random_unmarked_child)->ismarked == false);
 
-    debug_print("Test Case 2 Passed: Object graph marked successfully.\n\n");
+    debug_print("[SUCCESS] Test Case 2 Passed: Object graph marked successfully.\n\n");
 }
 
 void test_canary_failure(AllocatorBin *bin)
 {
     uint64_t* canary_cobber = (uint64_t*)allocate(bin, NULL);
 
-    debug_print("Allocated test object at address %p\n", canary_cobber);
+    debug_print("[DEBUG] Allocated test object at address %p\n", canary_cobber);
 
     /* Write some random data to pre canary */
     canary_cobber[-3] = 0xBADBADBADBADBADB;
@@ -208,6 +223,10 @@ void test_evacuation(AllocatorBin* bin) {
                 assert(meta->forward_index == UINT32_MAX); //not forwarded
                 assert(meta->ismarked);
                 assert(meta->isalloc);
+
+                for (int j = 0; j < obj->num_children; j++) {
+                    assert(obj->children[j] != NULL);  // Ensure child is not NULL
+                }
             }
         }
 
@@ -234,6 +253,10 @@ void test_evacuation(AllocatorBin* bin) {
                 assert(meta->forward_index != UINT32_MAX); //forwarded
                 assert(meta->ismarked);
                 assert(meta->isalloc);
+
+                for (int j = 0; j < obj->num_children; j++) {
+                    assert(obj->children[j] != NULL);  // Ensure child is not NULL
+                }
             }
         }
 
