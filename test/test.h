@@ -6,8 +6,7 @@
  * Our varrying tests for properly marking objects 
  **/
 void test_mark_single_object(AllocatorBin* bin);
-void test_mark_object_graph(AllocatorBin* bin);
-void test_mark_cyclic_graph(AllocatorBin* bin);
+void test_mark_object_graph(AllocatorBin *bin, int num_roots, int num_children_per_node, int max_depth);
 void test_canary_failure(AllocatorBin* bin);
 void test_evacuation(AllocatorBin* bin);
 

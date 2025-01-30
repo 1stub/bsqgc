@@ -135,8 +135,8 @@ void test_mark_single_object(AllocatorBin* bin)
 
     debug_print("Test Case 1 Passed: Single object marked successfully.\n\n");
 }
-
-void test_mark_object_graph(AllocatorBin *bin)
+/* Maybe have these args allow us to easily modify graph? */
+void test_mark_object_graph(AllocatorBin *bin, int num_roots, int num_children_per_node, int max_depth)
 {
     Object* obj1 = create_root(bin);
     Object* obj2 = create_root(bin);
@@ -170,58 +170,6 @@ void test_mark_object_graph(AllocatorBin *bin)
     debug_print("Test Case 2 Passed: Object graph marked successfully.\n\n");
 }
 
-void test_mark_cyclic_graph(AllocatorBin* bin)
-{
-    Object* obj1 = create_root(bin);
-    Object* obj2 = create_root(bin);
-    Object* obj3 = create_root(bin);
-
-    assert(obj1 != NULL && obj2 != NULL && obj3 != NULL);
-
-    Object* child1 = create_child(bin, obj1);
-    Object* child2 = create_child(bin, obj2);
-    Object* child3 = create_child(bin, obj3);
-
-    Object* child_child1 = create_child(bin, child1);
-    Object* child_child2 = create_child(bin, child1);
-    Object* child_child3 = create_child(bin, child1);
-
-    // Create cycles
-    child1->children[child1->num_children] = obj2; 
-    child1->num_children++;
-
-    child2->children[child2->num_children] = obj3; 
-    child2->num_children++;
-
-    child3->children[child3->num_children] = obj1; 
-    child3->num_children++;
-
-    // Nested cycle
-    child_child1->children[child_child1->num_children] = child1; 
-    child_child1->num_children++;
-
-    Object* random_unmarked_obj = (Object*)allocate(bin, NULL);
-    Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
-    MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
-
-    mark_from_roots(bin);
-
-    assert(META_FROM_OBJECT(obj1)->ismarked == true);
-    assert(META_FROM_OBJECT(obj2)->ismarked == true);
-    assert(META_FROM_OBJECT(obj3)->ismarked == true);
-    assert(META_FROM_OBJECT(child1)->ismarked == true);
-    assert(META_FROM_OBJECT(child2)->ismarked == true);
-    assert(META_FROM_OBJECT(child3)->ismarked == true);
-    assert(META_FROM_OBJECT(child_child1)->ismarked == true);
-    assert(META_FROM_OBJECT(child_child2)->ismarked == true);
-    assert(META_FROM_OBJECT(child_child3)->ismarked == true);
-
-    assert(rdm_md->ismarked == false);
-    assert( META_FROM_OBJECT(random_unmarked_child)->ismarked == false);
-
-    debug_print("Test Case 3 Passed: Object graph with cycles marked correctly.\n");
-}
-
 void test_canary_failure(AllocatorBin *bin)
 {
     uint64_t* canary_cobber = (uint64_t*)allocate(bin, NULL);
@@ -230,6 +178,9 @@ void test_canary_failure(AllocatorBin *bin)
 
     /* Write some random data to pre canary */
     canary_cobber[-3] = 0xBADBADBADBADBADB;
+
+    /* If we dont check canaries here we will this object will cause testing evac to fail */
+    verifyAllCanaries(bin);
 }
 
 void test_evacuation(AllocatorBin* bin) {
@@ -239,8 +190,7 @@ void test_evacuation(AllocatorBin* bin) {
     // Lets make sure only roots are in our allocate pages
     while(cur_alloc_page) {
         for(uint16_t i = 0; i < cur_alloc_page->entrycount; i++) {
-            Object* obj = (Object*)((char*)cur_alloc_page + sizeof(PageInfo) + 
-                (i * REAL_ENTRY_SIZE(DEFAULT_ENTRY_SIZE)) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+            Object* obj = OBJECT_AT(cur_alloc_page, i);
             MetaData* meta = META_FROM_OBJECT(obj);
 
             debug_print("[DEBUG] Verifying object at %p in alloc page was moved or is root\n", obj);
@@ -268,8 +218,7 @@ void test_evacuation(AllocatorBin* bin) {
     // Now lets check that no roots made it to evac page
     while(cur_evac_page) {
         for(uint16_t i = 0; i < cur_evac_page->entrycount; i++) {
-            Object* obj = (Object*)((char*)cur_evac_page + sizeof(PageInfo) + 
-                (i * REAL_ENTRY_SIZE(DEFAULT_ENTRY_SIZE)) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+            Object* obj = OBJECT_AT(cur_evac_page, i);
             MetaData* meta = META_FROM_OBJECT(obj);
             
             /** 
@@ -297,9 +246,8 @@ void run_tests()
 {
     AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
     test_mark_single_object(bin);
-    test_mark_object_graph(bin);
-    ///test_mark_cyclic_graph(bin);
-    //test_canary_failure(bin);
+    test_mark_object_graph(bin,4,3,3);
+    test_canary_failure(bin);
     test_evacuation(bin);
 
     verifyAllCanaries(bin);

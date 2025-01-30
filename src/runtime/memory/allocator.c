@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define CANARY_DEBUG_CHECK
 
@@ -75,6 +76,9 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
 
     bin->page_manager = &p_mgr;
     bin->page_manager->evacuate_page = allocateFreshPage(DEFAULT_ENTRY_SIZE);
+
+    getFreshPageForAllocator(bin);
+
     return bin;
 }
 
@@ -98,6 +102,11 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_t
 
     //update freelist of evac page, memcpy was destroying pointers in our freelist for evac page so I had to manually store and assign after memcpy
     bin->page_manager->evacuate_page->freelist = next_evac_freelist_object;
+    if(bin->page_manager->evacuate_page->freelist == NULL) {
+        bin->page_manager->evacuate_page->next = allocateFreshPage(bin->page_manager->evacuate_page->entrysize);
+        bin->page_manager->evacuate_page = bin->page_manager->evacuate_page->next;
+        bin->page_manager->evacuate_page->next = NULL;
+    }
 
     debug_print("[DEBUG] Object moved from %p to %p in evac page\n", obj, evac_obj_base);
 
@@ -150,13 +159,13 @@ void evacuate(Worklist *marked_nodes_list, AllocatorBin *bin) {
     }
 }
 
-THIS METHOD DOES NOT PROPERLY UPDATE THE HEAD POINTER FOR OUR FREELIST, IT JUST KEEPS
-ADDING MORE ELEMENTS
-void rebuild_freelist(PageInfo* page) {
+//THIS DOES NOT PROPERLY UPDATE FREELIST POINTERS OF OUR PAGE!!!
+
+void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
     page->freelist = NULL;
     page->freecount = 0;
     
-     FreeListEntry* last_freelist_entry = NULL;
+    FreeListEntry* last_freelist_entry = NULL;
     bool first_nonalloc_block = true;
 
     for (size_t i = 0; i < page->entrycount; i++) {
@@ -166,7 +175,7 @@ void rebuild_freelist(PageInfo* page) {
         if (!meta->isalloc) {
             if(first_nonalloc_block) {
                 page->freelist = new_freelist_entry;
-                new_freelist_entry->next = NULL;
+                page->freelist->next = NULL;
                 first_nonalloc_block = false;
             } else {
                 last_freelist_entry->next = new_freelist_entry;
@@ -178,11 +187,18 @@ void rebuild_freelist(PageInfo* page) {
         }
     }
 
+    /* Now update the current page for bin if there are freeblocks */
+    if(page->freecount > 0) {
+        bin->page = page;
+        bin->freelist = page->freelist;
+    }
+
     debug_print("[DEBUG] Rebuilt freelist for page %p with %d free blocks\n", page, page->freecount);
 }
+
 // Just run through all pages and flag nodes that arent marked as non allocated --- may not be necessary
 void clean_nonref_nodes(AllocatorBin* bin) {
-    PageInfo* current_page = bin->page;
+    PageInfo* current_page = bin->page_manager->all_pages;
 
     while(current_page != NULL) {
         for(uint16_t i = 0; i < current_page->entrycount; i++) {
@@ -197,7 +213,9 @@ void clean_nonref_nodes(AllocatorBin* bin) {
             }
         }
 
-        rebuild_freelist(current_page);
+            debug_print("[DEBUG] bin->freelist before rebuilding: %p\n", bin->freelist);
+        rebuild_freelist(bin, current_page);
+        debug_print("[DEBUG] bin->freelist after rebuilding: %p\n", bin->freelist);
         current_page = current_page->next;
     }
 }
