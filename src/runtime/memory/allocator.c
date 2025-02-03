@@ -105,6 +105,10 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
 
 // Move object to evacuate_page and reset old metadata
 static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table) {
+    // No need to evacuate old objects
+    if(META_FROM_OBJECT(obj)->isyoung == false) return NULL;
+
+    // Now we proceed with evacuation of young objects
     FreeListEntry* start_of_evac = bin->page_manager->evacuate_page->freelist;
     FreeListEntry* next_evac_freelist_object = start_of_evac->next;
 
@@ -218,7 +222,8 @@ void clean_nonref_nodes(AllocatorBin* bin) {
             Object* current_object = OBJECT_AT(current_page, i);
             MetaData* current_object_meta = META_FROM_OBJECT(current_object);
 
-            if(current_object_meta->ismarked == false && current_object_meta->isalloc == true) {
+            if((current_object_meta->ismarked == false && current_object_meta->isalloc == true)
+                || (current_object_meta->isyoung == false && current_object_meta->ref_count == 0)) {
                 RESET_METADATA_FOR_OBJECT(current_object_meta);
             }
         }
@@ -227,6 +232,18 @@ void clean_nonref_nodes(AllocatorBin* bin) {
         rebuild_freelist(bin, current_page);
         debug_print("[DEBUG] bin->freelist after rebuilding: %p\n", bin->freelist);
         current_page = current_page->next;
+    }
+}
+
+void increment_ref_count(Object* obj) {
+    META_FROM_OBJECT(obj)->ref_count++;
+}
+
+void decrement_ref_count(Object* obj) {
+    MetaData* meta = META_FROM_OBJECT(obj);
+    
+    if(meta->ref_count > 0) {
+        meta->ref_count--;
     }
 }
 
@@ -240,12 +257,12 @@ void mark_from_roots(AllocatorBin* bin)
     initialize_list(&worklist);
 
     /* Add all root objects to the worklist */
-    for (size_t i = 0; i < root_count; i++)
-    {
+    for (size_t i = 0; i < root_count; i++) {
         Object* root = root_stack[i];
         MetaData* meta = META_FROM_OBJECT(root);
-        if (root != NULL && !meta->ismarked) 
-        {
+
+        /* If an object is old we should not mark children */
+        if (meta->ref_count == 0 && !meta->ismarked && meta->isyoung) {
             meta->ismarked = true;
             add_to_list(&worklist, root);
         }
@@ -253,25 +270,28 @@ void mark_from_roots(AllocatorBin* bin)
     root_count = 0;
 
     /* Process the worklist in a BFS manner */
-    while (!is_list_empty(&worklist)) 
-    {
-        Object* obj = remove_head_from_list(&worklist);
+    while (!is_list_empty(&worklist)) {
+        Object* parent = remove_head_from_list(&worklist);
 
-        for (size_t i = 0; i < obj->num_children; i++) 
-        {
-            Object* child = obj->children[i];
-            if (child != NULL) 
-            {
+        for (size_t i = 0; i < parent->num_children; i++) {
+            Object* child = parent->children[i];
+
+            /* We increment the childs ref count since the parent points to it */
+            increment_ref_count(child);
+
+            if (child != NULL) {
                 MetaData* child_meta = META_FROM_OBJECT(child);
-                if (!child_meta->ismarked) 
+
+                /* We should only process young objects */
+                if (!child_meta->ismarked && child_meta->isyoung) 
                 {
                     child_meta->ismarked = true;
                     add_to_list(&worklist, child);
                 }
             }
         }
-        // We finished processing this node, add to mark list
-        s_push(&marked_nodes_stack,  obj);
+        /* We finished processing this node, add to mark list */
+        s_push(&marked_nodes_stack,  parent);
     }
     debug_print("Size of marked work list %li\n", marked_nodes_stack.size);
 

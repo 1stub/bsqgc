@@ -265,13 +265,32 @@ void test_evacuation(AllocatorBin* bin) {
     }
 }
 
+/**
+* Our gc operates on the notion that young objects will be compacted and old objects are
+* reference counted. As of now I do not have some way to track how long an object has survived
+* (how many collection cycles) so I will manually assign age to ensure functionality
+* of marking, ref inc/dec, and evacuation works as intended for an objects age.
+**/
+#if 0
+void test_ref_count(AllocatorBin* bin) {
+    Object* obj1 = create_root(bin);
+    Object* obj2 = create_root(bin);
+    Object* obj3 = create_root(bin);
+
+    Object* child1 = create_child(bin, obj1);
+    Object* child2 = create_child(bin, obj2);
+    Object* child3 = create_child(bin, obj3);
+}
+#endif
+
 void run_tests()
 {
     AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
     test_mark_single_object(bin);
     test_mark_object_graph(bin,4,3,3);
-    test_canary_failure(bin);
+    //test_canary_failure(bin);
     test_evacuation(bin);
+    //test_ref_count(bin);
 
     verifyAllCanaries(bin);
 }

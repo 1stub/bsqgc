@@ -95,7 +95,8 @@ typedef struct MetaData
     bool ismarked;
     bool isroot;
     uint32_t forward_index;
-} MetaData; // We want meta to be 8 bytes 
+    uint32_t ref_count;
+} MetaData; 
 #else
 typedef struct MetaData 
 {
@@ -112,5 +113,6 @@ do {                                                 \
     (meta)->ismarked = false;                        \
     (meta)->isroot = false;                          \
     (meta)->forward_index = MAX_FWD_INDEX;           \
+    (meta)->ref_count = 0;                           \
 } while(0)
 
