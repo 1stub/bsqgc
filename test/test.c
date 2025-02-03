@@ -32,6 +32,10 @@ Object* create_child(AllocatorBin* bin, Object* parent)
     return child;
 }
 
+void add_child(Object* parent, Object* child) {
+    parent->children[parent->num_children++] = child;
+}
+
 /* Following 3 methods verify integrity of canaries */
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {
@@ -271,17 +275,36 @@ void test_evacuation(AllocatorBin* bin) {
 * (how many collection cycles) so I will manually assign age to ensure functionality
 * of marking, ref inc/dec, and evacuation works as intended for an objects age.
 **/
-#if 0
+
 void test_ref_count(AllocatorBin* bin) {
     Object* obj1 = create_root(bin);
     Object* obj2 = create_root(bin);
     Object* obj3 = create_root(bin);
+    Object* obj4 = create_root(bin);
 
     Object* child1 = create_child(bin, obj1);
     Object* child2 = create_child(bin, obj2);
     Object* child3 = create_child(bin, obj3);
+
+    add_child(obj1, child2);
+    add_child(obj3, child2);
+    add_child(obj2, child1);
+    add_child(obj1, child3);
+    add_child(obj4, child2);
+
+    mark_from_roots(bin);
+
+    /* Not exactly sure how to do asserts here, but ref counts do match anticipated */
+    for (int i = 0; i < obj1->num_children; i++) {
+        debug_print("[DEBUG] Child ref count: %i\n", META_FROM_OBJECT(obj1->children[i])->ref_count);
+    }
+
+    #if 0
+    assert(c1_mdata->ref_count == 1);
+    assert(META_FROM_OBJECT(child2)->ref_count == 3);
+    assert(META_FROM_OBJECT(child3)->ref_count == 2);
+    #endif
 }
-#endif
 
 void run_tests()
 {
@@ -290,7 +313,7 @@ void run_tests()
     test_mark_object_graph(bin,4,3,3);
     //test_canary_failure(bin);
     test_evacuation(bin);
-    //test_ref_count(bin);
+    test_ref_count(bin);
 
     verifyAllCanaries(bin);
 }

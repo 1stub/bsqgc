@@ -103,10 +103,51 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
     }
 }
 
+//TODO : Move GC code into own file, this fella got big fast.
+
+/**
+* OVERVIEW OF GC CODE: 
+*   
+* This generational garbage collector is designed to have a compacted young space
+* and a reference counted old space. The specifics of both have not been perfectly
+* implemented thus far, but much of the core logic is present.
+*
+* EVACUATION:
+*    - "evacuate_object(...)" handles movement of objects to evacuation page.
+*       The data is directly memcpy'd into the evacuation page, where a forward
+*       index is stored in both evac page and old page meta data to allow for easy
+*       parent pointer updates. The old location of any object evacuated will be reset
+*       in the pending_resets stack.
+*    - "finalize_metadata_reset(...)" simply resets all metadata to a state allowing insertion
+*       back onto free list.
+*    - "update_children_pointers(...)" takes in a parent object and iterates through all children
+*       looking for forward table entries. It will then use the childs forward index to update
+*       its pointer to said child after it has been evacuated since it will reside in new memory.
+*    - "evacuate(...)" iterates through the stack of roots generated in mark_from_roots(...) and
+*       handles evacuation, updating parent pointers, and processing of root nodes. It is effectively
+*       the glue for the previous three methods.
+*
+* MARKING: 
+*    - "rebuild_freelist(...)" takes in a page and looks for any either non allocated or non referenced       
+*       non root objects and puts their slot back onto the freelist.
+*    - "clean_nonref_nodes(...)" interates through all pages and looks for nodes that need to have their
+*       metadata reset so it can be visible to the freelist. May not be necessary.
+*    - "mark_from_roots(...)" starts by iterating through our root stack and inserting all items onto a
+*       work list. It then iterates through all roots children, and children children, ... looking to 
+*       set the mark bit on all nodes reachable. Those not marked will be caught and returned to the
+*       freelist when cleaned. It returns a BFS list of all roots and children visible for usage in 
+*       evacuation. After marking is done it evacuates and cleans up any junk left over. This is the main
+*       method used for actually collecting. 
+**/
+
 // Move object to evacuate_page and reset old metadata
-static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table) {
+static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table, Stack* pending_resets) {
     // No need to evacuate old objects
     if(META_FROM_OBJECT(obj)->isyoung == false) return NULL;
+    if(META_FROM_OBJECT(obj)->forward_index != MAX_FWD_INDEX) return obj;
+
+    // Insertion into forward table delayed until post evacuation 
+    META_FROM_OBJECT(obj)->forward_index = forward_table->size;
 
     // Now we proceed with evacuation of young objects
     FreeListEntry* start_of_evac = bin->page_manager->evacuate_page->freelist;
@@ -121,30 +162,49 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_
 
     debug_print("[DEBUG] Object moved from %p to %p in evac page\n", obj, evac_obj_base);
 
+    // Now that our object has been moved, we update our forward table with ptr to its new data
     Object* evac_obj_data = (Object*)(OBJ_START_FROM_BLOCK(evac_obj_base));
-    MetaData* evac_obj_meta = META_FROM_OBJECT(evac_obj_data);
+    add_to_list(forward_table, evac_obj_data);
     
     // Insert evacuated object into forward table and set index in meta
-    evac_obj_meta->forward_index = forward_table->size;
     add_to_list(forward_table, evac_obj_data);
-
-    MetaData* old_metadata = META_FROM_OBJECT(obj);
-    RESET_METADATA_FOR_OBJECT(old_metadata);
+    s_push(pending_resets, obj); //delayed updates
 
     return evac_obj_data;
 }
 
+void finalize_metadata_reset(Stack* to_be_reset) {
+    while(!s_is_empty(to_be_reset)) {
+        MetaData* needs_reset = META_FROM_OBJECT(s_pop(to_be_reset));
+        RESET_METADATA_FOR_OBJECT(needs_reset);
+    }
+}
+
 /* Helper to update an objects children pointers */
-void update_children_pointers(Object* obj, ArrayList* worklist, ArrayList* forward_table) {
+void update_children_pointers(Object* obj, ArrayList* forward_table) {
     for (int i = 0; i < obj->num_children; i++) {
-        Object* oldest = remove_head_from_list(worklist);
-        obj->children[i] = forward_table->data[META_FROM_OBJECT(oldest)->forward_index];
+        Object* oldest = obj->children[i];
+
+        if(META_FROM_OBJECT(oldest)->forward_index != MAX_FWD_INDEX) {
+            obj->children[i] = forward_table->data[META_FROM_OBJECT(oldest)->forward_index];
+        } else {
+            obj->children[i] = oldest; // No evacuated object, keep original (may never occur)
+        }
     }
 }
 
 void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
     ArrayList worklist;
+    Stack pending_resets;
     initialize_list(&worklist);
+    stack_init(&pending_resets);
+
+    /**
+    * pending_resets contains old locations in memory of objects we evacuate into evac page.
+    * This is necessary so we can control when the blocks in pending_resets are returned back 
+    * to the free list of their respective page. This enables us to use metadata in these old
+    * locations to grab forward indexs and update parents child pointers.
+    **/
 
     ArrayList* forward_table = &f_table;
     if(!forward_table) {
@@ -156,18 +216,19 @@ void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
         
         if(META_FROM_OBJECT(obj)->isroot == false) {
             if(obj->num_children == 0) {
-                add_to_list(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
+                evacuate_object(bin, obj, forward_table, &pending_resets);
             } else {
                 // If the object we are trying to evacuate has children we will first update its children pointers then evacuate.
-                update_children_pointers(obj, &worklist, forward_table);
-                add_to_list(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
+                update_children_pointers(obj, forward_table);
+                evacuate_object(bin, obj, forward_table, &pending_resets);
             }
         } else{
             // If the object we are trying to evacuate has children we will first update its children pointers then evacuate.
-            update_children_pointers(obj, &worklist, forward_table);
-            add_to_list(&worklist, obj); //Difference is we dont evac a root
+            update_children_pointers(obj, forward_table);
         }
     }
+
+    finalize_metadata_reset(&pending_resets);
 }
 
 void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
@@ -239,6 +300,7 @@ void increment_ref_count(Object* obj) {
     META_FROM_OBJECT(obj)->ref_count++;
 }
 
+/* As of now this is not used, would be handy though when freeing non marked objects */
 void decrement_ref_count(Object* obj) {
     MetaData* meta = META_FROM_OBJECT(obj);
     
