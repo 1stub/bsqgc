@@ -138,7 +138,7 @@ void update_children_pointers(Object* obj, ArrayList* worklist, ArrayList* forwa
     }
 }
 
-void evacuate(ArrayList *marked_nodes_list, AllocatorBin *bin) {
+void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
     ArrayList worklist;
     initialize_list(&worklist);
 
@@ -147,8 +147,8 @@ void evacuate(ArrayList *marked_nodes_list, AllocatorBin *bin) {
         initialize_list(forward_table);
     }
 
-    while(!is_list_empty(marked_nodes_list)) {
-        Object* obj = remove_tail_from_list(marked_nodes_list);
+    while(!s_is_empty(marked_nodes_list)) {
+        Object* obj = s_pop(marked_nodes_list);
         
         if(META_FROM_OBJECT(obj)->isroot == false) {
             if(obj->num_children == 0) {
@@ -233,8 +233,10 @@ void clean_nonref_nodes(AllocatorBin* bin) {
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots(AllocatorBin* bin)
 {
-    ArrayList marked_nodes_list, worklist;
-    initialize_list(&marked_nodes_list);
+    Stack marked_nodes_stack;
+    ArrayList worklist;
+
+    stack_init(&marked_nodes_stack);
     initialize_list(&worklist);
 
     /* Add all root objects to the worklist */
@@ -269,20 +271,20 @@ void mark_from_roots(AllocatorBin* bin)
             }
         }
         // We finished processing this node, add to mark list
-        add_to_list(&marked_nodes_list,  obj);
+        s_push(&marked_nodes_stack,  obj);
     }
-    debug_print("Size of marked work list %li\n", marked_nodes_list.size);
+    debug_print("Size of marked work list %li\n", marked_nodes_stack.size);
 
     /* Make sure objects are in correct order in marked nodes list */
-    for(size_t i = 0; i < marked_nodes_list.size; i++) {
-        debug_print("node %p\n", marked_nodes_list.data[i]);
+    for(size_t i = 0; i < marked_nodes_stack.size; i++) {
+        debug_print("node %p\n", marked_nodes_stack.data[i]);
     }
 
     /** 
     * Since this algorithm generates marked_nodes_list in BFS manner, we can 
     * take a much easier and faster approach to updating parent pointers correctly
     **/
-    evacuate(&marked_nodes_list, bin);
+    evacuate(&marked_nodes_stack, bin);
 
     clean_nonref_nodes(bin);
 }

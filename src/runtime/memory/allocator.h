@@ -2,6 +2,7 @@
 
 #include "../common.h"
 #include "../arraylist.h"
+#include "../stack.h"
 
 #ifdef MEM_STATS
 #include <stdio.h> //printf
@@ -121,7 +122,7 @@ PageManager* initializePageManager(uint16_t entry_size);
  * over to our evacuate page(s). Traverse this list, move nodes, update
  * pointers from their parents.
  **/
-void evacuate(ArrayList* marked_nodes_list, AllocatorBin* bin); 
+void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
 
 /**
  * Process all objects starting from roots in BFS manner

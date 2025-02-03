@@ -3,6 +3,15 @@
 #include "common.h"
 #include <stdio.h>
 
+/**
+* This is not the most amazing array list implementation and will be modified as this project expands.
+* I was unsure of how to properly avoid mallocs here and attempted a chunking method where we have a
+* bunch of linked arrays (likely the proper way to implement array list) but it was a tad funky
+* to implement so for now the very simple approach I have taken should suffice.
+*
+* I write this comment just to note that this implementation will change in the future.
+**/
+
 /* This queue size will need to be tinkered with */
 #define LIST_CAPACITY 4096
 #define START_POS (LIST_CAPACITY / 2)
