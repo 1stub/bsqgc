@@ -1,7 +1,8 @@
 #pragma once
 
 #include "../common.h"
-#include "../worklist.h"
+#include "../arraylist.h"
+#include "../stack.h"
 
 #ifdef MEM_STATS
 #include <stdio.h> //printf
@@ -89,7 +90,7 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
-extern Worklist f_table;
+extern ArrayList f_table;
 
 /* A collection of roots we can read from when marking */
 extern Object* root_stack[MAX_ROOTS];
@@ -121,7 +122,7 @@ PageManager* initializePageManager(uint16_t entry_size);
  * over to our evacuate page(s). Traverse this list, move nodes, update
  * pointers from their parents.
  **/
-void evacuate(Worklist* marked_nodes_list, AllocatorBin* bin); 
+void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
 
 /**
  * Process all objects starting from roots in BFS manner

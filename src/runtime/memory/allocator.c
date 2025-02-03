@@ -13,7 +13,7 @@ AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page =
 PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
 
 /* Forwarding table to be used with updating pointers after moving to evac page */
-Worklist f_table = {.size = 0};
+ArrayList f_table = {.size = 0};
 
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
@@ -104,7 +104,7 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
 }
 
 // Move object to evacuate_page and reset old metadata
-static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_table) {
+static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table) {
     FreeListEntry* start_of_evac = bin->page_manager->evacuate_page->freelist;
     FreeListEntry* next_evac_freelist_object = start_of_evac->next;
 
@@ -122,7 +122,7 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_t
     
     // Insert evacuated object into forward table and set index in meta
     evac_obj_meta->forward_index = forward_table->size;
-    add_to_worklist(forward_table, evac_obj_data);
+    add_to_list(forward_table, evac_obj_data);
 
     MetaData* old_metadata = META_FROM_OBJECT(obj);
     RESET_METADATA_FOR_OBJECT(old_metadata);
@@ -131,42 +131,40 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, Worklist* forward_t
 }
 
 /* Helper to update an objects children pointers */
-void update_children_pointers(Object* obj, Worklist* worklist, Worklist* forward_table) {
+void update_children_pointers(Object* obj, ArrayList* worklist, ArrayList* forward_table) {
     for (int i = 0; i < obj->num_children; i++) {
-        Object* oldest = remove_oldest_from_worklist(worklist);
+        Object* oldest = remove_head_from_list(worklist);
         obj->children[i] = forward_table->data[META_FROM_OBJECT(oldest)->forward_index];
     }
 }
 
-void evacuate(Worklist *marked_nodes_list, AllocatorBin *bin) {
-    Worklist worklist;
-    initialize_worklist(&worklist);
+void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
+    ArrayList worklist;
+    initialize_list(&worklist);
 
-    Worklist* forward_table = &f_table;
+    ArrayList* forward_table = &f_table;
     if(!forward_table) {
-        initialize_worklist(forward_table);
+        initialize_list(forward_table);
     }
 
-    while(!is_worklist_empty(marked_nodes_list)) {
-        Object* obj = remove_from_worklist(marked_nodes_list);
+    while(!s_is_empty(marked_nodes_list)) {
+        Object* obj = s_pop(marked_nodes_list);
         
         if(META_FROM_OBJECT(obj)->isroot == false) {
             if(obj->num_children == 0) {
-                add_to_worklist(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
+                add_to_list(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
             } else {
                 // If the object we are trying to evacuate has children we will first update its children pointers then evacuate.
                 update_children_pointers(obj, &worklist, forward_table);
-                add_to_worklist(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
+                add_to_list(&worklist, (Object*)evacuate_object(bin, obj, forward_table));
             }
         } else{
             // If the object we are trying to evacuate has children we will first update its children pointers then evacuate.
             update_children_pointers(obj, &worklist, forward_table);
-            add_to_worklist(&worklist, obj); //Difference is we dont evac a root
+            add_to_list(&worklist, obj); //Difference is we dont evac a root
         }
     }
 }
-
-//THIS DOES NOT PROPERLY UPDATE FREELIST POINTERS OF OUR PAGE!!!
 
 void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
     page->freelist = NULL;
@@ -235,9 +233,11 @@ void clean_nonref_nodes(AllocatorBin* bin) {
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_from_roots(AllocatorBin* bin)
 {
-    Worklist marked_nodes_list, worklist;
-    initialize_worklist(&marked_nodes_list);
-    initialize_worklist(&worklist);
+    Stack marked_nodes_stack;
+    ArrayList worklist;
+
+    stack_init(&marked_nodes_stack);
+    initialize_list(&worklist);
 
     /* Add all root objects to the worklist */
     for (size_t i = 0; i < root_count; i++)
@@ -247,18 +247,15 @@ void mark_from_roots(AllocatorBin* bin)
         if (root != NULL && !meta->ismarked) 
         {
             meta->ismarked = true;
-            if (!add_to_worklist(&worklist, root)) 
-            {
-                return ; // Abort marking if worklist overflows
-            }
+            add_to_list(&worklist, root);
         }
     }
     root_count = 0;
 
     /* Process the worklist in a BFS manner */
-    while (!is_worklist_empty(&worklist)) 
+    while (!is_list_empty(&worklist)) 
     {
-        Object* obj = remove_oldest_from_worklist(&worklist);
+        Object* obj = remove_head_from_list(&worklist);
 
         for (size_t i = 0; i < obj->num_children; i++) 
         {
@@ -269,28 +266,25 @@ void mark_from_roots(AllocatorBin* bin)
                 if (!child_meta->ismarked) 
                 {
                     child_meta->ismarked = true;
-                    if (!add_to_worklist(&worklist, child)) 
-                    {
-                        return; // Abort marking if worklist overflows
-                    }
+                    add_to_list(&worklist, child);
                 }
             }
         }
         // We finished processing this node, add to mark list
-        add_to_worklist(&marked_nodes_list,  obj);
+        s_push(&marked_nodes_stack,  obj);
     }
-    debug_print("Size of marked work list %li\n", marked_nodes_list.size);
+    debug_print("Size of marked work list %li\n", marked_nodes_stack.size);
 
     /* Make sure objects are in correct order in marked nodes list */
-    for(size_t i = 0; i < marked_nodes_list.size; i++) {
-        debug_print("node %p\n", marked_nodes_list.data[i]);
+    for(size_t i = 0; i < marked_nodes_stack.size; i++) {
+        debug_print("node %p\n", marked_nodes_stack.data[i]);
     }
 
     /** 
     * Since this algorithm generates marked_nodes_list in BFS manner, we can 
     * take a much easier and faster approach to updating parent pointers correctly
     **/
-    evacuate(&marked_nodes_list, bin);
+    evacuate(&marked_nodes_stack, bin);
 
     clean_nonref_nodes(bin);
 }
