@@ -33,7 +33,7 @@
 *       non root objects and puts their slot back onto the freelist.
 *    - "clean_nonref_nodes(...)" interates through all pages and looks for nodes that need to have their
 *       metadata reset so it can be visible to the freelist. May not be necessary.
-*    - "mark_from_roots(...)" starts by iterating through our root stack and inserting all items onto a
+*    - "mark_and_evacuate(...)" starts by iterating through our root stack and inserting all items onto a
 *       work list. It then iterates through all roots children, and children children, ... looking to 
 *       set the mark bit on all nodes reachable. Those not marked will be caught and returned to the
 *       freelist when cleaned. It returns a BFS list of all roots and children visible for usage in 
@@ -41,10 +41,17 @@
 *       method used for actually collecting. 
 **/
 
+/* Forward table used in evacuation */
 extern ArrayList f_table;
 
 /* A collection of roots we can read from when marking */
 extern ArrayList root_list;
+
+/** 
+* All roots marked as isyoung == false. Problem with this is I am not sure how
+* to determine uniqueness of a root in this set.
+**/
+extern ArrayList old_roots_set;
 
 /**
  * Always returns true (for now) since it only gets called from allcoate.
@@ -57,7 +64,7 @@ bool isRoot(void* obj);
 * have old children AND that they have non zero references. If any references drops to zero
 * we can free from this method.
 **/
-void collect();
+void collect(AllocatorBin* bin);
 
 /**
  * We have a list containing all children nodes that will need to be moved
@@ -67,9 +74,16 @@ void collect();
 void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
 
 /**
+* Iterates through page looking for objects whos ref count has dropped to zero,
+* or objects whos alloc flag is not set. Reset these objects metadata then rebuild
+* freelist for given page.
+**/
+void clean_nonref_nodes(AllocatorBin* bin);
+
+/**
  * Process all objects starting from roots in BFS manner
  **/
-void mark_from_roots(AllocatorBin* bin);
+void mark_and_evacuate(AllocatorBin* bin);
 
 /* Incremented in marking */
 static inline void increment_ref_count(Object* obj) {

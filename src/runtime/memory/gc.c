@@ -1,13 +1,18 @@
 #include "gc.h"
 
-/* Forwarding table to be used with updating pointers after moving to evac page */
 ArrayList f_table = {.size = 0};
-
-/* Whenever a root is created it is inserted into this list */
 ArrayList root_list;
+ArrayList old_roots_set;
 
-void collect() {
+void collect(AllocatorBin* bin) {
+    mark_and_evacuate(bin);
+    clean_nonref_nodes(bin);
 
+    /** 
+    * Possibly move clean_nonref_nodes logic out to where we can easily differentiate between our
+    * young and old sets of objects. That way we arent ref counting young objects (and freeing them)
+    * or evacuating old objects (allthough this should not be possible).
+    **/
 }
 
 bool isRoot(void* obj) 
@@ -197,7 +202,7 @@ void clean_nonref_nodes(AllocatorBin* bin) {
 }
 
 /* Algorithm 2.2 from The Gargage Collection Handbook */
-void mark_from_roots(AllocatorBin* bin)
+void mark_and_evacuate(AllocatorBin* bin)
 {
     Stack marked_nodes_stack;
     ArrayList worklist;
@@ -214,8 +219,12 @@ void mark_from_roots(AllocatorBin* bin)
         /* We want to skip objects with ref count > 0 */
         if(meta->ref_count > 0) continue;
 
+        if(meta->isyoung == false) {
+            /* Insert into old_roots_set if I can figure out how to make a set in C lol */
+        }
+
         /* If an object is old we should not mark children */
-        if (meta->ref_count == 0 && !meta->ismarked && meta->isyoung) {
+        if (meta->ref_count == 0 && !meta->ismarked) {
             meta->ismarked = true;
             add_to_list(&worklist, root);
         }
@@ -253,6 +262,4 @@ void mark_from_roots(AllocatorBin* bin)
     }
 
     evacuate(&marked_nodes_stack, bin);
-
-    clean_nonref_nodes(bin);
 }

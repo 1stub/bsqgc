@@ -134,7 +134,7 @@ void test_mark_single_object(AllocatorBin* bin)
 
     Object* child = create_child(bin, obj);
 
-    mark_from_roots(bin);
+    collect(bin);
 
     assert_all_marked(obj);
 
@@ -174,7 +174,7 @@ void test_mark_object_graph(AllocatorBin *bin, int num_roots, int num_children_p
     Object* random_unmarked_child = create_child(bin, random_unmarked_obj);
     MetaData* rdm_md = META_FROM_OBJECT(random_unmarked_obj);
 
-    mark_from_roots(bin);
+    collect(bin);
 
     assert_all_marked(obj1);
     assert_all_marked(obj2);
@@ -289,7 +289,7 @@ void test_ref_count(AllocatorBin* bin) {
     add_child(obj1, child3);
     add_child(obj4, child2);
 
-    mark_from_roots(bin);
+    collect(bin);
 
     /* Not exactly sure how to do asserts here, but ref counts do match anticipated */
     for (int i = 0; i < obj1->num_children; i++) {
