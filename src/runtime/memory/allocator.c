@@ -15,6 +15,8 @@ PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = N
 /* Forwarding table to be used with updating pointers after moving to evac page */
 ArrayList f_table = {.size = 0};
 
+Stack empty_pages;
+
 /* Our stack of roots to be marked after allocations finish */
 Object* root_stack[MAX_ROOTS];
 
@@ -175,7 +177,7 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_
 
 void finalize_metadata_reset(Stack* to_be_reset) {
     while(!s_is_empty(to_be_reset)) {
-        MetaData* needs_reset = META_FROM_OBJECT(s_pop(to_be_reset));
+        MetaData* needs_reset = META_FROM_OBJECT((Object*)s_pop(to_be_reset));
         RESET_METADATA_FOR_OBJECT(needs_reset);
     }
 }
@@ -212,7 +214,7 @@ void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
     }
 
     while(!s_is_empty(marked_nodes_list)) {
-        Object* obj = s_pop(marked_nodes_list);
+        Object* obj = (Object*)s_pop(marked_nodes_list);
         
         if(META_FROM_OBJECT(obj)->isroot == false) {
             if(obj->num_children == 0) {
@@ -234,7 +236,8 @@ void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
 void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
     page->freelist = NULL;
     page->freecount = 0;
-    
+
+
     FreeListEntry* last_freelist_entry = NULL;
     bool first_nonalloc_block = true;
 
@@ -246,15 +249,22 @@ void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
             if(first_nonalloc_block) {
                 page->freelist = new_freelist_entry;
                 page->freelist->next = NULL;
+                last_freelist_entry = page->freelist;
                 first_nonalloc_block = false;
             } else {
                 last_freelist_entry->next = new_freelist_entry;
                 new_freelist_entry->next = NULL; 
+                last_freelist_entry = new_freelist_entry;
             }
-            last_freelist_entry = new_freelist_entry;
             
             page->freecount++;
         }
+    }
+
+    /* If our page is completly clean rotate into empty_pages */
+    if(page->freecount == page->entrycount) {
+        debug_print("[DEBUG] Copied empty page into empty_pages\n");
+        s_push(&empty_pages, page);
     }
 
     /**

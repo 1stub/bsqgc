@@ -97,6 +97,8 @@ extern ArrayList f_table;
 extern Object* root_stack[MAX_ROOTS];
 extern size_t root_count;
 
+extern Stack empty_pages;
+
 /**
  * Always returns true (for now) since it only gets called from allcoate.
  **/
@@ -155,7 +157,13 @@ static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
     bool preserve_meta = (metadata != NULL);
 
     if(alloc->freelist == NULL) {
-        getFreshPageForAllocator(alloc);
+        // Use backstore of empty pages to avoid munmap or mmap excessively
+        if(!s_is_empty(&empty_pages)) {
+            alloc->page = (PageInfo*)s_pop(&empty_pages);
+            alloc->freelist = alloc->page->freelist;
+        } else {
+            getFreshPageForAllocator(alloc);
+        }
     }
 
     FreeListEntry* ret = alloc->freelist;
