@@ -1,17 +1,25 @@
 #pragma once
 
-#include "common.h"
-
-#define MAX_STACK_SIZE 1024
+#include "xalloc.h"
 
 typedef struct {
-    Object* data[MAX_STACK_SIZE];
-    size_t size;
+    void* data;
+
+    struct StackSegment* next;
+} StackSegment;
+
+typedef struct {
+    void* top;
+    void* max;
+    StackSegment* current;
 } Stack;
 
-static inline void stack_init(Stack* s) {
-    s->size = 0;
-}
+extern thread_local Stack marking_stack;
+
+void stack_push_slow(Stack* s, void* obj);
+
+//ALWAYS CALL AT TOP LEVEL WITH SIMPLE ARGUMENTS
+#define stack_push(S, obj) if((S).top != (S).max) { *((S).top++) = obj; } else { stack_push_slow(&(S), obj); }
 
 static inline void s_push(Stack* s, Object* obj) {
     if(s->size >= MAX_STACK_SIZE) {
