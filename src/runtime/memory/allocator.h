@@ -26,13 +26,14 @@
 #define MEM_STATS_ARG(X)
 #endif
 
-#define SETUP_META_FLAGS(meta)              \
-do {                                        \
+#define SETUP_META_FLAGS(meta)             \
+do {                                       \
     (meta)->isalloc = true;                \
     (meta)->isyoung = true;                \
     (meta)->ismarked = false;              \
     (meta)->isroot = false;                \
     (meta)->forward_index = MAX_FWD_INDEX; \
+    (meta)->ref_count = 0;                 \
 } while(0)
 
 ////////////////////////////////
@@ -90,21 +91,8 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
-extern ArrayList f_table;
-
-/* A collection of roots we can read from when marking */
-extern Object* root_stack[MAX_ROOTS];
-extern size_t root_count;
-
-/**
- * Always returns true (for now) since it only gets called from allcoate.
- **/
-bool isRoot(void* obj);
-
-/**
- * When needed, get a fresh page from mmap to allocate from 
- **/
-void getFreshPageForAllocator(AllocatorBin* alloc);
+/* Pages that are empty --- avoid munmapping excessively */
+extern Stack backstore_pages;
 
 /**
  * For our allocator to be usable, the AllocatorBin must be initialized
@@ -118,16 +106,14 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
 PageManager* initializePageManager(uint16_t entry_size);
 
 /**
- * We have a list containing all children nodes that will need to be moved
- * over to our evacuate page(s). Traverse this list, move nodes, update
- * pointers from their parents.
+ * When needed, get a fresh page from mmap to allocate from 
  **/
-void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
+void getFreshPageForAllocator(AllocatorBin* alloc);
 
 /**
- * Process all objects starting from roots in BFS manner
- **/
-void mark_from_roots(AllocatorBin* bin);
+* Allocates fresh page without updates of allocator bin
+**/
+PageInfo* allocateFreshPage(uint16_t entrysize);
 
 /**
  * Slow path for usage with canaries --- debug
@@ -154,7 +140,13 @@ static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
     bool preserve_meta = (metadata != NULL);
 
     if(alloc->freelist == NULL) {
-        getFreshPageForAllocator(alloc);
+        // Use backstore of empty pages to avoid munmap or mmap excessively
+        if(!s_is_empty(&backstore_pages)) {
+            alloc->page = (PageInfo*)s_pop(&backstore_pages);
+            alloc->freelist = alloc->page->freelist;
+        } else {
+            getFreshPageForAllocator(alloc);
+        }
     }
 
     FreeListEntry* ret = alloc->freelist;
