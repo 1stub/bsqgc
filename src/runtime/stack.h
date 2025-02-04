@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include <stdio.h>
 
 #define MAX_STACK_SIZE 1024
 
