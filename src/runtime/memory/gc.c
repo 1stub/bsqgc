@@ -36,7 +36,7 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
 // Move object to evacuate_page and reset old metadata
 static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table, Stack* pending_resets) {
     // No need to evacuate old objects
-    if(META_FROM_OBJECT(obj)->isyoung == false) return NULL;
+    if(GC_IS_YOUNG(obj) == false) return NULL;
     if(META_FROM_OBJECT(obj)->forward_index != MAX_FWD_INDEX) return obj;
 
     // Insertion into forward table delayed until post evacuation 
@@ -110,7 +110,7 @@ void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
     while(!s_is_empty(marked_nodes_list)) {
         Object* obj = (Object*)s_pop(marked_nodes_list);
         
-        if(META_FROM_OBJECT(obj)->isroot == false) {
+        if(GC_IS_ROOT(obj) == false) {
             if(obj->num_children == 0) {
                 evacuate_object(bin, obj, forward_table, &pending_resets);
             } else {
@@ -131,15 +131,14 @@ void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
     page->freelist = NULL;
     page->freecount = 0;
 
-
     FreeListEntry* last_freelist_entry = NULL;
     bool first_nonalloc_block = true;
 
     for (size_t i = 0; i < page->entrycount; i++) {
         FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(page, i);
-        MetaData* meta = META_FROM_FREELIST_ENTRY(new_freelist_entry);
+        Object* obj = OBJ_FROM_FREELIST_ENTRY(new_freelist_entry);
 
-        if (!meta->isalloc) {
+        if (GC_IS_ALLOCATED(obj) == false) {
             if(first_nonalloc_block) {
                 page->freelist = new_freelist_entry;
                 page->freelist->next = NULL;
@@ -185,12 +184,11 @@ void clean_nonref_nodes(AllocatorBin* bin) {
     while(current_page != NULL) {
         for(uint16_t i = 0; i < current_page->entrycount; i++) {
             Object* current_object = OBJECT_AT(current_page, i);
-            MetaData* current_object_meta = META_FROM_OBJECT(current_object);
 
             /* Clear objects that are either not marked or non roots with zero ref count */
-            if((current_object_meta->ismarked == false && current_object_meta->isalloc == true)
-                || (current_object_meta->isroot == false && current_object_meta->ref_count == 0)) {
-                RESET_METADATA_FOR_OBJECT(current_object_meta);
+            if((GC_IS_MARKED(current_object) == false && GC_IS_ALLOCATED(current_object) == true)
+                || (GC_IS_ROOT(current_object) == false && GC_REF_COUNT(current_object) == 0)) {
+                RESET_METADATA_FOR_OBJECT(META_FROM_OBJECT(current_object));
             }
         }
 
@@ -214,18 +212,17 @@ void mark_and_evacuate(AllocatorBin* bin)
     debug_print("[DEBUG] Root list contains %li roots.\n", get_list_size(&root_list));
     for (uint16_t i = root_list.head; i < root_list.tail; i++) {
         Object* root = root_list.data[i];
-        MetaData* meta = META_FROM_OBJECT(root);
 
         /* We want to skip objects with ref count > 0 */
-        if(meta->ref_count > 0) continue;
+        if(GC_REF_COUNT(root) > 0) continue;
 
-        if(meta->isyoung == false) {
+        else if(GC_IS_YOUNG(root) == false) {
             /* Insert into old_roots_set if I can figure out how to make a set in C lol */
         }
 
         /* If an object is old we should not mark children */
-        if (meta->ref_count == 0 && !meta->ismarked) {
-            meta->ismarked = true;
+        else if (GC_REF_COUNT(root) == 0 && GC_IS_MARKED(root) == false) {
+            GC_IS_MARKED(root) = true;
             add_to_list(&worklist, root);
         }
     }
@@ -241,12 +238,10 @@ void mark_and_evacuate(AllocatorBin* bin)
             increment_ref_count(child);
 
             if (child != NULL) {
-                MetaData* child_meta = META_FROM_OBJECT(child);
-
                 /* We should only process young objects */
-                if (!child_meta->ismarked && child_meta->isyoung) 
+                if (GC_IS_MARKED(child) == false && GC_IS_YOUNG(child) == true) 
                 {
-                    child_meta->ismarked = true;
+                    GC_IS_MARKED(child) = true;
                     add_to_list(&worklist, child);
                 }
             }

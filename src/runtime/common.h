@@ -51,9 +51,11 @@ typedef struct Object{
 }Object;
 
 #define PAGE_OFFSET(p) (char*)p + sizeof(PageInfo)
+
 #define OBJECT_AT(page, index) \
     ((Object*)(PAGE_OFFSET(page) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + \
     ((index) * REAL_ENTRY_SIZE((page)->entrysize))))
+
 #define FREE_LIST_ENTRY_AT(page, index) \
 ((FreeListEntry*)(PAGE_OFFSET(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
 
@@ -64,10 +66,12 @@ typedef struct Object{
 //Start of our object from the begginning of block (address returned from allocate())
 #define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
 #define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)((char*)f_entry + ALLOC_DEBUG_CANARY_SIZE))
+#define OBJ_FROM_FREELIST_ENTRY(f_entry) ((Object*)((char*)f_entry + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData)))
 #else
 #define BLOCK_START_FROM_OBJ(obj) ((char*)obj - sizeof(MetaData))
 #define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData))
 #define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)f_entry)
+#define OBJ_FROM_FREELIST_ENTRY(f_entry) ((Object*)((char*)f_entry + sizeof(MetaData)))
 
 #endif
 
@@ -116,3 +120,23 @@ do {                                                 \
     (meta)->ref_count = 0;                           \
 } while(0)
 
+#ifdef ALLOC_DEBUG_CANARY
+
+#define GC_IS_MARKED(obj) META_FROM_OBJECT(obj)->ismarked
+#define GC_IS_YOUNG(obj) META_FROM_OBJECT(obj)->isyoung
+#define GC_IS_ALLOCATED(obj) META_FROM_OBJECT(obj)->isalloc
+#define GC_IS_ROOT(obj) META_FROM_OBJECT(obj)->isroot
+#define GC_FWD_INDEX(obj) META_FROM_OBJECT(obj)->forward_index
+#define GC_REF_COUNT(obj) META_FROM_OBJECT(obj)->ref_count
+
+#else
+
+#define GC_IS_MARKED(obj)
+#define GC_IS_YOUNG(obj)
+#define GC_IS_ALLOCATED(obj)
+#define GC_IS_ROOT(obj)
+#define GC_FWD_INDEX(obj)
+#define GC_REF_COUNT(obj)
+
+
+#endif
