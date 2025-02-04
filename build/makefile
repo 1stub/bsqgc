@@ -24,9 +24,9 @@ CFLAGS_OPT.release=-O3 -fno-omit-frame-pointer -march=x86-64-v3
 CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
 CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}
 
-MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(RUNTIME_DIR)arraylist.h  $(RUNTIME_DIR)stack.h $(MEMORY_DIR)allocator.h $(TEST_DIR)test.h 
-MEMORY_SOURCES=$(MEMORY_DIR)allocator.c $(TEST_DIR)test.c
-MEMORY_OBJS=$(OUT_OBJ)allocator.o $(OUT_OBJ)test.o
+MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(RUNTIME_DIR)arraylist.h  $(RUNTIME_DIR)stack.h $(MEMORY_DIR)allocator.h $(MEMORY_DIR)gc.h $(TEST_DIR)test.h 
+MEMORY_SOURCES=$(MEMORY_DIR)allocator.c $(MEMORY_DIR)gc.c $(TEST_DIR)test.c
+MEMORY_OBJS=$(OUT_OBJ)allocator.o $(OUT_OBJ)gc.o $(OUT_OBJ)test.o
 
 all: $(OUT_EXE)memex
 
@@ -37,6 +37,10 @@ $(OUT_EXE)memex: $(MEMORY_HEADERS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c
 $(OUT_OBJ)allocator.o: $(MEMORY_HEADERS) $(MEMORY_DIR)allocator.c
 	@mkdir -p $(OUT_OBJ)
 	$(CC) $(CFLAGS) -o $(OUT_OBJ)allocator.o -c $(MEMORY_DIR)allocator.c
+
+$(OUT_OBJ)gc.o: $(MEMORY_HEADERS) $(MEMORY_DIR)gc.c
+	@mkdir -p $(OUT_OBJ)
+	$(CC) $(CFLAGS) -o $(OUT_OBJ)gc.o -c $(MEMORY_DIR)gc.c
 
 $(OUT_OBJ)test.o: $(MEMORY_HEADERS) $(TEST_DIR)test.c
 	@mkdir -p $(OUT_OBJ)

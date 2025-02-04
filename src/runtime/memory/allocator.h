@@ -91,23 +91,8 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
-extern ArrayList f_table;
-
-/* A collection of roots we can read from when marking */
-extern ArrayList root_list;
-
 /* Pages that are empty --- avoid munmapping excessively */
 extern Stack backstore_pages;
-
-/**
- * Always returns true (for now) since it only gets called from allcoate.
- **/
-bool isRoot(void* obj);
-
-/**
- * When needed, get a fresh page from mmap to allocate from 
- **/
-void getFreshPageForAllocator(AllocatorBin* alloc);
 
 /**
  * For our allocator to be usable, the AllocatorBin must be initialized
@@ -121,34 +106,14 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
 PageManager* initializePageManager(uint16_t entry_size);
 
 /**
- * We have a list containing all children nodes that will need to be moved
- * over to our evacuate page(s). Traverse this list, move nodes, update
- * pointers from their parents.
+ * When needed, get a fresh page from mmap to allocate from 
  **/
-void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
+void getFreshPageForAllocator(AllocatorBin* alloc);
 
 /**
- * Process all objects starting from roots in BFS manner
- **/
-void mark_from_roots(AllocatorBin* bin);
-
-/* Incremented in marking */
-static inline void increment_ref_count(Object* obj) {
-    META_FROM_OBJECT(obj)->ref_count++;
-}
-
-/* Old location decremented in evacuation */
-static inline void decrement_ref_count(Object* obj) {
-    MetaData* meta = META_FROM_OBJECT(obj);
-    
-    if(meta->ref_count > 0) {
-        meta->ref_count--;
-    }
-
-    // Maybe free object if not root and ref count 0 here?
-    // Hard to say since it will get caught when rebuilding the page
-}
-
+* Allocates fresh page without updates of allocator bin
+**/
+PageInfo* allocateFreshPage(uint16_t entrysize);
 
 /**
  * Slow path for usage with canaries --- debug

@@ -1,6 +1,7 @@
 #define pragma once
 
 #include "../src/runtime/memory/allocator.h"
+#include "../src/runtime/memory/gc.h"
 
 /**
  * Our varrying tests for properly marking objects 
