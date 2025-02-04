@@ -2,7 +2,7 @@
 
 ArrayList f_table = {.size = 0};
 ArrayList root_list;
-ArrayList old_roots_set;
+ArrayList prev_roots_set;
 
 void collect(AllocatorBin* bin) {
     mark_and_evacuate(bin);
@@ -20,7 +20,6 @@ bool isRoot(void* obj)
     /** 
     * TODO: Actually implement logic for determining whether a pointer is root,
     * this would be logic that comes into play AFTER we implement type systems.
-    * --- I think ;)
     **/
     return true; // For now, assume all objects are valid pointers
 }
@@ -202,7 +201,7 @@ void clean_nonref_nodes(AllocatorBin* bin) {
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_and_evacuate(AllocatorBin* bin)
 {
-    Stack marked_nodes_stack;
+    Stack marked_nodes_stack, old_roots_stack;
     ArrayList worklist;
 
     stack_init(&marked_nodes_stack);
@@ -217,11 +216,13 @@ void mark_and_evacuate(AllocatorBin* bin)
         if(GC_REF_COUNT(root) > 0) continue;
 
         else if(GC_IS_YOUNG(root) == false) {
-            /* Insert into old_roots_set if I can figure out how to make a set in C lol */
+            /* We will need some way to handle these old roots */
+            s_push(&old_roots_stack, root);
+            continue;
         }
 
         /* If an object is old we should not mark children */
-        else if (GC_REF_COUNT(root) == 0 && GC_IS_MARKED(root) == false) {
+        if (GC_REF_COUNT(root) == 0 && GC_IS_MARKED(root) == false) {
             GC_IS_MARKED(root) = true;
             add_to_list(&worklist, root);
         }

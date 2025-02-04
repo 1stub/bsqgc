@@ -2,9 +2,10 @@
 
 #include "allocator.h"
 
-// TODO : Add concrete() collection method, trying to keep stages seperate.
 // TODO : Looks like we will need some data structure to monitor old roots
 // and a seperate to keep track of currently live roots (connected to live objects)
+// TODO : Also need to investigate further integrating the prev_roots_set applying quick sort
+// to sort all roots based on address. Look at comment for it for specifics.
 
 /**
 * OVERVIEW OF GC CODE: 
@@ -48,13 +49,15 @@ extern ArrayList f_table;
 extern ArrayList root_list;
 
 /** 
-* All roots marked as isyoung == false. Problem with this is I am not sure how
-* to determine uniqueness of a root in this set.
+* We can calculate this prev_roots_set by first ensuring our root list is sorted (quick sort prob)
+* based on pointer address. So we can very easily tell whether a object exists by walking the list.
+* We need to do some delta computation to determine the difference of addressing for actual insertion
+* into this prev_roots_set.
 **/
-extern ArrayList old_roots_set;
+extern ArrayList prev_roots_set;
 
 /**
- * Always returns true (for now) since it only gets called from allcoate.
+ * Always returns true (for now) 
  **/
 bool isRoot(void* obj);
 
