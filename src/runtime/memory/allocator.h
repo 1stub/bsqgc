@@ -94,10 +94,10 @@ extern AllocatorBin a_bin;
 extern ArrayList f_table;
 
 /* A collection of roots we can read from when marking */
-extern Object* root_stack[MAX_ROOTS];
-extern size_t root_count;
+extern ArrayList root_list;
 
-extern Stack empty_pages;
+/* Pages that are empty --- avoid munmapping excessively */
+extern Stack backstore_pages;
 
 /**
  * Always returns true (for now) since it only gets called from allcoate.
@@ -132,6 +132,24 @@ void evacuate(Stack* marked_nodes_list, AllocatorBin* bin);
  **/
 void mark_from_roots(AllocatorBin* bin);
 
+/* Incremented in marking */
+static inline void increment_ref_count(Object* obj) {
+    META_FROM_OBJECT(obj)->ref_count++;
+}
+
+/* Old location decremented in evacuation */
+static inline void decrement_ref_count(Object* obj) {
+    MetaData* meta = META_FROM_OBJECT(obj);
+    
+    if(meta->ref_count > 0) {
+        meta->ref_count--;
+    }
+
+    // Maybe free object if not root and ref count 0 here?
+    // Hard to say since it will get caught when rebuilding the page
+}
+
+
 /**
  * Slow path for usage with canaries --- debug
  **/
@@ -158,8 +176,8 @@ static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
 
     if(alloc->freelist == NULL) {
         // Use backstore of empty pages to avoid munmap or mmap excessively
-        if(!s_is_empty(&empty_pages)) {
-            alloc->page = (PageInfo*)s_pop(&empty_pages);
+        if(!s_is_empty(&backstore_pages)) {
+            alloc->page = (PageInfo*)s_pop(&backstore_pages);
             alloc->freelist = alloc->page->freelist;
         } else {
             getFreshPageForAllocator(alloc);

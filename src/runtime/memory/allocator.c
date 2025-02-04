@@ -15,10 +15,11 @@ PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = N
 /* Forwarding table to be used with updating pointers after moving to evac page */
 ArrayList f_table = {.size = 0};
 
-Stack empty_pages;
+/* Whenever a pages freelist contains all blocks after cleanup add page here */
+Stack backstore_pages;
 
-/* Our stack of roots to be marked after allocations finish */
-Object* root_stack[MAX_ROOTS];
+/* Whenever a root is created it is inserted into this list */
+ArrayList root_list;
 
 static void setup_freelist(PageInfo* pinfo, uint16_t entrysize) {
     FreeListEntry* current = pinfo->freelist;
@@ -105,7 +106,10 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
     }
 }
 
-//TODO : Move GC code into own file, this fella got big fast.
+// TODO : Move GC code into own file, this fella got big fast.
+// TODO : Add concrete() collection method, trying to keep stages seperate.
+// TODO : Looks like we will need some data structure to monitor old roots
+// and a seperate to keep track of currently live roots (connected to live objects)
 
 /**
 * OVERVIEW OF GC CODE: 
@@ -171,6 +175,9 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_
     // Insert evacuated object into forward table and set index in meta
     add_to_list(forward_table, evac_obj_data);
     s_push(pending_resets, obj); //delayed updates
+
+    // Decrementing reference to indicate that this instance is no longer used
+    decrement_ref_count(obj);
 
     return evac_obj_data;
 }
@@ -261,10 +268,10 @@ void rebuild_freelist(AllocatorBin* bin, PageInfo* page) {
         }
     }
 
-    /* If our page is completly clean rotate into empty_pages */
+    /* If our page is completly clean rotate into backstore_pages */
     if(page->freecount == page->entrycount) {
-        debug_print("[DEBUG] Copied empty page into empty_pages\n");
-        s_push(&empty_pages, page);
+        debug_print("[DEBUG] Copied empty page into backstore_pages\n");
+        s_push(&backstore_pages, page);
     }
 
     /**
@@ -293,8 +300,9 @@ void clean_nonref_nodes(AllocatorBin* bin) {
             Object* current_object = OBJECT_AT(current_page, i);
             MetaData* current_object_meta = META_FROM_OBJECT(current_object);
 
+            /* Clear objects that are either not marked or non roots with zero ref count */
             if((current_object_meta->ismarked == false && current_object_meta->isalloc == true)
-                || (current_object_meta->isyoung == false && current_object_meta->ref_count == 0)) {
+                || (current_object_meta->isroot == false && current_object_meta->ref_count == 0)) {
                 RESET_METADATA_FOR_OBJECT(current_object_meta);
             }
         }
@@ -303,19 +311,6 @@ void clean_nonref_nodes(AllocatorBin* bin) {
         rebuild_freelist(bin, current_page);
         debug_print("[DEBUG] bin->freelist after rebuilding: %p\n", bin->freelist);
         current_page = current_page->next;
-    }
-}
-
-void increment_ref_count(Object* obj) {
-    META_FROM_OBJECT(obj)->ref_count++;
-}
-
-/* As of now this is not used, would be handy though when freeing non marked objects */
-void decrement_ref_count(Object* obj) {
-    MetaData* meta = META_FROM_OBJECT(obj);
-    
-    if(meta->ref_count > 0) {
-        meta->ref_count--;
     }
 }
 
@@ -328,10 +323,14 @@ void mark_from_roots(AllocatorBin* bin)
     stack_init(&marked_nodes_stack);
     initialize_list(&worklist);
 
-    /* Add all root objects to the worklist */
-    for (size_t i = 0; i < root_count; i++) {
-        Object* root = root_stack[i];
+    /* Add all root objects to the worklist that need processing (young roots pretty much)*/
+    debug_print("[DEBUG] Root list contains %li roots.\n", get_list_size(&root_list));
+    for (uint16_t i = root_list.head; i < root_list.tail; i++) {
+        Object* root = root_list.data[i];
         MetaData* meta = META_FROM_OBJECT(root);
+
+        /* We want to skip objects with ref count > 0 */
+        if(meta->ref_count > 0) continue;
 
         /* If an object is old we should not mark children */
         if (meta->ref_count == 0 && !meta->ismarked && meta->isyoung) {
@@ -372,10 +371,6 @@ void mark_from_roots(AllocatorBin* bin)
         debug_print("node %p\n", marked_nodes_stack.data[i]);
     }
 
-    /** 
-    * Since this algorithm generates marked_nodes_list in BFS manner, we can 
-    * take a much easier and faster approach to updating parent pointers correctly
-    **/
     evacuate(&marked_nodes_stack, bin);
 
     clean_nonref_nodes(bin);

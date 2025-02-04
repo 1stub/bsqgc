@@ -8,10 +8,7 @@ Object* create_root(AllocatorBin* bin)
 
     // For testing we assume all objects created here are roots
     if(isRoot(obj)){
-        if(root_count < MAX_ROOTS){
-            root_stack[root_count] = obj;
-            root_count++;
-        }
+        add_to_list(&root_list, obj);
     }
 
     MetaData* metadata = META_FROM_OBJECT(obj);

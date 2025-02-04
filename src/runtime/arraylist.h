@@ -78,3 +78,7 @@ static inline bool is_list_empty(ArrayList* list)
 {
     return (list == NULL || list->size == 0);
 }
+
+static inline size_t get_list_size(ArrayList* list) {
+    return list->size;
+}
