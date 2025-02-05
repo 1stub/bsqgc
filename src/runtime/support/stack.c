@@ -1,23 +1,23 @@
 #include "stack.h"
 
-thread_local Stack marking_stack = {NULL, NULL, NULL};
+thread_local struct Stack marking_stack = {NULL, NULL, NULL, NULL};
 
-void stack_push_slow(Stack* s, void* obj)
+void stack_push_slow(struct Stack* s, void* obj)
 {
-    StackSegment* xseg = XALLOC_PAGE(StackSegment);
-    xseg->data = (void*)((char*)xseg + sizeof(StackSegment));
+    struct StackSegment* xseg = XALLOC_PAGE(struct StackSegment);
+    xseg->data = (void*)((char*)xseg + sizeof(struct StackSegment));
     xseg->next = s->current;
 
     s->current = xseg;
     
     s->min = xseg->data;
-    s->max = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - (sizeof(StackSegment) + sizeof(void*)));
+    s->max = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - (sizeof(struct StackSegment) + sizeof(void*)));
     s->top = s->min;
 
     *(s->top) = obj;
 }
 
-void* stack_pop_slow(Stack* s)
+void* stack_pop_slow(struct Stack* s)
 {
     void* res = *(s->top);
 
@@ -31,11 +31,11 @@ void* stack_pop_slow(Stack* s)
     }
     else
     {
-        StackSegment* xseg = s->current;
+        struct StackSegment* xseg = s->current;
         s->current = xseg->next;
 
         s->min = s->current->data;
-        s->max = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - (sizeof(StackSegment) + sizeof(void*)));
+        s->max = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - (sizeof(struct StackSegment) + sizeof(void*)));
         s->top = s->max;
 
         XALLOC_FREE_PAGE(xseg);

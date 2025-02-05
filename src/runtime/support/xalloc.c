@@ -1,17 +1,17 @@
 #include "xalloc.h"
 
-typedef struct {
+struct XAllocPage {
     struct XAllocPage* next;
-} XAllocPage;
+};
 
-typedef struct {
-    XAllocPage* freelist;
+struct XAllocPageManager {
+    struct XAllocPage* freelist;
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
     void* next_page_addr;
 #endif
-} XAllocPageManager;
+};
 
-thread_local XAllocPageManager tl_xalloc_page_manager;
+thread_local struct XAllocPageManager tl_xalloc_page_manager;
 
 void xallocInitializePageManager(size_t tcount)
 {
@@ -35,11 +35,11 @@ void* xallocAllocatePage()
         assert(tl_xalloc_page_manager.freelist != MAP_FAILED);
     }
 
-    XAllocPage* xpage = tl_xalloc_page_manager.freelist;
+    struct XAllocPage* xpage = tl_xalloc_page_manager.freelist;
     tl_xalloc_page_manager.freelist = xpage->next;
 
 #ifdef ALLOC_DEBUG_MEM_INITIALIZE
-        memset(xpage, 0, BSQ_BLOCK_ALLOCATION_SIZE);
+        xmem_pageclear(xpage);
 #endif
 
     return (void*)xpage;
@@ -47,10 +47,10 @@ void* xallocAllocatePage()
 
 void xallocFreePage(void* page)
 {
-    XAllocPage* xpage = (XAllocPage*)page;
+    struct XAllocPage* xpage = (struct XAllocPage*)page;
 
 #ifdef ALLOC_DEBUG_MEM_INITIALIZE
-    memset(xpage, 0, BSQ_BLOCK_ALLOCATION_SIZE);
+    xmem_pageclear(xpage);
 #endif
 
     xpage->next = tl_xalloc_page_manager.freelist;

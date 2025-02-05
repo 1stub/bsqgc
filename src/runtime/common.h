@@ -30,10 +30,15 @@
 extern size_t tl_id_counter;
 #endif
 
-#define BSQ_MEM_ALIGNMENT 8
 
-//Block allocation size
+#define BSQ_MEM_ALIGNMENT 8
 #define BSQ_BLOCK_ALLOCATION_SIZE 4096ul
+
+//mem is an 8byte alliged pointer and n is the number of 8byte words to clear
+void xmem_objclear(void* mem, size_t n);
+
+//Clears a page of memory
+void xmem_pageclear(void* mem);
 
 //A handy stack allocation macro
 #define BSQ_STACK_ALLOC(SIZE) ((SIZE) == 0 ? nullptr : alloca(SIZE))

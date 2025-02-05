@@ -17,7 +17,7 @@ MEMORY_TEST_DIR=$(MAKE_PATH)/../test/memory/
 BUILD := dev
 
 CC=gcc
-CSTDFLAGS=-Wall -Wextra -Wno-unused-parameter -Wuninitialized -Werror
+CSTDFLAGS=-Wall -Wextra -Wno-unused-parameter -Wuninitialized -Werror -std=gnu17
 
 CFLAGS_OPT.debug=-O0 -g -ggdb -fno-omit-frame-pointer
 CFLAGS_OPT.dev=-O0 -g -ggdb -fno-omit-frame-pointer

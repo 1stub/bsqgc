@@ -9,7 +9,7 @@
 
 #include "../common.h"
 
-void xallocInitializePageManager();
+void xallocInitializePageManager(size_t tcount);
 
 /**
  * Get a page from the system
