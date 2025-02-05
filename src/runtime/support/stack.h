@@ -3,41 +3,29 @@
 #include "xalloc.h"
 
 typedef struct {
-    void* data;
-
-    struct StackSegment* next;
+    void** data;
+    StackSegment* next;
 } StackSegment;
 
 typedef struct {
-    void* top;
-    void* max;
+    void** top;
+    void** min;
+    void** max;
     StackSegment* current;
 } Stack;
 
 extern thread_local Stack marking_stack;
 
 void stack_push_slow(Stack* s, void* obj);
+void* stack_pop_slow(Stack* s);
+
+/**
+ * Stack design -- top points to the current (valid) top of the stack and is null if the stack is empty
+ * -- min is the first valid slot (data[0]) and max is the last valid slot (data[len -1]) 
+ */
 
 //ALWAYS CALL AT TOP LEVEL WITH SIMPLE ARGUMENTS
-#define stack_push(S, obj) if((S).top != (S).max) { *((S).top++) = obj; } else { stack_push_slow(&(S), obj); }
+#define stack_empty(S) ((S).top == NULL)
 
-static inline void s_push(Stack* s, Object* obj) {
-    if(s->size >= MAX_STACK_SIZE) {
-        debug_print("[ERROR] Stack exceeded bounds!\n");
-        return ;
-    }
-    s->data[s->size++] = obj;
-}
-
-static inline Object* s_pop(Stack* s) {
-    if(s->size == 0) {
-        debug_print("[ERROR] Attempted to pop empty stack!\n");
-        return NULL;
-    }
-
-    return s->data[--s->size];
-}
-
-static inline bool s_is_empty(Stack* s) {
-    return (s->size == 0);
-}
+#define stack_push(T, S, O) if((S).top < (S).max) { *(++(S).top) = O; } else { stack_push_slow(&(S), O); }
+#define stack_pop(T, S) ((T*)((S).top != (S).min ? *((S).top--) : stack_pop_slow(&(S))))

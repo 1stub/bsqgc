@@ -42,12 +42,13 @@ void* xallocAllocatePage()
         memset(xpage, 0, BSQ_BLOCK_ALLOCATION_SIZE);
 #endif
 
-    return xpage;
+    return (void*)xpage;
 }
 
 void xallocFreePage(void* page)
 {
     XAllocPage* xpage = (XAllocPage*)page;
+
 #ifdef ALLOC_DEBUG_MEM_INITIALIZE
     memset(xpage, 0, BSQ_BLOCK_ALLOCATION_SIZE);
 #endif

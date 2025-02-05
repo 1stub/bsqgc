@@ -20,3 +20,7 @@ void* xallocAllocatePage();
  * Free a page back to the system
  */
 void xallocFreePage(void* page);
+
+#define XALLOC_PAGE(T) ((T*)xallocAllocatePage())
+#define XALLOC_FREE_PAGE(P) xallocFreePage((void*)P)
+
