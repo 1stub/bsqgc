@@ -38,10 +38,6 @@ do {                                        \
 ////////////////////////////////
 //Memory allocator
 
-//Make sure any allocated page is addressable by us -- larger than 2^31 and less than 2^42
-#define MIN_ALLOCATED_ADDRESS 2147483648ul
-#define MAX_ALLOCATED_ADDRESS 281474976710656ul
-
 struct FreeListEntry
 {
    struct FreeListEntry* next;
