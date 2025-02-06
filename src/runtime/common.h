@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdalign.h>
 #include <assert.h>
+
+#include <threads.h>
 #include <sys/mman.h> //mmap
 
 //DEFAULT ENABLED WHILE LOTS OF DEVELOPMENT!!!!
@@ -14,10 +16,36 @@
 
 #ifdef BSQ_GC_CHECK_ENABLED
 #define ALLOC_DEBUG_MEM_INITIALIZE
+#define ALLOC_DEBUG_MEM_DETERMINISTIC
 #define ALLOC_DEBUG_CANARY
 #endif
 
+#ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
+#define XALLOC_BASE_ADDRESS ((void*)(281474976710656ul)) 
+#define XALLOC_ADDRESS_SPAN 2147483648ul
+
+#define GC_ALLOC_BASE_ADDRESS 0x000000000000
+#define GC_ALLOC_ADDRESS_SPAN 0x000000000000
+#endif
+
+//Make sure any allocated page is addressable by us -- larger than 2^31 and less than 2^42
+#define MIN_ALLOCATED_ADDRESS ((void*)(2147483648ul))
+#define MAX_ALLOCATED_ADDRESS ((void*)(281474976710656ul))
+
 #define BSQ_MEM_ALIGNMENT 8
+#define BSQ_BLOCK_ALLOCATION_SIZE 4096ul
+
+//mem is an 8byte alliged pointer and n is the number of 8byte words to clear
+void xmem_objclear(void* mem, size_t n);
+
+//Clears a page of memory
+void xmem_pageclear(void* mem);
+
+extern mtx_t g_lock;
+extern size_t tl_id_counter;
+
+//A handy stack allocation macro
+#define BSQ_STACK_ALLOC(SIZE) ((SIZE) == 0 ? nullptr : alloca(SIZE))
 
 #define DEBUG
 
