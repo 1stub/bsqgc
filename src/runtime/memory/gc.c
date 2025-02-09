@@ -208,11 +208,9 @@ void mark_and_evacuate(AllocatorBin* bin)
     struct Stack marked_nodes_stack, old_roots_stack;
     ArrayList worklist;
 
-    stack_init(&marked_nodes_stack);
     initialize_list(&worklist);
 
-    /* Add all root objects to the worklist that need processing (young roots pretty much)*/
-    debug_print("[DEBUG] Root list contains %li roots.\n", get_list_size(&root_list));
+    /* We need to be parsing execuation stack for roots here */
     for (uint16_t i = root_list.head; i < root_list.tail; i++) {
         Object* root = root_list.data[i];
 
@@ -221,7 +219,7 @@ void mark_and_evacuate(AllocatorBin* bin)
 
         else if(GC_IS_YOUNG(root) == false) {
             /* We will need some way to handle these old roots */
-            s_push(&old_roots_stack, root);
+            stack_push(Object*, &old_roots_stack, root);
             continue;
         }
 
@@ -252,8 +250,8 @@ void mark_and_evacuate(AllocatorBin* bin)
             }
         }
         /* We finished processing this node, add to mark list */
-        s_push(&marked_nodes_stack,  parent);
+        stack_push(Object*, &marked_nodes_stack,  parent);
     }
 
-    evacuate(&marked_nodes_stack, bin);
+    // evacuate(&marked_nodes_stack, bin);
 }
