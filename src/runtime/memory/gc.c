@@ -6,7 +6,7 @@ ArrayList prev_roots_set;
 
 void collect(AllocatorBin* bin) {
     mark_and_evacuate(bin);
-    clean_nonref_nodes(bin);
+    //clean_nonref_nodes(bin);
 
     /** 
     * Possibly move clean_nonref_nodes logic out to where we can easily differentiate between our
@@ -24,6 +24,8 @@ bool isRoot(void* obj)
     return true; // For now, assume all objects are valid pointers
 }
 
+#if 0
+
 static void update_evacuation_freelist(AllocatorBin *bin) {
     if (bin->page_manager->evacuate_page->freelist == NULL) {
         bin->page_manager->evacuate_page->next = allocateFreshPage(bin->page_manager->evacuate_page->entrysize);
@@ -33,7 +35,7 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
 }
 
 // Move object to evacuate_page and reset old metadata
-static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table, Stack* pending_resets) {
+static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_table, struct Stack* pending_resets) {
     // No need to evacuate old objects
     if(GC_IS_YOUNG(obj) == false) return NULL;
     if(META_FROM_OBJECT(obj)->forward_index != MAX_FWD_INDEX) return obj;
@@ -60,7 +62,7 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_
     
     // Insert evacuated object into forward table and set index in meta
     add_to_list(forward_table, evac_obj_data);
-    s_push(pending_resets, obj); //delayed updates
+    stack_push(Object*, pending_resets, obj); //delayed updates
 
     // Decrementing reference to indicate that this instance is no longer used
     decrement_ref_count(obj);
@@ -68,7 +70,7 @@ static void* evacuate_object(AllocatorBin *bin, Object* obj, ArrayList* forward_
     return evac_obj_data;
 }
 
-void finalize_metadata_reset(Stack* to_be_reset) {
+void finalize_metadata_reset(struct Stack* to_be_reset) {
     while(!s_is_empty(to_be_reset)) {
         MetaData* needs_reset = META_FROM_OBJECT((Object*)s_pop(to_be_reset));
         RESET_METADATA_FOR_OBJECT(needs_reset);
@@ -88,7 +90,7 @@ void update_children_pointers(Object* obj, ArrayList* forward_table) {
     }
 }
 
-void evacuate(Stack *marked_nodes_list, AllocatorBin *bin) {
+void evacuate(struct Stack *marked_nodes_list, AllocatorBin *bin) {
     ArrayList worklist;
     Stack pending_resets;
     initialize_list(&worklist);
@@ -198,10 +200,12 @@ void clean_nonref_nodes(AllocatorBin* bin) {
     }
 }
 
+#endif 
+
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_and_evacuate(AllocatorBin* bin)
 {
-    Stack marked_nodes_stack, old_roots_stack;
+    struct Stack marked_nodes_stack, old_roots_stack;
     ArrayList worklist;
 
     stack_init(&marked_nodes_stack);
@@ -249,12 +253,6 @@ void mark_and_evacuate(AllocatorBin* bin)
         }
         /* We finished processing this node, add to mark list */
         s_push(&marked_nodes_stack,  parent);
-    }
-    debug_print("Size of marked work list %li\n", marked_nodes_stack.size);
-
-    /* Make sure objects are in correct order in marked nodes list */
-    for(size_t i = 0; i < marked_nodes_stack.size; i++) {
-        debug_print("node %p\n", marked_nodes_stack.data[i]);
     }
 
     evacuate(&marked_nodes_stack, bin);

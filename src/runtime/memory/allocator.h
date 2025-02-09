@@ -98,6 +98,11 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
 PageManager* initializePageManager(uint16_t entry_size);
 
 /**
+* Allocates fresh page without updates of allocator bin
+**/
+PageInfo* allocateFreshPage(uint16_t entrysize);
+
+/**
  * Slow path for usage with canaries --- debug
  **/
 static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc, MetaData** meta){

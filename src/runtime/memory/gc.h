@@ -2,11 +2,6 @@
 
 #include "allocator.h"
 
-// TODO : Looks like we will need some data structure to monitor old roots
-// and a seperate to keep track of currently live roots (connected to live objects)
-// TODO : Also need to investigate further integrating the prev_roots_set applying quick sort
-// to sort all roots based on address. Look at comment for it for specifics.
-
 /**
 * OVERVIEW OF GC CODE: 
 *   
@@ -74,7 +69,7 @@ void collect(AllocatorBin* bin);
  * over to our evacuate page(s). Traverse this list, move nodes, update
  * pointers from their parents.
  **/
-void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
+void evacuate(struct Stack* marked_nodes_list, AllocatorBin* bin); 
 
 /**
 * Iterates through page looking for objects whos ref count has dropped to zero,

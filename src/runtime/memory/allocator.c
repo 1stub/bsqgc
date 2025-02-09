@@ -36,7 +36,7 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
     return pinfo;
 }
 
-static PageInfo* allocateFreshPage(uint16_t entrysize)
+PageInfo* allocateFreshPage(uint16_t entrysize)
 {
     void* page = mmap(NULL, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
     assert(page != MAP_FAILED);
