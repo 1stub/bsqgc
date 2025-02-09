@@ -99,7 +99,6 @@ typedef struct Object{
 
 #endif
 
-
 /** 
 * As this project grows it would be best if we instead predefine multiple
 * entry sizes depending on the type of objects to be allocated
@@ -123,6 +122,7 @@ typedef struct MetaData
     bool ismarked;
     bool isroot;
     uint32_t forward_index;
+    uint32_t ref_count;
 } MetaData; // We want meta to be 8 bytes 
 #else
 typedef struct MetaData 
@@ -140,5 +140,26 @@ do {                                                 \
     (meta)->ismarked = false;                        \
     (meta)->isroot = false;                          \
     (meta)->forward_index = MAX_FWD_INDEX;           \
+    (meta)->ref_count = 0;                           \
 } while(0)
 
+
+#ifdef ALLOC_DEBUG_CANARY
+
+#define GC_IS_MARKED(obj) META_FROM_OBJECT(obj)->ismarked
+#define GC_IS_YOUNG(obj) META_FROM_OBJECT(obj)->isyoung
+#define GC_IS_ALLOCATED(obj) META_FROM_OBJECT(obj)->isalloc
+#define GC_IS_ROOT(obj) META_FROM_OBJECT(obj)->isroot
+#define GC_FWD_INDEX(obj) META_FROM_OBJECT(obj)->forward_index
+#define GC_REF_COUNT(obj) META_FROM_OBJECT(obj)->ref_count
+
+#else
+
+#define GC_IS_MARKED(obj)
+#define GC_IS_YOUNG(obj)
+#define GC_IS_ALLOCATED(obj)
+#define GC_IS_ROOT(obj)
+#define GC_FWD_INDEX(obj)
+#define GC_REF_COUNT(obj)
+
+#endif

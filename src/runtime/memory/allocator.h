@@ -2,7 +2,7 @@
 
 #include "../common.h"
 #include "../arraylist.h"
-#include "../stack.h"
+#include "../support/stack.h"
 
 #ifdef MEM_STATS
 #include <stdio.h> //printf
@@ -81,17 +81,6 @@ typedef struct AllocatorBin
 } AllocatorBin;
 extern AllocatorBin a_bin;
 
-extern ArrayList f_table;
-
-/* A collection of roots we can read from when marking */
-extern Object* root_stack[MAX_ROOTS];
-extern size_t root_count;
-
-/**
- * Always returns true (for now) since it only gets called from allcoate.
- **/
-bool isRoot(void* obj);
-
 /**
  * When needed, get a fresh page from mmap to allocate from 
  **/
@@ -107,18 +96,6 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
  * we have a list of all pages and those that have stuff in them
  **/
 PageManager* initializePageManager(uint16_t entry_size);
-
-/**
- * We have a list containing all children nodes that will need to be moved
- * over to our evacuate page(s). Traverse this list, move nodes, update
- * pointers from their parents.
- **/
-void evacuate(Stack* marked_nodes_list, AllocatorBin* bin); 
-
-/**
- * Process all objects starting from roots in BFS manner
- **/
-void mark_from_roots(AllocatorBin* bin);
 
 /**
  * Slow path for usage with canaries --- debug
