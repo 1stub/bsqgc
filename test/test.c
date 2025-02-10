@@ -268,34 +268,49 @@ void test_evacuation(AllocatorBin* bin) {
 
 #endif
 
-void stack_test() {
-    struct Stack s = {NULL, NULL, NULL, NULL};
-
-    int x = 5;
-    int* i = &x;
-
-    stack_push(int*, s, i);
-
-    int* ret = stack_pop(int, s);
-
-    debug_print("stack contains %i\n", *ret);
-}
+#define NUM_ELEMENTS 1024
 
 void arraylist_test() {
-    struct ArrayList list = {NULL, NULL, NULL, NULL, NULL};
+    struct ArrayList list;
+    arraylist_initialize(&list);
 
-    int x = 43;
-    int* i = &x;
+    /* Array created so references to objects can be inserted in ArrayList */
+    int test_data[NUM_ELEMENTS];
+    for (int i = 0; i < NUM_ELEMENTS; i++) {
+        test_data[i] = i + 1; 
+    }
 
-    arraylist_push_tail(list, i);
-    debug_print("list contains %i\n", *arraylist_pop_tail(int, list));
+    for(int val = (NUM_ELEMENTS / 2); val < NUM_ELEMENTS; val++) {
+        arraylist_push_tail(list, &test_data[val]);
+        debug_print("pushed %i at tail %p\n", test_data[val], list.tail);
+    }
+
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        arraylist_push_head(list, &test_data[val]);
+        debug_print("pushed %i at head %p\n", test_data[val], list.head);
+    }
+
+    #if 0
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        void* old_tail = list.tail;
+        debug_print("max for page %p\n", GET_MAX(list.tail));
+        debug_print("min for page %p\n", GET_MIN(list.tail));
+        void* addr = arraylist_pop_tail(int, list);
+        debug_print("tail contains %i at %p stored in page tail at %p\n", *(int*)addr, addr, old_tail);
+    }
+
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        void* old_head = list.head;
+        void* addr = arraylist_pop_head(int, list);
+        debug_print("head contains %i at %p stored in page head at %p\n", *(int*)addr, addr, old_head);
+    }
+        #endif
 }
 
 void run_tests()
 {
     xallocInitializePageManager(1);
 
-    stack_test();
     arraylist_test();
 
     printf("Hi, I can still compile!\n");

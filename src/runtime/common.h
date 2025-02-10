@@ -28,6 +28,7 @@
 #define GC_ALLOC_ADDRESS_SPAN 0x000000000000
 #endif
 
+#define PAGE_ADDR_MASK 0xFFFFFFFFFFFFF000ul
 //Make sure any allocated page is addressable by us -- larger than 2^31 and less than 2^42
 #define MIN_ALLOCATED_ADDRESS ((void*)(2147483648ul))
 #define MAX_ALLOCATED_ADDRESS ((void*)(281474976710656ul))
