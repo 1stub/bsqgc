@@ -38,10 +38,10 @@
 **/
 
 /* Forward table used in evacuation */
-extern ArrayList f_table;
+extern struct ArrayList f_table;
 
 /* A collection of roots we can read from when marking */
-extern ArrayList root_list;
+extern struct ArrayList root_list;
 
 /** 
 * We can calculate this prev_roots_set by first ensuring our root list is sorted (quick sort prob)
@@ -49,7 +49,7 @@ extern ArrayList root_list;
 * We need to do some delta computation to determine the difference of addressing for actual insertion
 * into this prev_roots_set.
 **/
-extern ArrayList prev_roots_set;
+extern struct ArrayList prev_roots_set;
 
 /**
  * Always returns true (for now) 

@@ -268,19 +268,35 @@ void test_evacuation(AllocatorBin* bin) {
 
 #endif
 
+void stack_test() {
+    struct Stack s = {NULL, NULL, NULL, NULL};
+
+    int x = 5;
+    int* i = &x;
+
+    stack_push(int*, s, i);
+
+    int* ret = stack_pop(int, s);
+
+    debug_print("stack contains %i\n", *ret);
+}
+
 void arraylist_test() {
-    ArrayList* list;
+    struct ArrayList list = {NULL, NULL, NULL, NULL, NULL};
+
+    int x = 43;
+    int* i = &x;
+
+    arraylist_push_tail(list, i);
+    debug_print("list contains %i\n", *arraylist_pop_tail(int, list));
 }
 
 void run_tests()
 {
-    //AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
-    //test_mark_single_object(bin);
-    //test_mark_object_graph(bin,4,3,3);
-    //test_canary_failure(bin);
-    //test_evacuation(bin);
+    xallocInitializePageManager(1);
 
-    //verifyAllCanaries(bin);
+    stack_test();
+    arraylist_test();
 
     printf("Hi, I can still compile!\n");
 }

@@ -21,7 +21,7 @@
 #endif
 
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
-#define XALLOC_BASE_ADDRESS ((void*)(281474976710656ul)) 
+#define XALLOC_BASE_ADDRESS ((void*)(0x4000000000ul)) //modified to be 256 GiB, prev addr was too big
 #define XALLOC_ADDRESS_SPAN 2147483648ul
 
 #define GC_ALLOC_BASE_ADDRESS 0x000000000000
