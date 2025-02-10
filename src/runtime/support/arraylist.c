@@ -48,29 +48,21 @@ void arraylist_push_tail_slow(struct ArrayList* al, void* obj)
     *(al->tail) = obj;
 }
 
-#if 0
 void* arraylist_pop_head_slow(struct ArrayList* al)
 { 
     void* res = *(al->head);
 
-    if(al->current->next == NULL) {
-        al->current = NULL;
-        
-        al->min = NULL;
-        al->max = NULL;
+    if(al->head_segment->next == NULL && al->head_segment->prev == NULL) {
+        al->tail_segment = NULL;
+        al->head_segment = NULL;
         al->head = NULL;
         al->tail = NULL;
     }
     else 
     {
-        struct ArrayListSegment* xseg = al->current;
-        al->current = xseg->next;
-
-        al->min = al->current->data;
-        al->max = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - sizeof(struct ArrayListSegment) + sizeof(void*));
-        al->head = al->min;
-        al->tail = al->max;
-
+        struct ArrayListSegment* xseg = al->head_segment;
+        al->head_segment = al->head_segment->next;
+        al->head = GET_MIN(al->head_segment);
         XALLOC_FREE_PAGE(xseg);
         debug_print("FREE PAGE!!!!\n");
     }
@@ -82,25 +74,23 @@ void* arraylist_pop_tail_slow(struct ArrayList* al)
 { 
     void* res = *(al->tail);
 
-    struct ArrayListSegment* tail_seg = (struct ArrayListSegment*)((uintptr_t)res & PAGE_ADDR_MASK);
-
     /* The tail segment was the only segment so just reset everything */
-    if(tail_seg->prev == NULL)
+    if(al->tail_segment->prev == NULL && al->tail_segment->next == NULL)
     {
-        al->current = NULL;
-        
-        al->min = NULL;
-        al->max = NULL;
+        al->tail_segment = NULL;
+        al->head_segment = NULL;
         al->head = NULL;
         al->tail = NULL;
     }
     else
     {
-        XALLOC_FREE_PAGE(tail_seg);
+        struct ArrayListSegment* old_tail_segment = al->tail_segment;
+        al->tail_segment = al->tail_segment->prev;
+        al->tail = (void*)(GET_MAX(al->tail_segment));
+        XALLOC_FREE_PAGE(old_tail_segment);
         debug_print("FREE PAGE!!!!\n");
     }
 
     return res;
 }
-#endif
     

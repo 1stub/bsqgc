@@ -290,21 +290,16 @@ void arraylist_test() {
         debug_print("pushed %i at head %p\n", test_data[val], list.head);
     }
 
-    #if 0
     for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
         void* old_tail = list.tail;
-        debug_print("max for page %p\n", GET_MAX(list.tail));
-        debug_print("min for page %p\n", GET_MIN(list.tail));
         void* addr = arraylist_pop_tail(int, list);
         debug_print("tail contains %i at %p stored in page tail at %p\n", *(int*)addr, addr, old_tail);
     }
-
     for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
         void* old_head = list.head;
         void* addr = arraylist_pop_head(int, list);
         debug_print("head contains %i at %p stored in page head at %p\n", *(int*)addr, addr, old_head);
     }
-        #endif
 }
 
 void run_tests()
