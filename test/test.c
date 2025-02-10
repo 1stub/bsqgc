@@ -268,6 +268,10 @@ void test_evacuation(AllocatorBin* bin) {
 
 #endif
 
+void arraylist_test() {
+    ArrayList* list;
+}
+
 void run_tests()
 {
     //AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
