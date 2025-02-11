@@ -17,15 +17,25 @@ void arraylist_push_head_slow(struct ArrayList* al, void* obj)
     debug_print("NEW PAGE!!!!!!\n");
     xseg->data = (void*)((char*)xseg + sizeof(struct ArrayListSegment));
 
+    /* Case when no pages have been linked */
     xseg->prev = NULL;
-    xseg->next = al->head_segment;
-    if(al->head_segment != NULL) {
-        al->head_segment->prev = xseg;
+    if(al->head_segment == NULL && al->tail_segment == NULL) {
+        xseg->next = NULL;
+        al->head_segment = xseg;
+        al->tail_segment = xseg;
+
+        al->tail = xseg->data;
+        al->head = xseg->data;
     }
+    else {
+        xseg->next = al->head_segment;
+        if(al->head_segment != NULL) {
+            al->head_segment->prev = xseg;
+        }
 
-    al->head_segment = xseg;
-
-    al->head = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - sizeof(struct ArrayListSegment) - sizeof(void*)); // max itself cannot be inserted to, need slot just before
+        al->head_segment = xseg;
+        al->head = (void*)((char*)xseg->data + BSQ_BLOCK_ALLOCATION_SIZE - sizeof(struct ArrayListSegment) - sizeof(void*)); // max itself cannot be inserted to, need slot just before
+    }
 
     *(al->head) = obj;
 }
@@ -36,14 +46,25 @@ void arraylist_push_tail_slow(struct ArrayList* al, void* obj)
     debug_print("NEW PAGE!!!!!!\n");
     xseg->data = (void*)((char*)xseg + sizeof(struct ArrayListSegment));
 
-    xseg->prev = al->tail_segment;
+    /* Case when no pages have been linked */
     xseg->next = NULL;
-    if(al->tail_segment != NULL) {
-        al->tail_segment->next = xseg;
-    }
-    al->tail_segment = xseg;
+    if(al->head_segment == NULL && al->tail_segment == NULL) {
+        xseg->prev = NULL;
+        al->head_segment = xseg;
+        al->tail_segment = xseg;
 
-    al->tail = xseg->data;
+        al->tail = xseg->data;
+        al->head = xseg->data;
+    }
+    else {
+        xseg->prev = al->tail_segment;
+        if(al->tail_segment != NULL) {
+            al->tail_segment->next = xseg;
+        }
+        al->tail_segment = xseg;
+
+        al->tail = xseg->data;
+    }
 
     *(al->tail) = obj;
 }

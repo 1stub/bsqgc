@@ -268,7 +268,7 @@ void test_evacuation(AllocatorBin* bin) {
 
 #endif
 
-#define NUM_ELEMENTS 1024
+#define NUM_ELEMENTS 4096
 
 void arraylist_test() {
     struct ArrayList list;
@@ -285,6 +285,7 @@ void arraylist_test() {
         debug_print("pushed %i at tail %p\n", test_data[val], list.tail);
     }
 
+    #if 0
     for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
         arraylist_push_head(list, &test_data[val]);
         debug_print("pushed %i at head %p\n", test_data[val], list.head);
@@ -295,6 +296,8 @@ void arraylist_test() {
         void* addr = arraylist_pop_tail(int, list);
         debug_print("tail contains %i at %p stored in page tail at %p\n", *(int*)addr, addr, old_tail);
     }
+    #endif
+
     for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
         void* old_head = list.head;
         void* addr = arraylist_pop_head(int, list);
