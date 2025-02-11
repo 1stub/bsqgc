@@ -1,12 +1,19 @@
 #include "threadinfo.h"
 
-#define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= V) & (V <= MAX_ALLOCATED_ADDRESS))
-#define PTR_NOT_IN_STACK(BASE, CURR, V) ((V < CURR) | (BASE < V))
+thread_local size_t tl_id;
+thread_local void** native_stack_base;
+thread_local void** native_stack_contents;
+thread_local struct RegisterContents native_register_contents;
 
-#define PROCESS_REGISTER(BASE, CURR, R) \
-    register void* R asm(#R); \
-    native_register_contents.##R = NULL;\
-    if(PTR_IN_RANGE(R) & PTR_NOT_IN_STACK(BASE, CURR, R)) { native_register_contents.##R = R; }
+/* Need to ensure comparisons only happen under void* */
+#define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= (void*)V) & ((void*)V <= MAX_ALLOCATED_ADDRESS))
+#define PTR_NOT_IN_STACK(BASE, CURR, V) (((void*)V < (void*)CURR) | ((void*)BASE < (void*)V))
+
+/* Was originally ..._contents.##R but preprocessor was not happy */
+#define PROCESS_REGISTER(BASE, CURR, R)                                       \
+    register void* R asm(#R);                                                 \
+    native_register_contents.R = NULL;                                      \
+    if(PTR_IN_RANGE(R) & PTR_NOT_IN_STACK(BASE, CURR, R)) { native_register_contents.R = R; }
 
 void initializeStartup()
 {
@@ -41,7 +48,7 @@ void loadNativeRootSet()
 
         while (current_frame < native_stack_base) {
             void* potential_ptr = *(current_frame + 1);
-            if (ALLOC_IN_RANGE(potential_ptr) & PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
+            if (PTR_IN_RANGE(potential_ptr) & PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
                 native_stack_contents[i++] = potential_ptr;
             }
             current_frame = *(void**)current_frame;

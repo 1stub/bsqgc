@@ -1,6 +1,7 @@
 #pragma once
 
 #include "allocator.h"
+#include "../support/threadinfo.h"
 
 /**
 * OVERVIEW OF GC CODE: 

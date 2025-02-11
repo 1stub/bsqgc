@@ -255,3 +255,11 @@ void mark_and_evacuate(AllocatorBin* bin)
 }
 
 #endif
+
+/* This will be integrated into our mark from roots method, for now just walks stack of program */
+void walk_stack() 
+{
+    initializeStartup();
+    initializeThreadLocalInfo();
+    loadNativeRootSet();
+}
