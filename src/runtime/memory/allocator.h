@@ -1,8 +1,9 @@
 #pragma once
 
 #include "../common.h"
-#include "../arraylist.h"
+#include "../support/arraylist.h"
 #include "../support/stack.h"
+#include "../support/worklist.h"
 
 #ifdef MEM_STATS
 #include <stdio.h> //printf

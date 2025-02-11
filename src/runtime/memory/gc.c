@@ -1,8 +1,10 @@
 #include "gc.h"
 
-ArrayList f_table = {.size = 0};
-ArrayList root_list;
-ArrayList prev_roots_set;
+#if 0
+
+struct ArrayList f_table;
+struct ArrayList root_list;
+struct ArrayList prev_roots_set;
 
 void collect(AllocatorBin* bin) {
     mark_and_evacuate(bin);
@@ -23,8 +25,6 @@ bool isRoot(void* obj)
     **/
     return true; // For now, assume all objects are valid pointers
 }
-
-#if 0
 
 static void update_evacuation_freelist(AllocatorBin *bin) {
     if (bin->page_manager->evacuate_page->freelist == NULL) {
@@ -198,9 +198,7 @@ void clean_nonref_nodes(AllocatorBin* bin) {
         debug_print("[DEBUG] bin->freelist after rebuilding: %p\n", bin->freelist);
         current_page = current_page->next;
     }
-}
-
-#endif 
+} 
 
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_and_evacuate(AllocatorBin* bin)
@@ -255,3 +253,5 @@ void mark_and_evacuate(AllocatorBin* bin)
 
     // evacuate(&marked_nodes_stack, bin);
 }
+
+#endif

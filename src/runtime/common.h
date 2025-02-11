@@ -21,13 +21,15 @@
 #endif
 
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
-#define XALLOC_BASE_ADDRESS ((void*)(281474976710656ul)) 
+// Original address for base was ((void*)(281474976710656ul)), prev was causing MAP_FAILED
+#define XALLOC_BASE_ADDRESS ((void*)(0x4000000000ul)) 
 #define XALLOC_ADDRESS_SPAN 2147483648ul
 
 #define GC_ALLOC_BASE_ADDRESS 0x000000000000
 #define GC_ALLOC_ADDRESS_SPAN 0x000000000000
 #endif
 
+#define PAGE_ADDR_MASK 0xFFFFFFFFFFFFF000ul
 //Make sure any allocated page is addressable by us -- larger than 2^31 and less than 2^42
 #define MIN_ALLOCATED_ADDRESS ((void*)(2147483648ul))
 #define MAX_ALLOCATED_ADDRESS ((void*)(281474976710656ul))
@@ -40,6 +42,10 @@ void xmem_objclear(void* mem, size_t n);
 
 //Clears a page of memory
 void xmem_pageclear(void* mem);
+
+// Gets min and max pointers on a page from any address in the page
+#define GET_MIN_FOR_SEGMENT(P, SEG) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG))
+#define GET_MAX_FOR_SEGMENT(P, SEG) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG + BSQ_BLOCK_ALLOCATION_SIZE - (SEG + sizeof(void*))))
 
 extern mtx_t g_lock;
 extern size_t tl_id_counter;

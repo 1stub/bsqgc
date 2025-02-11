@@ -268,15 +268,71 @@ void test_evacuation(AllocatorBin* bin) {
 
 #endif
 
+#define NUM_ELEMENTS 4096
+
+void arraylist_test() {
+    struct ArrayList list;
+    arraylist_initialize(&list);
+
+    /* Array created so references to objects can be inserted in ArrayList */
+    int test_data[NUM_ELEMENTS];
+    for (int i = 0; i < NUM_ELEMENTS; i++) {
+        test_data[i] = i + 1; 
+    }
+
+    for(int val = (NUM_ELEMENTS / 2); val < NUM_ELEMENTS; val++) {
+        arraylist_push_tail(list, &test_data[val]);
+        debug_print("pushed %i at tail %p\n", test_data[val], list.tail);
+    }
+
+    #if 0
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        arraylist_push_head(list, &test_data[val]);
+        debug_print("pushed %i at head %p\n", test_data[val], list.head);
+    }
+
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        void* old_tail = list.tail;
+        void* addr = arraylist_pop_tail(int, list);
+        debug_print("tail contains %i at %p stored in page tail at %p\n", *(int*)addr, addr, old_tail);
+    }
+    #endif
+
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        void* old_head = list.head;
+        void* addr = arraylist_pop_head(int, list);
+        debug_print("head contains %i at %p stored in page head at %p\n", *(int*)addr, addr, old_head);
+    }
+}
+
+void worklist_test() {
+    struct WorkList list;
+    worklist_initialize(&list);
+
+    /* Array created so references to objects can be inserted in WorkList */
+    int test_data[NUM_ELEMENTS];
+    for (int i = 0; i < NUM_ELEMENTS; i++) {
+        test_data[i] = i + 1; 
+    }
+
+    for(int val = (NUM_ELEMENTS / 2); val < NUM_ELEMENTS; val++) {
+        worklist_push(list, &test_data[val]);
+        debug_print("pushed %i at tail %p\n", test_data[val], list.tail);
+    }
+
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        void* old_head = list.head;
+        void* addr = worklist_pop(int, list);
+        debug_print("head contains %i at %p stored in page head at %p\n", *(int*)addr, addr, old_head);
+    }
+}
+
 void run_tests()
 {
-    //AllocatorBin* bin = initializeAllocatorBin(DEFAULT_ENTRY_SIZE);
-    //test_mark_single_object(bin);
-    //test_mark_object_graph(bin,4,3,3);
-    //test_canary_failure(bin);
-    //test_evacuation(bin);
+    xallocInitializePageManager(1);
 
-    //verifyAllCanaries(bin);
+    //arraylist_test();
+    worklist_test();
 
     printf("Hi, I can still compile!\n");
 }
