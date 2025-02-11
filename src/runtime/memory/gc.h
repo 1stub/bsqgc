@@ -84,6 +84,9 @@ void clean_nonref_nodes(AllocatorBin* bin);
  **/
 void mark_and_evacuate(AllocatorBin* bin);
 
+/* Testing */
+void walk_stack();
+
 /* Incremented in marking */
 static inline void increment_ref_count(Object* obj) {
     GC_REF_COUNT(obj)++;

@@ -1,5 +1,7 @@
 #include "threadinfo.h"
 
+#include <stdio.h>
+
 thread_local size_t tl_id;
 thread_local void** native_stack_base;
 thread_local void** native_stack_contents;
@@ -12,7 +14,7 @@ thread_local struct RegisterContents native_register_contents;
 /* Was originally ..._contents.##R but preprocessor was not happy */
 #define PROCESS_REGISTER(BASE, CURR, R)                                       \
     register void* R asm(#R);                                                 \
-    native_register_contents.R = NULL;                                      \
+    native_register_contents.R = NULL;                                        \
     if(PTR_IN_RANGE(R) & PTR_NOT_IN_STACK(BASE, CURR, R)) { native_register_contents.R = R; }
 
 void initializeStartup()
@@ -35,6 +37,7 @@ void initializeThreadLocalInfo()
     native_stack_base = rbp;
 }
 
+/* Need to discuss specifics of this walking, not totally sure about taking the potential ptr to be cur_frame + 1 */
 void loadNativeRootSet()
 {
     native_stack_contents = (void**)xallocAllocatePage();
@@ -46,8 +49,9 @@ void loadNativeRootSet()
         void** current_frame = rsp;
         int i = 0;
 
-        while (current_frame < native_stack_base) {
+        while (current_frame && current_frame < native_stack_base) {
             void* potential_ptr = *(current_frame + 1);
+            debug_print("potential_ptr %p, current_frame %p\n", potential_ptr, current_frame);
             if (PTR_IN_RANGE(potential_ptr) & PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
                 native_stack_contents[i++] = potential_ptr;
             }
