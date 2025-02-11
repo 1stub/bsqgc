@@ -305,11 +305,34 @@ void arraylist_test() {
     }
 }
 
+void worklist_test() {
+    struct WorkList list;
+    worklist_initialize(&list);
+
+    /* Array created so references to objects can be inserted in WorkList */
+    int test_data[NUM_ELEMENTS];
+    for (int i = 0; i < NUM_ELEMENTS; i++) {
+        test_data[i] = i + 1; 
+    }
+
+    for(int val = (NUM_ELEMENTS / 2); val < NUM_ELEMENTS; val++) {
+        worklist_push(list, &test_data[val]);
+        debug_print("pushed %i at tail %p\n", test_data[val], list.tail);
+    }
+
+    for(int val = 0; val < (NUM_ELEMENTS / 2); val++) {
+        void* old_head = list.head;
+        void* addr = worklist_pop(int, list);
+        debug_print("head contains %i at %p stored in page head at %p\n", *(int*)addr, addr, old_head);
+    }
+}
+
 void run_tests()
 {
     xallocInitializePageManager(1);
 
-    arraylist_test();
+    //arraylist_test();
+    worklist_test();
 
     printf("Hi, I can still compile!\n");
 }

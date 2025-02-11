@@ -83,7 +83,7 @@ void* arraylist_pop_head_slow(struct ArrayList* al)
     {
         struct ArrayListSegment* xseg = al->head_segment;
         al->head_segment = al->head_segment->next;
-        al->head = GET_MIN(al->head_segment);
+        al->head = GET_MIN_FOR_SEGMENT(al->head_segment, AL_SEG_SIZE);
         XALLOC_FREE_PAGE(xseg);
         debug_print("FREE PAGE!!!!\n");
     }
@@ -107,7 +107,7 @@ void* arraylist_pop_tail_slow(struct ArrayList* al)
     {
         struct ArrayListSegment* old_tail_segment = al->tail_segment;
         al->tail_segment = al->tail_segment->prev;
-        al->tail = (void*)(GET_MAX(al->tail_segment));
+        al->tail = (void*)(GET_MAX_FOR_SEGMENT(al->tail_segment, AL_SEG_SIZE));
         XALLOC_FREE_PAGE(old_tail_segment);
         debug_print("FREE PAGE!!!!\n");
     }
