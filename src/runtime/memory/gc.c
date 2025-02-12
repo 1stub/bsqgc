@@ -260,5 +260,32 @@ void mark_and_evacuate(AllocatorBin* bin)
 void walk_stack() 
 {
     loadNativeRootSet();
+
+    void** cur_discovered_stack_val = native_stack_contents;
+    while(*cur_discovered_stack_val != NULL) {
+        void* stored_ptr = *cur_discovered_stack_val;
+        debug_print("found pointer at %p storing %p\n", 
+            cur_discovered_stack_val, stored_ptr);
+
+        
+        cur_discovered_stack_val += 1;
+    }
+
+    debug_print("%p\n", native_register_contents.rax);
+    debug_print("%p\n", native_register_contents.rbx);
+    debug_print("%p\n", native_register_contents.rcx);
+    debug_print("%p\n", native_register_contents.rdi);
+    debug_print("%p\n", native_register_contents.rdx);
+    debug_print("%p\n", native_register_contents.rsi);
+    debug_print("%p\n", native_register_contents.r8);
+    debug_print("%p\n", native_register_contents.r9);
+    debug_print("%p\n", native_register_contents.r10);
+    debug_print("%p\n", native_register_contents.r11);
+    debug_print("%p\n", native_register_contents.r12);
+    debug_print("%p\n", native_register_contents.r13);
+    debug_print("%p\n", native_register_contents.r14);
+    debug_print("%p\n", native_register_contents.r15);
+
+
     unloadNativeRootSet();
 }
