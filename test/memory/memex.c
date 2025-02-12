@@ -8,7 +8,5 @@ int main()
     test_stack_walk();
     do_stuff();
 
-    walk_stack();
-
     return 0;
 }

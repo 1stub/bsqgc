@@ -261,15 +261,6 @@ void walk_stack()
 {
     loadNativeRootSet();
 
-    void** cur_discovered_stack_val = native_stack_contents;
-    while (*cur_discovered_stack_val != NULL) {
-        void* stored_ptr = *cur_discovered_stack_val;
-        debug_print("potential root pointer at %p storing %p\n", 
-                        cur_discovered_stack_val, stored_ptr);
-
-        cur_discovered_stack_val += 1;
-    }
-
     debug_print("%p\n", native_register_contents.rax);
     debug_print("%p\n", native_register_contents.rbx);
     debug_print("%p\n", native_register_contents.rcx);

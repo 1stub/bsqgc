@@ -1,44 +1,59 @@
 #include "stack_test.h"
 
-int global_var = 0xDEADBAD1;
-int* globa_ptr_1 = NULL;
+int* global_ptr_0 = NULL;
+int* global_ptr_1 = NULL;
+int* global_ptr_2 = NULL;
+int* global_ptr_3 = NULL;
+int* global_ptr_4 = NULL;
+int* global_ptr_5 = NULL;
 
-static int* local_ptr = NULL;
-static int* global_ptr = NULL;
-static int* global_ptr_1 = NULL;
-static int yes = 0xDEADBAD6;
+void print_global_addresses() {
+    printf("global_ptr_0 %p\n", global_ptr_0);
+    printf("global_ptr_1 %p\n", global_ptr_1);
+    printf("global_ptr_2 %p\n", global_ptr_2);
+    printf("global_ptr_3 %p\n", global_ptr_3);
+    printf("global_ptr_4 %p\n", global_ptr_4);
+    printf("global_ptr_5 %p\n\n", global_ptr_5);
+
+}
 
 int test_stack_walk() {
-    local_ptr = malloc(sizeof(int));
-    *local_ptr = 0xDEADBAD2;
+    /* We assign these global pointers to hold addreses of stack variables, keeping them alive */
+    int* local_0 = malloc(sizeof(int));
+    int* local_1 = malloc(sizeof(int));
+    int* local_2 = malloc(sizeof(int));
 
-    global_ptr = malloc(sizeof(int));
-    *global_ptr = 0xDEADBAD3;
+    *local_0 = 0xDEADBEF0;
+    *local_1 = 0xDEADBEF1;
+    *local_2 = 0xDEADBEF2;
 
-    global_ptr_1 = malloc(sizeof(int));
-    *global_ptr_1 = 0xDEADBAD4;
+    global_ptr_0 = local_0;
+    global_ptr_1 = local_1;
+    global_ptr_2 = local_2;
 
-    globa_ptr_1 = &yes;
+    print_global_addresses();
 
-    printf("Address of global_var: %p\n", (void *)&global_var);
-    printf("Address of global_ptr: %p\n", (void *)global_ptr);
-    printf("Address of local_ptr: %p\n", (void *)local_ptr);
-    printf("Address of global_ptr_1: %p\n", (void *)global_ptr_1);
-
-    printf("Value of global_var: 0x%x\n", global_var);
-    printf("Value of *local_ptr: 0x%x\n", *local_ptr);
-    printf("Value of *global_ptr: 0x%x\n", *global_ptr);
-    printf("Value of *global_ptr_1: 0x%x\n", *global_ptr_1);
+    walk_stack();
 
     return 0;
 }
 
 int do_stuff() {
-    int* ptr = &global_var;
-    int* ptr1 = malloc(sizeof(int));
-    *ptr1 = 0xDEADBAD7;
-    printf("ptr addr %p\n", ptr);
-    printf("ptr1 addr %p\n", ptr1);
+    int* local_3 = malloc(sizeof(int));
+    int* local_4 = malloc(sizeof(int));
+    int* local_5 = malloc(sizeof(int));
 
-    return 0;
+    *local_3 = 0xDEADBEF3;
+    *local_4 = 0xDEADBEF4;
+    *local_5 = 0xDEADBEF5;
+
+    global_ptr_3 = local_3;
+    global_ptr_4 = local_4;
+    global_ptr_5 = local_5;
+    
+    print_global_addresses();
+
+    walk_stack();
+
+    return 1;
 }
