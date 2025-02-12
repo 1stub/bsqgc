@@ -7,9 +7,8 @@ thread_local void** native_stack_base;
 thread_local void** native_stack_contents;
 thread_local struct RegisterContents native_register_contents;
 
-/* Need to ensure comparisons only happen under void* */
 #define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= (void*)V) && ((void*)V <= MAX_ALLOCATED_ADDRESS))
-#define PTR_NOT_IN_STACK(BASE, CURR, V) (((void*)V < (void*)CURR) | ((void*)BASE < (void*)V))
+#define PTR_NOT_IN_STACK(BASE, CURR, V) ((((void*)V) < ((void*)CURR)) || (((void*)BASE) < ((void*)V)))
 
 /* Was originally ..._contents.##R but preprocessor was not happy */
 #define PROCESS_REGISTER(BASE, CURR, R)                                       \
@@ -43,38 +42,35 @@ void loadNativeRootSet()
     native_stack_contents = (void**)xallocAllocatePage();
     xmem_pageclear(native_stack_contents);
 
+    debug_print("loadNativeRootSet: thread_id = %zu, native_stack_base = %p\n", tl_id, native_stack_base);
+
     //this code should load from the asm stack pointers and copy the native stack into the roots memory
     #ifdef __x86_64__
         /* originally current_frame used rsp */
         register void* rbp asm("rbp");
         register void* rsp asm("rsp");
-        void** current_frame = rsp;
-        void** current_base = rbp;
+        void** current_frame = rbp;
+        void** end_of_frame = rsp;
         int i = 0;
 
-        debug_print("native stack base %p base pointer %p top of stack %p\n", native_stack_base, rbp, rsp);
-
         /* Walk the stack */
-        while (current_frame < native_stack_base) {
+        while (current_frame <= native_stack_base) {
+            debug_print("native stack base %p frame pointer %p end of frame %p\n", native_stack_base, current_frame, end_of_frame);
             
             /* Walk entire frame looking for valid pointers */
-            size_t frame_size = (current_base - current_frame);
-            debug_print("current frame size %li\n", frame_size);
-            
-            for(size_t j = 0; j < frame_size; j++) {
-                void* potential_ptr = *(current_frame + j);
+            void** it = current_frame;
+            while(it > end_of_frame) {            
+                void* potential_ptr = *it;
                 debug_print("potential_ptr %p, current_frame %p\n", potential_ptr, current_frame);
-                if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
+                if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, end_of_frame, potential_ptr)) {
                     native_stack_contents[i++] = potential_ptr;
                     debug_print("current found %i potential pointers\n", i);
                 }
+                it--;
             }
-            /**
-            * rbp stores pointer to next rbp. we can set our current stack pointer
-            * to the old rsp to keep iterating up the stack
-            **/
-            current_frame = current_base; 
-            current_base = *(void**)current_base;
+            /* Move to the next frame */
+            end_of_frame = current_frame + 1; // update frame boundary to return address of prev frame
+            current_frame = *(void**)current_frame; // Move to the next frame
         }
 
         /* Check contents of registers */
