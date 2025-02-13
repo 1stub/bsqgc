@@ -255,7 +255,11 @@ void mark_and_evacuate(AllocatorBin* bin)
 }
 
 #endif
-
+/**
+* TODO: Need to make the hierarchial page structure to sequentially build up addresses.
+* Our structure will have 4 pages where each entry holds 12 bits of our address.
+* The fifth page holds a singular bit to discern whether our page is allocated or not.
+**/
 bool address_in_gc_page(void* addr) {
     AllocatorBin* bin = &a_bin; 
 
@@ -265,6 +269,8 @@ bool address_in_gc_page(void* addr) {
         uintptr_t addr_mask = (uintptr_t)addr & PAGE_ADDR_MASK;
         if(addr_mask == (uintptr_t)cur) return true;
         else return false;
+
+        cur = cur->next;
     }
     return false;
 }
@@ -292,8 +298,6 @@ void walk_stack()
     void** cur = native_stack_contents;
     int i = 0;
 
-    /* our issue lies in the fact that we dont know whether this pointer is on a gc page or not */
-    /* My current approach is hacky but works for testing */
     while(cur[i]) {
         void* addr = cur[i];
         if(address_in_gc_page(addr)) {

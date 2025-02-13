@@ -19,5 +19,14 @@ int test_stack_walk() {
     *local_4 = 0xDEADBEF4;
     *local_5 = 0xDEADBEF5;
 
+    printf("allocated object at %p\n", local_0);
+    printf("allocated object at %p\n", local_1);
+    printf("allocated object at %p\n", local_2);
+    printf("allocated object at %p\n", local_3);
+    printf("allocated object at %p\n", local_4);
+    printf("allocated object at %p\n", local_5);
+
+    walk_stack();
+
     return 0;
 }
