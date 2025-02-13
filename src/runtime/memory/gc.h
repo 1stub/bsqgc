@@ -1,6 +1,7 @@
 #pragma once
 
 #include "allocator.h"
+#include "../support/threadinfo.h"
 
 /**
 * OVERVIEW OF GC CODE: 
@@ -82,6 +83,9 @@ void clean_nonref_nodes(AllocatorBin* bin);
  * Process all objects starting from roots in BFS manner
  **/
 void mark_and_evacuate(AllocatorBin* bin);
+
+/* Testing */
+void walk_stack();
 
 /* Incremented in marking */
 static inline void increment_ref_count(Object* obj) {

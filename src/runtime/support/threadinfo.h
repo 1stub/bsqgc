@@ -3,7 +3,7 @@
 #include "../common.h"
 #include "xalloc.h"
 
-thread_local size_t tl_id;
+extern thread_local size_t tl_id;
 
 struct RegisterContents
 {
@@ -28,9 +28,9 @@ struct RegisterContents
 };
 
 //This needs to be initialized on thread creation
-thread_local void** native_stack_base;
-thread_local void** native_stack_contents;
-thread_local struct RegisterContents native_register_contents;
+extern thread_local void** native_stack_base;
+extern thread_local void** native_stack_contents;
+extern thread_local struct RegisterContents native_register_contents;
 
 void initializeStartup();
 void initializeThreadLocalInfo();

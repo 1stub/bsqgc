@@ -1,11 +1,12 @@
-#include <stdio.h>
-#include "../test.h" //not good to do i think (the ../../ stuff)
+#include "../stack_test.h" 
 
 int main()
 {
-    printf("hello world\n");
+    initializeStartup();
+    initializeThreadLocalInfo();
 
-    run_tests();
+    test_stack_walk();
+    do_stuff();
 
     return 0;
 }

@@ -255,3 +255,27 @@ void mark_and_evacuate(AllocatorBin* bin)
 }
 
 #endif
+
+/* This will be integrated into our mark from roots method, for now just walks stack of program */
+void walk_stack() 
+{
+    loadNativeRootSet();
+
+    debug_print("%p\n", native_register_contents.rax);
+    debug_print("%p\n", native_register_contents.rbx);
+    debug_print("%p\n", native_register_contents.rcx);
+    debug_print("%p\n", native_register_contents.rdi);
+    debug_print("%p\n", native_register_contents.rdx);
+    debug_print("%p\n", native_register_contents.rsi);
+    debug_print("%p\n", native_register_contents.r8);
+    debug_print("%p\n", native_register_contents.r9);
+    debug_print("%p\n", native_register_contents.r10);
+    debug_print("%p\n", native_register_contents.r11);
+    debug_print("%p\n", native_register_contents.r12);
+    debug_print("%p\n", native_register_contents.r13);
+    debug_print("%p\n", native_register_contents.r14);
+    debug_print("%p\n", native_register_contents.r15);
+
+
+    unloadNativeRootSet();
+}
