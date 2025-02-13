@@ -255,6 +255,25 @@ void mark_and_evacuate(AllocatorBin* bin)
 }
 
 #endif
+/**
+* TODO: Need to make the hierarchial page structure to sequentially build up addresses.
+* Our structure will have 4 pages where each entry holds 12 bits of our address.
+* The fifth page holds a singular bit to discern whether our page is allocated or not.
+**/
+bool address_in_gc_page(void* addr) {
+    AllocatorBin* bin = &a_bin; 
+
+    PageInfo* cur = bin->page_manager->all_pages;
+
+    while(cur) {
+        uintptr_t addr_mask = (uintptr_t)addr & PAGE_ADDR_MASK;
+        if(addr_mask == (uintptr_t)cur) return true;
+        else return false;
+
+        cur = cur->next;
+    }
+    return false;
+}
 
 /* This will be integrated into our mark from roots method, for now just walks stack of program */
 void walk_stack() 
@@ -275,6 +294,20 @@ void walk_stack()
     debug_print("%p\n", native_register_contents.r13);
     debug_print("%p\n", native_register_contents.r14);
     debug_print("%p\n", native_register_contents.r15);
+
+    void** cur = native_stack_contents;
+    int i = 0;
+
+    while(cur[i]) {
+        void* addr = cur[i];
+        if(address_in_gc_page(addr)) {
+            if(META_FROM_OBJECT(addr)->isalloc) {
+                debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
+            }
+        }
+
+        i++;
+    }
 
 
     unloadNativeRootSet();

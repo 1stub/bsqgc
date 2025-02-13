@@ -6,7 +6,9 @@ int main()
     initializeThreadLocalInfo();
 
     test_stack_walk();
-    do_stuff();
+
+    /* Not calling here, appears the compiler is removing some variables that SHOULD be on the stack */
+    //walk_stack();
 
     return 0;
 }

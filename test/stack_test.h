@@ -6,4 +6,3 @@
 #include <stdlib.h>
 
 int test_stack_walk();
-int do_stuff();

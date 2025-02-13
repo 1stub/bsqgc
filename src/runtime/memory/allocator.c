@@ -38,7 +38,14 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
 
 PageInfo* allocateFreshPage(uint16_t entrysize)
 {
+#ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
+    static void* old_base = GC_ALLOC_BASE_ADDRESS;
+    void* page = mmap((void*)old_base, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+    old_base += BSQ_BLOCK_ALLOCATION_SIZE;
+#else
     void* page = mmap(NULL, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+#endif
+
     assert(page != MAP_FAILED);
 
     return initializePage(page, entrysize);
