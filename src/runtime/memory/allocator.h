@@ -147,11 +147,6 @@ static inline void* allocate(AllocatorBin* alloc, MetaData* metadata)
     }    
     #endif
 
-    // Do I really want this to always create an object of the same
-    // format as our object struct (in common.h)? design choice...
-    Object* new_obj = (Object*)obj;
-    new_obj->num_children = 0;
-
     // If meta was created initialize object
     if(!preserve_meta) {
         SETUP_META_FLAGS(metadata);
