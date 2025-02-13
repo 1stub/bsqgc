@@ -8,7 +8,8 @@ thread_local void** native_stack_contents;
 thread_local struct RegisterContents native_register_contents;
 
 #define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= V) && (V <= MAX_ALLOCATED_ADDRESS))
-#define PTR_NOT_IN_STACK(BASE, CURR, V) (((V) < ((void*)CURR)) || (((void*)BASE) < (V)))
+#define PTR_NOT_IN_STACK(BASE, CURR, V) ((((void*)V) < ((void*)CURR)) || (((void*)BASE) < ((void*)V)))
+#define IS_ALIGNED(V) (((uintptr_t)(V) % sizeof(void*)) == 0)
 
 /* Was originally ..._contents.##R but preprocessor was not happy */
 #define PROCESS_REGISTER(BASE, CURR, R)                                       \
@@ -58,7 +59,9 @@ void loadNativeRootSet()
             void* potential_ptr = *(current_frame);
             debug_print("Checking potential_ptr at address %p: value = %p\n", current_frame, potential_ptr);
 
-            if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
+            /* Maybe try to keep gc internal variables in same memory to not polute stack? */
+            if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)
+                && IS_ALIGNED(potential_ptr)) {
                 native_stack_contents[i++] = potential_ptr;
                 
                 debug_print("Found potential root: %p (stored at %p)\n", potential_ptr, current_frame);
@@ -73,7 +76,7 @@ void loadNativeRootSet()
         debug_print("Finished walking the stack. Total roots found: %d\n", i);
 
         /* Check contents of registers */
-        /*PROCESS_REGISTER(native_stack_base, current_frame, rax)
+        PROCESS_REGISTER(native_stack_base, current_frame, rax)
         PROCESS_REGISTER(native_stack_base, current_frame, rbx)
         PROCESS_REGISTER(native_stack_base, current_frame, rcx)
         PROCESS_REGISTER(native_stack_base, current_frame, rdx)
@@ -86,7 +89,7 @@ void loadNativeRootSet()
         PROCESS_REGISTER(native_stack_base, current_frame, r12)
         PROCESS_REGISTER(native_stack_base, current_frame, r13)
         PROCESS_REGISTER(native_stack_base, current_frame, r14)
-        PROCESS_REGISTER(native_stack_base, current_frame, r15)*/
+        PROCESS_REGISTER(native_stack_base, current_frame, r15)
     #else
         #error "Architecture not supported"
     #endif

@@ -27,18 +27,6 @@ int test_stack_walk() {
     *local_1 = 0xDEADBEF1;
     *local_2 = 0xDEADBEF2;
 
-    global_ptr_0 = local_0;
-    global_ptr_1 = local_1;
-    global_ptr_2 = local_2;
-
-    print_global_addresses();
-
-    walk_stack();
-
-    return 0;
-}
-
-int do_stuff() {
     int* local_3 = malloc(sizeof(int));
     int* local_4 = malloc(sizeof(int));
     int* local_5 = malloc(sizeof(int));
@@ -51,9 +39,20 @@ int do_stuff() {
     global_ptr_4 = local_4;
     global_ptr_5 = local_5;
     
-    print_global_addresses();
+
+    global_ptr_0 = local_0;
+    global_ptr_1 = local_1;
+    global_ptr_2 = local_2;
+
+    //print_global_addresses();
 
     walk_stack();
+
+    return 0;
+}
+
+int do_stuff() {
+
 
     return 1;
 }
