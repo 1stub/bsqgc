@@ -60,8 +60,7 @@ void loadNativeRootSet()
             debug_print("Checking potential_ptr at address %p: value = %p\n", current_frame, potential_ptr);
 
             /* Maybe try to keep gc internal variables in same memory to not polute stack? */
-            if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)
-                && IS_ALIGNED(potential_ptr)) {
+            if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
                 native_stack_contents[i++] = potential_ptr;
                 
                 debug_print("Found potential root: %p (stored at %p)\n", potential_ptr, current_frame);

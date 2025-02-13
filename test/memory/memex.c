@@ -6,7 +6,8 @@ int main()
     initializeThreadLocalInfo();
 
     test_stack_walk();
-    do_stuff();
+
+    walk_stack();
 
     return 0;
 }

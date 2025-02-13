@@ -256,6 +256,19 @@ void mark_and_evacuate(AllocatorBin* bin)
 
 #endif
 
+bool address_in_gc_page(void* addr) {
+    AllocatorBin* bin = &a_bin; 
+
+    PageInfo* cur = bin->page_manager->all_pages;
+
+    while(cur) {
+        uintptr_t addr_mask = (uintptr_t)addr & PAGE_ADDR_MASK;
+        if(addr_mask == (uintptr_t)cur) return true;
+        else return false;
+    }
+    return false;
+}
+
 /* This will be integrated into our mark from roots method, for now just walks stack of program */
 void walk_stack() 
 {
@@ -275,6 +288,22 @@ void walk_stack()
     debug_print("%p\n", native_register_contents.r13);
     debug_print("%p\n", native_register_contents.r14);
     debug_print("%p\n", native_register_contents.r15);
+
+    void** cur = native_stack_contents;
+    int i = 0;
+
+    /* our issue lies in the fact that we dont know whether this pointer is on a gc page or not */
+    /* My current approach is hacky but works for testing */
+    while(cur[i]) {
+        void* addr = cur[i];
+        if(address_in_gc_page(addr)) {
+            if(META_FROM_OBJECT(addr)->isalloc) {
+                debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
+            }
+        }
+
+        i++;
+    }
 
 
     unloadNativeRootSet();
