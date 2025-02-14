@@ -4,6 +4,7 @@
 #include "../support/arraylist.h"
 #include "../support/stack.h"
 #include "../support/worklist.h"
+#include "../support/pagetable.h"
 
 #ifdef MEM_STATS
 #include <stdio.h> //printf

@@ -52,6 +52,11 @@ PageInfo* allocateFreshPage(uint16_t entrysize)
 
     assert(page != MAP_FAILED);
 
+    if(!pagetable_root) {
+        pagetable_init();
+    }
+    pagetable_insert(page);
+
     return initializePage(page, entrysize);
 }
 

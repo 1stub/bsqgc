@@ -256,53 +256,17 @@ void mark_and_evacuate(AllocatorBin* bin)
 
 #endif
 
-/**
-* TODO: Need to make the hierarchial page structure to sequentially build up addresses.
-* Our structure will have 4 pages where each entry holds 12 bits of our address.
-* The fifth page holds a singular bit to discern whether our page is allocated or not.
-* This would be called a multi level page table.
-**/
-bool address_in_gc_page(void* addr) {
-    AllocatorBin* bin = &a_bin; 
-
-    PageInfo* cur = bin->page_manager->all_pages;
-
-    while(cur) {
-        uintptr_t addr_mask = (uintptr_t)addr & PAGE_ADDR_MASK;
-        if(addr_mask == (uintptr_t)cur) return true;
-        else return false;
-
-        cur = cur->next;
-    }
-    return false;
-}
-
 /* This will be integrated into our mark from roots method, for now just walks stack of program */
 void walk_stack() 
 {
     loadNativeRootSet();
 
-    debug_print("%p\n", native_register_contents.rax);
-    debug_print("%p\n", native_register_contents.rbx);
-    debug_print("%p\n", native_register_contents.rcx);
-    debug_print("%p\n", native_register_contents.rdi);
-    debug_print("%p\n", native_register_contents.rdx);
-    debug_print("%p\n", native_register_contents.rsi);
-    debug_print("%p\n", native_register_contents.r8);
-    debug_print("%p\n", native_register_contents.r9);
-    debug_print("%p\n", native_register_contents.r10);
-    debug_print("%p\n", native_register_contents.r11);
-    debug_print("%p\n", native_register_contents.r12);
-    debug_print("%p\n", native_register_contents.r13);
-    debug_print("%p\n", native_register_contents.r14);
-    debug_print("%p\n", native_register_contents.r15);
-
-    void** cur = native_stack_contents;
+    void** cur_stack = native_stack_contents;
     int i = 0;
 
-    while(cur[i]) {
-        void* addr = cur[i];
-        if(address_in_gc_page(addr)) {
+    while(cur_stack[i]) {
+        void* addr = cur_stack[i];
+        if(pagetable_query(addr)) {
             if(META_FROM_OBJECT(addr)->isalloc) {
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
@@ -310,6 +274,21 @@ void walk_stack()
 
         i++;
     }
+
+    pagetable_query(native_register_contents.rax);
+    pagetable_query(native_register_contents.rbx);
+    pagetable_query(native_register_contents.rcx);
+    pagetable_query(native_register_contents.rdx);
+    pagetable_query(native_register_contents.rsi);
+    pagetable_query(native_register_contents.rdi);
+    pagetable_query(native_register_contents.r8);
+    pagetable_query(native_register_contents.r9);
+    pagetable_query(native_register_contents.r10);
+    pagetable_query(native_register_contents.r11);
+    pagetable_query(native_register_contents.r12);
+    pagetable_query(native_register_contents.r13);
+    pagetable_query(native_register_contents.r14);
+    pagetable_query(native_register_contents.r15);
 
     unloadNativeRootSet();
 }

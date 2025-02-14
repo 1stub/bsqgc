@@ -1,5 +1,11 @@
 #include "pagetable.h"
 
+#define LEVEL1_SHIFT 36
+#define LEVEL2_SHIFT 24
+#define LEVEL3_SHIFT 12
+#define LEVEL_MASK 0xFFF
+#define PAGE_PRESENT 1
+
 void** pagetable_root;
 
 void pagetable_init() {
@@ -9,10 +15,10 @@ void pagetable_init() {
 
 void pagetable_insert(void* addr) {
     uint64_t address = (uint64_t)addr;
-    uint64_t index1 = (address >> 36) & 0xFFF; // Bits 47-36
-    uint64_t index2 = (address >> 24) & 0xFFF; // Bits 35-24
-    uint64_t index3 = (address >> 12) & 0xFFF; // Bits 23-12
-    uint64_t index4 = address & 0xFFF;         // Bits 11-0
+    uint64_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK; // Bits 47-36
+    uint64_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK; // Bits 35-24
+    uint64_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK; // Bits 23-12
+    uint64_t index4 = address & LEVEL_MASK;                   // Bits 11-0
 
     void** level1 = pagetable_root;
     if (!level1[index1]) {
@@ -33,15 +39,15 @@ void pagetable_insert(void* addr) {
     }
 
     void** level4 = (void**)level3[index3];
-    level4[index4] = (void*)1; // Mark the page as present   
+    level4[index4] = (void*)PAGE_PRESENT;  
 }
 
 bool pagetable_query(void* addr) {
     uint64_t address = (uint64_t)addr;
-    uint64_t index1 = (address >> 36) & 0xFFF; // Bits 47-36
-    uint64_t index2 = (address >> 24) & 0xFFF; // Bits 35-24
-    uint64_t index3 = (address >> 12) & 0xFFF; // Bits 23-12
-    uint64_t index4 = address & 0xFFF;         // Bits 11-0
+    uint64_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK;  // Bits 47-36
+    uint64_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK;  // Bits 35-24
+    uint64_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK;  // Bits 23-12
+    uint64_t index4 = (address & PAGE_ADDR_MASK) & LEVEL_MASK; // Bits 11-0
 
     void** level1 = pagetable_root;
     if (!level1[index1]) return false;
@@ -53,5 +59,5 @@ bool pagetable_query(void* addr) {
     if (!level3[index3]) return false;
 
     void** level4 = (void**)level3[index3];
-    return level4[index4] != NULL; // Check if the page is present
+    return level4[index4] == (void*)PAGE_PRESENT;
 }
