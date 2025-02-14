@@ -255,10 +255,12 @@ void mark_and_evacuate(AllocatorBin* bin)
 }
 
 #endif
+
 /**
 * TODO: Need to make the hierarchial page structure to sequentially build up addresses.
 * Our structure will have 4 pages where each entry holds 12 bits of our address.
 * The fifth page holds a singular bit to discern whether our page is allocated or not.
+* This would be called a multi level page table.
 **/
 bool address_in_gc_page(void* addr) {
     AllocatorBin* bin = &a_bin; 
@@ -308,7 +310,6 @@ void walk_stack()
 
         i++;
     }
-
 
     unloadNativeRootSet();
 }

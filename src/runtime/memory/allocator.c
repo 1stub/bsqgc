@@ -36,6 +36,10 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
     return pinfo;
 }
 
+/**
+* Whenever this method is called we need to insert address into our hierarchical page manager so its easy to 
+* see if said page exists.
+**/
 PageInfo* allocateFreshPage(uint16_t entrysize)
 {
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
