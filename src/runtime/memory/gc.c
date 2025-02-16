@@ -267,7 +267,9 @@ void walk_stack()
     while(cur_stack[i]) {
         void* addr = cur_stack[i];
         if(pagetable_query(addr)) {
-            if(META_FROM_OBJECT(addr)->isalloc) {
+            MetaData* m = NULL;
+            GC_GET_META_DATA_ADDR(addr, m);
+            if(m->isalloc) {
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
         }

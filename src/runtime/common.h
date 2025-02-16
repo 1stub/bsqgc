@@ -64,12 +64,26 @@ extern size_t tl_id_counter;
             do { } while (0)
 #endif
 
-/* Maximum number of roots on our root stack */
-#define MAX_ROOTS 100
+#define PAGE_MASK_EXTRACT_PTR(P) ((uintptr_t)(P) & PAGE_ADDR_MASK)
+#define PAGE_MASK_EXTRACT_PINFO(P) ((PageInfo*)PAGE_MASK_EXTRACT_PTR(P))
+#define PAGE_MASK_EXTRACT_DATA(P) ((uintptr_t)(P) + sizeof(PageInfo))
+#define PAGE_MASK_EXTRACT_INDEX(P, O) \
+    ((uintptr_t)(O) - PAGE_MASK_EXTRACT_DATA(PAGE_MASK_EXTRACT_PTR(O))) / REAL_ENTRY_SIZE(((PageInfo*)P)->entrysize)
 
-/*Negative offset to find metadata assuming obj is the start of data seg*/
-#define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
+/* THIS MACRO STILL SUCKS */
 
+/* Macro to get the metadata for any pointer into our alloc page */
+#define GC_GET_META_DATA_ADDR(O, M)                                                                            \
+    do {                                                                                                       \
+        PageInfo* p_info = PAGE_MASK_EXTRACT_PINFO(O);                                                         \
+        if((uintptr_t)O % REAL_ENTRY_SIZE(p_info->entrysize) == 0) {                                                                       \
+            M = (MetaData*)((char*)O - sizeof(MetaData*));                                                     \
+        } else {                                                                                               \
+            void* p_data = (void*)PAGE_MASK_EXTRACT_DATA(PAGE_MASK_EXTRACT_PTR(O));                            \
+            size_t offset = PAGE_MASK_EXTRACT_INDEX(p_info, O);                                                \
+            M = (MetaData*)((char*)p_data + (offset * REAL_ENTRY_SIZE(p_info->entrysize)) - sizeof(MetaData)); \
+        }                                                                                                      \
+    } while (0)
 /** 
 * Hard defining maximum number of possible children for an obj,
 * I suspect this should not be the case but works for testing.
@@ -130,7 +144,7 @@ typedef struct MetaData
     bool isroot;
     uint32_t forward_index;
     uint32_t ref_count;
-} MetaData; // We want meta to be 8 bytes 
+} MetaData; 
 #else
 typedef struct MetaData 
 {
@@ -153,12 +167,12 @@ do {                                                 \
 
 #ifdef ALLOC_DEBUG_CANARY
 
-#define GC_IS_MARKED(obj) META_FROM_OBJECT(obj)->ismarked
-#define GC_IS_YOUNG(obj) META_FROM_OBJECT(obj)->isyoung
-#define GC_IS_ALLOCATED(obj) META_FROM_OBJECT(obj)->isalloc
-#define GC_IS_ROOT(obj) META_FROM_OBJECT(obj)->isroot
-#define GC_FWD_INDEX(obj) META_FROM_OBJECT(obj)->forward_index
-#define GC_REF_COUNT(obj) META_FROM_OBJECT(obj)->ref_count
+#define GC_IS_MARKED(obj) obj->ismarked
+#define GC_IS_YOUNG(obj) obj->isyoung
+#define GC_IS_ALLOCATED(obj) obj->isalloc
+#define GC_IS_ROOT(obj) obj->isroot
+#define GC_FWD_INDEX(obj) obj->forward_index
+#define GC_REF_COUNT(obj) obj->ref_count
 
 #else
 

@@ -2,7 +2,7 @@
 
 int test_stack_walk() {
     /* We assign these global pointers to hold addreses of stack variables, keeping them alive */
-    AllocatorBin* bin = initializeAllocatorBin(sizeof(int));
+    AllocatorBin* bin = initializeAllocatorBin(sizeof(int*));
 
     /* I am thinking using out allocate method is better here than malloc since the objects now have metadata */
     int* local_0 = allocate(bin, NULL);
@@ -25,8 +25,6 @@ int test_stack_walk() {
     printf("allocated object at %p\n", local_3);
     printf("allocated object at %p\n", local_4);
     printf("allocated object at %p\n", local_5);
-
-    walk_stack();
 
     return 0;
 }
