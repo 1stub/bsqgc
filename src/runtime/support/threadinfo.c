@@ -68,11 +68,12 @@ void loadNativeRootSet()
                 debug_print("potential_ptr %p, current_frame %p\n", potential_ptr, current_frame);
                 if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, end_of_frame, potential_ptr)) {
                     native_stack_contents[i++] = potential_ptr;
-                    debug_print("current found %i potential pointers\n", i);
+                    debug_print("found potential pointer at %p storint %p\n", it, potential_ptr);
                 }
                 it--;
             }
             /* Move to the next frame */
+            debug_print("currently found %i potential pointers\n", i);
             end_of_frame = current_frame + 2; // update frame boundary to just after return of prev frame
             current_frame = *(void**)current_frame; // Move to the next frame
         }

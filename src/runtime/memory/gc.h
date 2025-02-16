@@ -88,18 +88,14 @@ void mark_and_evacuate(AllocatorBin* bin);
 void walk_stack();
 
 /* Incremented in marking */
-static inline void increment_ref_count(Object* obj) {
-    MetaData* m = NULL;
-    GC_GET_META_DATA_ADDR(obj, m);
-    GC_REF_COUNT(m)++;
+static inline void increment_ref_count(void* obj) {
+    GC_REF_COUNT(obj)++;
 }
 
 /* Old location decremented in evacuation */
-static inline void decrement_ref_count(Object* obj) {   
-    MetaData* m = NULL;
-    GC_GET_META_DATA_ADDR(obj, m); 
-    if(GC_REF_COUNT(m) > 0) {
-        GC_REF_COUNT(m)--;
+static inline void decrement_ref_count(void* obj) {   
+    if(GC_REF_COUNT(obj) > 0) {
+        GC_REF_COUNT(obj)--;
     }
 
     // Maybe free object if not root and ref count 0 here?

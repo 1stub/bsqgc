@@ -7,7 +7,7 @@
 #define CANARY_DEBUG_CHECK
 
 /* Static declarations of our allocator bin and page manager structures */
-AllocatorBin a_bin = {.freelist = NULL, .entrysize = DEFAULT_ENTRY_SIZE, .page = NULL, .page_manager = NULL};
+AllocatorBin a_bin = {.freelist = NULL, .entrysize = sizeof(void*), .page = NULL, .page_manager = NULL};
 PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
 
 static void setup_freelist(PageInfo* pinfo, uint16_t entrysize) {
@@ -86,7 +86,7 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
     if(bin == NULL) return NULL;
 
     bin->page_manager = &p_mgr;
-    bin->page_manager->evacuate_page = allocateFreshPage(DEFAULT_ENTRY_SIZE);
+    bin->page_manager->evacuate_page = allocateFreshPage(entrysize);
 
     getFreshPageForAllocator(bin);
 
