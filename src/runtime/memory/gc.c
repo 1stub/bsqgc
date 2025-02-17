@@ -225,9 +225,15 @@ void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist)
             }
 
             /* Actual marking logic */
-            if(GC_IS_ALLOCATED(addr) && canupdate) {
+            if(GC_IS_ALLOCATED(addr) && (GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && canupdate) {
                 if(GC_REF_COUNT(addr) > 0) continue;
 
+                if(GC_IS_YOUNG(addr)) {
+                    /* Need some way to handle old roots */
+                    continue;
+                }
+
+                /* If we have a potential pointer with no references and its not marked, set mark bit and set as root */
                 if (GC_REF_COUNT(addr) == 0 && !GC_IS_MARKED(addr)) {
                     GC_IS_MARKED(addr) = true;
                     GC_IS_ROOT(addr) = true;
@@ -283,7 +289,7 @@ void mark_and_evacuate()
                 // Nothing to do, not a pointer
             } 
             else if (mask == PTR_MASK_PTR) {
-                void* child = *(void**)((char*)parent_ptr + i * sizeof(void*));
+                void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
                 debug_print("pointer slot points to %p\n", child);
 
                 /* Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers */
@@ -307,5 +313,5 @@ void mark_and_evacuate()
     }
     #endif
 
-    // evacuate(&marked_nodes_stack, bin);
+    //evacuate(&marked_nodes, bin);
 }

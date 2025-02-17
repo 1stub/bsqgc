@@ -6,7 +6,7 @@
 #define PTR_MASK_PTR  ('1')
 #define PTR_MASK_TAG  ('2')
 
-#define LEAF_PTR_MASK = NULL
+#define LEAF_PTR_MASK  NULL
 
 struct TypeInfoBase {
     uint32_t type_id;
