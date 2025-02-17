@@ -228,9 +228,11 @@ void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist)
             if(GC_IS_ALLOCATED(addr) && canupdate) {
                 if(GC_REF_COUNT(addr) > 0) continue;
 
-                if (GC_REF_COUNT(addr) == 0 && GC_IS_MARKED(addr) == false) {
+                if (GC_REF_COUNT(addr) == 0 && !GC_IS_MARKED(addr)) {
                     GC_IS_MARKED(addr) = true;
+                    GC_IS_ROOT(addr) = true;
                     worklist_push(*worklist, addr);
+                    stack_push(void, *marked_nodes, addr);
                 }
 
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
@@ -262,12 +264,11 @@ void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist)
 /* Algorithm 2.2 from The Gargage Collection Handbook */
 void mark_and_evacuate()
 {
-    struct Stack marked_nodes;
     struct WorkList worklist;
 
     worklist_initialize(&worklist);
 
-    walk_stack(&marked_nodes, &worklist);
+    walk_stack(&marking_stack, &worklist);
 
     /* Process the worklist in a BFS manner */
     while (!worklist_is_empty(&worklist)) {
@@ -280,22 +281,31 @@ void mark_and_evacuate()
 
             if(mask == PTR_MASK_NOP) {
                 // Nothing to do, not a pointer
-            } else if (mask == PTR_MASK_PTR) {
+            } 
+            else if (mask == PTR_MASK_PTR) {
                 void* child = *(void**)((char*)parent_ptr + i * sizeof(void*));
-                debug_print("parent points to %p\n", child);
+                debug_print("pointer slot points to %p\n", child);
 
-                if(child != NULL) {
+                /* Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers */
+                if(child != NULL && !GC_IS_MARKED(child)) {
                     increment_ref_count(child);
+                    GC_IS_MARKED(child) = true;
                     worklist_push(worklist, child);
+                    stack_push(void, marking_stack, child);
                 }
-            } else {
+            } 
+            else {
                 // Do nothing
             }
         }
-
-        /* We finished processing this node, add to mark stack */
-        stack_push(void*, marked_nodes, parent_ptr);
     }
+
+    /* This clears the marking stack which we dont want, but can be used as a sanity check */
+    #if 0
+    while(!stack_empty(marking_stack)) {
+        debug_print("marked node %p\n", stack_pop(void, marking_stack));
+    }
+    #endif
 
     // evacuate(&marked_nodes_stack, bin);
 }
