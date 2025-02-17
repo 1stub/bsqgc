@@ -265,18 +265,23 @@ void walk_stack()
     int i = 0;
 
     while(cur_stack[i]) {
+        bool canupdate = true;
         void* addr = cur_stack[i];
         if(pagetable_query(addr)) {
             if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
                 void* closest_obj_base = PAGE_FIND_OBJ_BASE(addr);
-                /* Maybe put this check to make sure our unaligned pointer is actual in data seg as a macro */
+
+                /* check to make sure our pointer was to the actual data of an object, not canary or meta */
                 if(addr >= closest_obj_base && 
                     addr < (void*)((char*)closest_obj_base + PAGE_MASK_EXTRACT_PINFO(addr)->entrysize)){
                         printf("address %p was not aligned but pointed into data seg\n", addr);
                         addr = PAGE_FIND_OBJ_BASE(addr);
+                        canupdate = true;
+                } else {
+                    canupdate = false;
                 }
             }
-            if(GC_IS_ALLOCATED(addr)) {
+            if(GC_IS_ALLOCATED(addr) && canupdate) {
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
         }

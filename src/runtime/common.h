@@ -9,6 +9,8 @@
 #include <threads.h>
 #include <sys/mman.h> //mmap
 
+#include "../language/bsqtype.h"
+
 //DEFAULT ENABLED WHILE LOTS OF DEVELOPMENT!!!!
 #define BSQ_GC_CHECK_ENABLED
 #define MEM_STATS
@@ -126,6 +128,7 @@ typedef struct MetaData
     bool isroot;
     uint32_t forward_index;
     uint32_t ref_count;
+    struct TypeInfoBase* type;
 } MetaData; 
 #else
 typedef struct MetaData 
