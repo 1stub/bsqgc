@@ -82,10 +82,10 @@ void clean_nonref_nodes(AllocatorBin* bin);
 /**
  * Process all objects starting from roots in BFS manner
  **/
-void mark_and_evacuate(AllocatorBin* bin);
+void mark_and_evacuate();
 
 /* Testing */
-void walk_stack();
+void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist);
 
 /* Incremented in marking */
 static inline void increment_ref_count(void* obj) {

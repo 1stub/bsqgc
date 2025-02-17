@@ -9,6 +9,8 @@
 #include <threads.h>
 #include <sys/mman.h> //mmap
 
+#include "../language/bsqtype.h"
+
 //DEFAULT ENABLED WHILE LOTS OF DEVELOPMENT!!!!
 #define BSQ_GC_CHECK_ENABLED
 #define MEM_STATS
@@ -108,6 +110,9 @@ extern size_t tl_id_counter;
 
 #endif
 
+/* Used to determine if a pointer points into the data segment of an object */
+#define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
+
 // Allows us to correctly determine pointer offsets
 #ifdef ALLOC_DEBUG_CANARY
 #define REAL_ENTRY_SIZE(ESIZE) (ALLOC_DEBUG_CANARY_SIZE + ESIZE + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
@@ -126,6 +131,7 @@ typedef struct MetaData
     bool isroot;
     uint32_t forward_index;
     uint32_t ref_count;
+    struct TypeInfoBase* type;
 } MetaData; 
 #else
 typedef struct MetaData 
@@ -155,6 +161,7 @@ do {                                                 \
 #define GC_IS_ROOT(O) (GC_GET_META_DATA_ADDR(O))->isroot
 #define GC_FWD_INDEX(O) (GC_GET_META_DATA_ADDR(O))->forward_index
 #define GC_REF_COUNT(O) (GC_GET_META_DATA_ADDR(O))->ref_count
+#define GC_TYPE(O) (GC_GET_META_DATA_ADDR(O))->type
 
 #else
 

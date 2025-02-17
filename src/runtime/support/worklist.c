@@ -56,3 +56,7 @@ void* worklist_pop_slow(struct WorkList* l) {
 
     return res;
 }
+
+bool worklist_is_empty(struct WorkList* l) {
+    return l->head == NULL || l->tail == NULL;
+}
