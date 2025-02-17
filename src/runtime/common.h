@@ -64,31 +64,33 @@ extern size_t tl_id_counter;
             do { } while (0)
 #endif
 
-/* Maximum number of roots on our root stack */
-#define MAX_ROOTS 100
-
-/*Negative offset to find metadata assuming obj is the start of data seg*/
-#define META_FROM_OBJECT(obj) ((MetaData*)((char*)(obj) - sizeof(MetaData)))
-
-/** 
-* Hard defining maximum number of possible children for an obj,
-* I suspect this should not be the case but works for testing.
+/**
+* Important Note: For not the following macros to get metadata or alignment
+* assume we want a pointer to the start of the actual object, not the start
+* of the block.
 **/
-#define MAX_CHILDREN 16
+#define PAGE_MASK_EXTRACT_PTR(O) ((uintptr_t)(O) & PAGE_ADDR_MASK)
+#define PAGE_MASK_EXTRACT_PINFO(O) ((PageInfo*)PAGE_MASK_EXTRACT_PTR(O))
+#define PAGE_MASK_EXTRACT_DATA(O) ((char*)PAGE_MASK_EXTRACT_PTR(O) + sizeof(PageInfo))
+#define PAGE_MASK_EXTRACT_INDEX(O) \
+    ((char*)O - PAGE_MASK_EXTRACT_DATA(O)) / REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize )
 
-/** 
-* Our object struct to allow nesting of children for exploring
-* and marking our graph of objects
-**/
-typedef struct Object{
-    struct Object* children[MAX_CHILDREN];
-    uint16_t num_children;
-}Object;
+#ifdef ALLOC_DEBUG_CANARY
+#define PAGE_FIND_OBJ_BASE(O) (PAGE_MASK_EXTRACT_DATA(O) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + (PAGE_MASK_EXTRACT_INDEX(O) \
+    * REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize )))
+#define PAGE_IS_OBJ_ALIGNED(O) (((char*)O - (PAGE_MASK_EXTRACT_DATA(O) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData))) \
+    % REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize ) == 0)
+#else
+#define PAGE_FIND_OBJ_BASE(O) (PAGE_MASK_EXTRACT_DATA(O) + sizeof(MetaData) + (PAGE_MASK_EXTRACT_INDEX(O) \
+    * REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize) ))
+#define PAGE_IS_OBJ_ALIGNED(O) (((char*)O - (PAGE_MASK_EXTRACT_DATA(O) + sizeof(MetaData))) \
+    % REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize ) == 0)
+#endif
 
-#define PAGE_OFFSET(p) (char*)p + sizeof(PageInfo)
-#define OBJECT_AT(page, index) \
-    ((Object*)(PAGE_OFFSET(page) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + \
-    ((index) * REAL_ENTRY_SIZE((page)->entrysize))))
+#define GC_GET_META_DATA_ADDR(O) PAGE_IS_OBJ_ALIGNED(O) ? (MetaData*)((char*)O - sizeof(MetaData)) \
+    : (MetaData*)(PAGE_FIND_OBJ_BASE(O) - sizeof(MetaData))
+
+
 #define FREE_LIST_ENTRY_AT(page, index) \
 ((FreeListEntry*)(PAGE_OFFSET(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
 
@@ -105,12 +107,6 @@ typedef struct Object{
 #define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)f_entry)
 
 #endif
-
-/** 
-* As this project grows it would be best if we instead predefine multiple
-* entry sizes depending on the type of objects to be allocated
-**/
-#define DEFAULT_ENTRY_SIZE sizeof(Object) 
 
 // Allows us to correctly determine pointer offsets
 #ifdef ALLOC_DEBUG_CANARY
@@ -130,7 +126,7 @@ typedef struct MetaData
     bool isroot;
     uint32_t forward_index;
     uint32_t ref_count;
-} MetaData; // We want meta to be 8 bytes 
+} MetaData; 
 #else
 typedef struct MetaData 
 {
@@ -153,12 +149,12 @@ do {                                                 \
 
 #ifdef ALLOC_DEBUG_CANARY
 
-#define GC_IS_MARKED(obj) META_FROM_OBJECT(obj)->ismarked
-#define GC_IS_YOUNG(obj) META_FROM_OBJECT(obj)->isyoung
-#define GC_IS_ALLOCATED(obj) META_FROM_OBJECT(obj)->isalloc
-#define GC_IS_ROOT(obj) META_FROM_OBJECT(obj)->isroot
-#define GC_FWD_INDEX(obj) META_FROM_OBJECT(obj)->forward_index
-#define GC_REF_COUNT(obj) META_FROM_OBJECT(obj)->ref_count
+#define GC_IS_MARKED(O) (GC_GET_META_DATA_ADDR(O))->ismarked
+#define GC_IS_YOUNG(O) (GC_GET_META_DATA_ADDR(O))->isyoung
+#define GC_IS_ALLOCATED(O) (GC_GET_META_DATA_ADDR(O))->isalloc
+#define GC_IS_ROOT(O) (GC_GET_META_DATA_ADDR(O))->isroot
+#define GC_FWD_INDEX(O) (GC_GET_META_DATA_ADDR(O))->forward_index
+#define GC_REF_COUNT(O) (GC_GET_META_DATA_ADDR(O))->ref_count
 
 #else
 

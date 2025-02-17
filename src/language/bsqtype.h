@@ -2,6 +2,7 @@
 
 #include "common.h"
 
+// Make these '0' and '1' and stuff
 #define PTR_MASK_NOP = ((char)0)
 #define PTR_MASK_PTR = ((char)1)
 #define PTR_MASK_TAG = ((char)2)

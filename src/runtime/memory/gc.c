@@ -267,7 +267,16 @@ void walk_stack()
     while(cur_stack[i]) {
         void* addr = cur_stack[i];
         if(pagetable_query(addr)) {
-            if(META_FROM_OBJECT(addr)->isalloc) {
+            if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
+                void* closest_obj_base = PAGE_FIND_OBJ_BASE(addr);
+                /* Maybe put this check to make sure our unaligned pointer is actual in data seg as a macro */
+                if(addr >= closest_obj_base && 
+                    addr < (void*)((char*)closest_obj_base + PAGE_MASK_EXTRACT_PINFO(addr)->entrysize)){
+                        printf("address %p was not aligned but pointed into data seg\n", addr);
+                        addr = PAGE_FIND_OBJ_BASE(addr);
+                }
+            }
+            if(GC_IS_ALLOCATED(addr)) {
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
         }
