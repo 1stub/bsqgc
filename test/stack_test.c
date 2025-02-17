@@ -15,7 +15,7 @@ int test_stack_walk() {
     *((int64_t*)ln) = 0xDEADBEF0;
 
     /* data ln points to stores some stuff */
-    *(int64_t*)e = 0xDEADBEF1;
+    *((int64_t*)e) = 0xDEADBEF1;
 
     /* Second slot of ln stores a pointer to e */
     void** second_slot = (void**)((int64_t*)ln + 1);

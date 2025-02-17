@@ -2,9 +2,9 @@
 
 #include "common.h"
 
-#define PTR_MASK_NOP = ((char)0)
-#define PTR_MASK_PTR = ((char)1)
-#define PTR_MASK_TAG = ((char)2)
+#define PTR_MASK_NOP  ('0')
+#define PTR_MASK_PTR  ('1')
+#define PTR_MASK_TAG  ('2')
 
 #define LEAF_PTR_MASK = NULL
 

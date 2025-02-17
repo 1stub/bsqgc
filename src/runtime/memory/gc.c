@@ -199,65 +199,10 @@ void clean_nonref_nodes(AllocatorBin* bin) {
         current_page = current_page->next;
     }
 } 
-
-/* Algorithm 2.2 from The Gargage Collection Handbook */
-void mark_and_evacuate(AllocatorBin* bin)
-{
-    struct Stack marked_nodes_stack, old_roots_stack;
-    ArrayList worklist;
-
-    initialize_list(&worklist);
-
-    /* We need to be parsing execuation stack for roots here */
-    for (uint16_t i = root_list.head; i < root_list.tail; i++) {
-        Object* root = root_list.data[i];
-
-        /* We want to skip objects with ref count > 0 */
-        if(GC_REF_COUNT(root) > 0) continue;
-
-        else if(GC_IS_YOUNG(root) == false) {
-            /* We will need some way to handle these old roots */
-            stack_push(Object*, &old_roots_stack, root);
-            continue;
-        }
-
-        /* If an object is old we should not mark children */
-        if (GC_REF_COUNT(root) == 0 && GC_IS_MARKED(root) == false) {
-            GC_IS_MARKED(root) = true;
-            add_to_list(&worklist, root);
-        }
-    }
-
-    /* Process the worklist in a BFS manner */
-    while (!is_list_empty(&worklist)) {
-        Object* parent = remove_head_from_list(&worklist);
-
-        for (size_t i = 0; i < parent->num_children; i++) {
-            Object* child = parent->children[i];
-
-            /* We increment the childs ref count since the parent points to it */
-            increment_ref_count(child);
-
-            if (child != NULL) {
-                /* We should only process young objects */
-                if (GC_IS_MARKED(child) == false && GC_IS_YOUNG(child) == true) 
-                {
-                    GC_IS_MARKED(child) = true;
-                    add_to_list(&worklist, child);
-                }
-            }
-        }
-        /* We finished processing this node, add to mark list */
-        stack_push(Object*, &marked_nodes_stack,  parent);
-    }
-
-    // evacuate(&marked_nodes_stack, bin);
-}
-
 #endif
 
 /* This will be integrated into our mark from roots method, for now just walks stack of program */
-void walk_stack() 
+void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist) 
 {
     loadNativeRootSet();
 
@@ -269,19 +214,25 @@ void walk_stack()
         void* addr = cur_stack[i];
         if(pagetable_query(addr)) {
             if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
-                void* closest_obj_base = PAGE_FIND_OBJ_BASE(addr);
-
-                /* check to make sure our pointer was to the actual data of an object, not canary or meta */
-                if(addr >= closest_obj_base && 
-                    addr < (void*)((char*)closest_obj_base + PAGE_MASK_EXTRACT_PINFO(addr)->entrysize)){
-                        printf("address %p was not aligned but pointed into data seg\n", addr);
-                        addr = PAGE_FIND_OBJ_BASE(addr);
-                        canupdate = true;
+                if(POINTS_TO_DATA_SEG(addr)){
+                    debug_print("address %p was not aligned but pointed into data seg\n", addr);
+                    addr = PAGE_FIND_OBJ_BASE(addr);
+                    canupdate = true;
                 } else {
+                    debug_print("found pointer into alloc page that did not point into data seg at %p\n", addr);
                     canupdate = false;
                 }
             }
+
+            /* Actual marking logic */
             if(GC_IS_ALLOCATED(addr) && canupdate) {
+                if(GC_REF_COUNT(addr) > 0) continue;
+
+                if (GC_REF_COUNT(addr) == 0 && GC_IS_MARKED(addr) == false) {
+                    GC_IS_MARKED(addr) = true;
+                    worklist_push(*worklist, addr);
+                }
+
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
         }
@@ -289,6 +240,7 @@ void walk_stack()
         i++;
     }
 
+    /* This will need to actually modify our marked nodes stack */
     pagetable_query(native_register_contents.rax);
     pagetable_query(native_register_contents.rbx);
     pagetable_query(native_register_contents.rcx);
@@ -305,4 +257,45 @@ void walk_stack()
     pagetable_query(native_register_contents.r15);
 
     unloadNativeRootSet();
+}
+
+/* Algorithm 2.2 from The Gargage Collection Handbook */
+void mark_and_evacuate()
+{
+    struct Stack marked_nodes;
+    struct WorkList worklist;
+
+    worklist_initialize(&worklist);
+
+    walk_stack(&marked_nodes, &worklist);
+
+    /* Process the worklist in a BFS manner */
+    while (!worklist_is_empty(&worklist)) {
+        void* parent_ptr = worklist_pop(void, worklist);
+        struct TypeInfoBase* parent_type = GC_TYPE( parent_ptr );
+        debug_print("parent pointer at %p\n", parent_ptr);
+        
+        for (size_t i = 0; i < parent_type->slot_size; i++) {
+            char mask = *(parent_type->ptr_mask) + i;
+
+            if(mask == PTR_MASK_NOP) {
+                // Nothing to do, not a pointer
+            } else if (mask == PTR_MASK_PTR) {
+                void* child = *(void**)((char*)parent_ptr + i * sizeof(void*));
+                debug_print("parent points to %p\n", child);
+
+                if(child != NULL) {
+                    increment_ref_count(child);
+                    worklist_push(worklist, child);
+                }
+            } else {
+                // Do nothing
+            }
+        }
+
+        /* We finished processing this node, add to mark stack */
+        stack_push(void*, marked_nodes, parent_ptr);
+    }
+
+    // evacuate(&marked_nodes_stack, bin);
 }

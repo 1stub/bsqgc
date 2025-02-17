@@ -21,8 +21,9 @@ struct WorkList {
 };
 
 #define worklist_push(L, O) if((L).tail && (L).tail < GET_MAX_FOR_SEGMENT((L).tail, WL_SEG_SIZE)) { *(++(L).tail) = O; } else { worklist_push_slow(&(L), O);}
-#define worklist_pop(T, L) ((T*)((L).head != GET_MAX_FOR_SEGMENT((L).head, WL_SEG_SIZE) ? *((L).head++) : worklist_pop_slow(&(L))))
+#define worklist_pop(T, L) ((T*)((L).head != (L).tail ? *((L).head++) : worklist_pop_slow(&(L))))
 
 void worklist_initialize(struct WorkList* l);
 void worklist_push_slow(struct WorkList* l, void* obj);
 void* worklist_pop_slow(struct WorkList* l);
+bool worklist_is_empty(struct WorkList* l);
