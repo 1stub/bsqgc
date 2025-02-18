@@ -4,12 +4,13 @@
 /** 
 * Not totally confident on determining size or proper data structures for these two.
 * It's looking like this is where we need quick sort for sortring based on addreses
-* to avoid extensive and slow lookups
+* to avoid excessive and slow lookups
 **/
 #define MAX_PTRS 1024
 void* forward_table[MAX_PTRS];
 int forward_table_index = 0;
 
+/* This needs to be a actual SET!!!! */
 void* roots_set[MAX_PTRS];
 int roots_set_index = 0;
 
@@ -83,9 +84,11 @@ void update_references()
                 /* Need to update pointers from this old reference now, put on worklist */
                 worklist_push(worklist, ref);
 
+                /* If forward index is set, set old location to be non alloc and query forward table */
                 uint32_t fwd_index = GC_FWD_INDEX(ref);
                 if(fwd_index != MAX_FWD_INDEX) {
                     debug_print("old ref %p\n", ref);
+                    GC_IS_ALLOCATED(ref) = false;
                     ref = forward_table[fwd_index];
                     debug_print("update reference to %p\n", ref);
                 }
@@ -97,12 +100,70 @@ void update_references()
     }
 }
 
+void rebuild_freelist()
+{
+    /* Very naive approach to looping through our bins */
+    struct Stack bins =  {NULL, NULL, NULL, NULL};
+    stack_push(AllocatorBin, bins, getBinForSize(8));
+    stack_push(AllocatorBin, bins, getBinForSize(16));
+
+    while(!stack_empty(bins)) {
+        AllocatorBin* bin = stack_pop(AllocatorBin, bins);
+        PageInfo* cur = bin->page_manager->all_pages;
+
+        while(cur) {
+            FreeListEntry* last_freelist_entry = NULL;
+            bool first_nonalloc_block = true;
+            cur->freecount = 0;
+        
+            for (size_t i = 0; i < cur->entrycount; i++) {
+                FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
+                void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
+        
+                if (!GC_IS_ALLOCATED(obj)) {
+                    if(first_nonalloc_block) {
+                        cur->freelist = new_freelist_entry;
+                        cur->freelist->next = NULL;
+                        last_freelist_entry = cur->freelist;
+                        first_nonalloc_block = false;
+                    } else {
+                        last_freelist_entry->next = new_freelist_entry;
+                        new_freelist_entry->next = NULL; 
+                        last_freelist_entry = new_freelist_entry;
+                    }
+                    
+                    cur->freecount++;
+                }
+            }
+
+            /**
+            * Currently I have no idea why I need to manually set the bins page here,
+            * I feel like manually doing this setting could create some really weird
+            * problems when running larger tests. It seems that modifying the current 
+            * page in bin through our page manager does not properly reflect in
+            * bin->page/freelist itself. hmm...
+            **/
+
+            /* Now update the current page for bin if there are freeblocks */
+            if(cur->freecount > 0) {
+                bin->page = cur;
+                bin->freelist = cur->freelist;
+            }
+
+            debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
+
+            cur = cur->next;
+        }
+
+    }
+}
+
 /* Move non root young objects to evacuation page then update roots */
 void evacuate() 
 {
-    AllocatorBin* bin = &a_bin16; // This is not good
     while(!stack_empty(marking_stack)) {
         void* old_addr = stack_pop(void, marking_stack);
+        AllocatorBin* bin = getBinForSize( GC_TYPE(old_addr)->type_size );
 
         if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             // Check if the current evacuation page's freelist is exhausted
@@ -127,6 +188,7 @@ void evacuate()
     }
 
     update_references();
+    rebuild_freelist();
 }
 
 void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist) 

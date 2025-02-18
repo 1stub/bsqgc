@@ -5,9 +5,14 @@ int main()
     initializeStartup();
     initializeThreadLocalInfo();
 
-    test_stack_walk();
+    initializeAllocatorBin(ListNode.type_size);
+    initializeAllocatorBin(Empty.type_size);
 
+    test_stack_walk();
     collect();
     
+    test_stack_walk();
+    collect();
+
     return 0;
 }

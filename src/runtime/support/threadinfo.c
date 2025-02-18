@@ -43,8 +43,6 @@ void loadNativeRootSet()
     native_stack_contents = (void**)xallocAllocatePage();
     xmem_pageclear(native_stack_contents);
 
-    debug_print("loadNativeRootSet: thread_id = %zu, native_stack_base = %p\n", tl_id, native_stack_base);
-
     //this code should load from the asm stack pointers and copy the native stack into the roots memory
     #ifdef __x86_64__
         /* originally current_frame used rsp */
@@ -55,9 +53,7 @@ void loadNativeRootSet()
         int i = 0;
 
         /* Walk the stack */
-        while (current_frame <= native_stack_base) {
-            debug_print("native stack base %p frame pointer %p end of frame %p\n", native_stack_base, current_frame, end_of_frame);
-            
+        while (current_frame <= native_stack_base) {            
             assert((uintptr_t)current_frame % 8 == 0);
             assert((uintptr_t)end_of_frame % 8 == 0);
 
@@ -65,20 +61,15 @@ void loadNativeRootSet()
             void** it = current_frame;
             while(it > end_of_frame) {            
                 void* potential_ptr = *it;
-                debug_print("potential_ptr %p, current_frame %p\n", potential_ptr, current_frame);
                 if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, end_of_frame, potential_ptr)) {
                     native_stack_contents[i++] = potential_ptr;
-                    debug_print("found potential pointer at %p storint %p\n", it, potential_ptr);
                 }
                 it--;
             }
             /* Move to the next frame */
-            debug_print("currently found %i potential pointers\n", i);
             end_of_frame = current_frame + 2; // update frame boundary to just after return of prev frame
             current_frame = *(void**)current_frame; // Move to the next frame
         }
-
-        debug_print("Finished walking the stack. Total roots found: %d\n", i);
 
         /* Check contents of registers */
         PROCESS_REGISTER(native_stack_base, current_frame, rax)

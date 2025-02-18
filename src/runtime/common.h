@@ -94,7 +94,7 @@ extern size_t tl_id_counter;
 
 
 #define FREE_LIST_ENTRY_AT(page, index) \
-((FreeListEntry*)(PAGE_OFFSET(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
+((FreeListEntry*)(PAGE_MASK_EXTRACT_DATA(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
 
 #ifdef ALLOC_DEBUG_CANARY
 //Gives us the beginning of block (just before canary in case of canaries enabled)

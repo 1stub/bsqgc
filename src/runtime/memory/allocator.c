@@ -10,7 +10,9 @@
 AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .page = NULL, .page_manager = NULL};
 AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .page = NULL, .page_manager = NULL};
 
-PageManager p_mgr = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
+/* Each AllocatorBin needs its own page manager */
+PageManager p_mgr8 = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
+PageManager p_mgr16 = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
 
 static void setup_freelist(PageInfo* pinfo, uint16_t entrysize) {
     FreeListEntry* current = pinfo->freelist;
@@ -88,17 +90,29 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
     AllocatorBin* bin = NULL;
     if(entrysize == 8) {
         bin = &a_bin8;
+        bin->page_manager = &p_mgr8;
     }else if (entrysize == 16) {
         bin = &a_bin16;
+        bin->page_manager = &p_mgr16;
     }
     assert(bin != NULL);
 
     if(bin == NULL) return NULL;
 
-    bin->page_manager = &p_mgr;
     bin->page_manager->evacuate_page = allocateFreshPage(entrysize);
 
     getFreshPageForAllocator(bin);
 
     return bin;
+}
+
+AllocatorBin* getBinForSize(uint16_t entrytsize)
+{
+    switch(entrytsize){
+        case 8: return &a_bin8;
+        case 16: return &a_bin16;
+        default: return NULL;
+    }
+
+    return NULL;
 }

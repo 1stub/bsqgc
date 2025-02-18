@@ -97,6 +97,12 @@ void getFreshPageForAllocator(AllocatorBin* alloc);
 AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
 
 /**
+* Since our bins can vary in size (always multiple of 8 bytes) depending on the type they hold
+* we need to be able to "dynamically" determine what bin is appropriate given an objects size.
+**/
+AllocatorBin* getBinForSize(uint16_t entrytsize);
+
+/**
  * Setup pointers for managing our pages 
  * we have a list of all pages and those that have stuff in them
  **/

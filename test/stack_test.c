@@ -1,9 +1,8 @@
 #include "stack_test.h"
 
 int test_stack_walk() {
-    /* We assign these global pointers to hold addreses of stack variables, keeping them alive */
-    AllocatorBin* bin16 = initializeAllocatorBin(ListNode.type_size);
-    AllocatorBin* bin8 = initializeAllocatorBin(Empty.type_size);
+    AllocatorBin* bin16 = getBinForSize(16);
+    AllocatorBin* bin8 = getBinForSize(8);
 
     char try_to_make_weird_stack_pointer_offsets = 'a';
     debug_print("%i\n", try_to_make_weird_stack_pointer_offsets);
