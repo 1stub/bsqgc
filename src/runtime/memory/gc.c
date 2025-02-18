@@ -1,6 +1,18 @@
 #include "gc.h"
 #include "allocator.h"
 
+/** 
+* Not totally confident on determining size or proper data structures for these two.
+* It's looking like this is where we need quick sort for sortring based on addreses
+* to avoid extensive and slow lookups
+**/
+#define MAX_PTRS 1024
+void* forward_table[MAX_PTRS];
+int forward_table_index = 0;
+
+void* roots_set[MAX_PTRS];
+int roots_set_index = 0;
+
 void collect() 
 {
     mark_and_evacuate();
@@ -14,19 +26,21 @@ static void update_evacuation_freelist(AllocatorBin *bin) {
     }
 }
 
+/* Set pre and post canaries in evacuation page if enabled */
 #ifdef ALLOC_DEBUG_CANARY
-static void set_canaries(void* base, size_t entry_size) {
-    // Set pre-canary
+static void set_canaries(void* base, size_t entry_size) 
+{
     uint64_t* pre = (uint64_t*)base;
     *pre = ALLOC_DEBUG_CANARY_VALUE;
 
-    // Set post-canary
     uint64_t* post = (uint64_t*)((char*)base + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
     *post = ALLOC_DEBUG_CANARY_VALUE;
 }
 #endif
 
-static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size) {
+/* Actual moving of pointers over to evacuation page */
+static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size) 
+{
     void* new_addr;
 
 #ifdef ALLOC_DEBUG_CANARY
@@ -42,13 +56,55 @@ static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size)
     return new_addr;
 }
 
+/* Starting from roots update pointers using forward table */
+void update_references() 
+{
+    struct WorkList worklist;
+    worklist_initialize(&worklist);
+
+    for(int i = 0; i < roots_set_index; i++) {
+        void* root = roots_set[i];
+        worklist_push(worklist, root);
+    }
+
+    while(!worklist_is_empty(&worklist)) {
+        void* addr = worklist_pop(void, worklist);
+        struct TypeInfoBase* addr_type = GC_TYPE( addr );
+
+        for (size_t i = 0; i < addr_type->slot_size; i++) {
+            char mask = *(addr_type->ptr_mask) + i;
+
+            if(mask == PTR_MASK_NOP) {
+                // Nothing to do, not a pointer
+            } 
+            else if (mask == PTR_MASK_PTR) {
+                void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
+
+                /* Need to update pointers from this old reference now, put on worklist */
+                worklist_push(worklist, ref);
+
+                uint32_t fwd_index = GC_FWD_INDEX(ref);
+                if(fwd_index != MAX_FWD_INDEX) {
+                    debug_print("old ref %p\n", ref);
+                    ref = forward_table[fwd_index];
+                    debug_print("update reference to %p\n", ref);
+                }
+            } 
+            else {
+                // Do nothing
+            }
+        }
+    }
+}
+
+/* Move non root young objects to evacuation page then update roots */
 void evacuate() 
 {
     AllocatorBin* bin = &a_bin16; // This is not good
     while(!stack_empty(marking_stack)) {
         void* old_addr = stack_pop(void, marking_stack);
 
-        if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr)) {
+        if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             // Check if the current evacuation page's freelist is exhausted
             if (bin->page_manager->evacuate_page->freelist == NULL) {
                 update_evacuation_freelist(bin);
@@ -56,14 +112,21 @@ void evacuate()
             
             FreeListEntry* base = bin->page_manager->evacuate_page->freelist;
             bin->page_manager->evacuate_page->freelist = base->next;
-            debug_print("evac freelist next %p\n", base->next);
 
             set_canaries(base, bin->entrysize);
         
             void* new_addr = copy_object_data(old_addr, base, bin->entrysize);
+
+            /* Set objects old locations forward index to be found when updating references */
+            MetaData* old_addr_meta = GC_GET_META_DATA_ADDR(old_addr);
+            old_addr_meta->forward_index = forward_table_index;
+            forward_table[forward_table_index++] = new_addr;
+
             debug_print("Moved %p to %p\n", old_addr, new_addr);
         }
     }
+
+    update_references();
 }
 
 void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist) 
@@ -104,6 +167,7 @@ void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist)
                     GC_IS_ROOT(addr) = true;
                     worklist_push(*worklist, addr);
                     stack_push(void, *marked_nodes, addr);
+                    roots_set[roots_set_index++] = addr;
                     debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
                 }
 
