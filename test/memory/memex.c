@@ -7,7 +7,7 @@ int main()
 
     test_stack_walk();
 
-    mark_and_evacuate();
+    collect();
     
     return 0;
 }

@@ -12,6 +12,9 @@ int test_stack_walk() {
     void* end = allocate(bin8, &Empty);
     *((int64_t*)end) = 0xDEADBEF4; // Store some data in the end node
 
+    //void* tobe_collected = allocate(bin8, &Empty);
+    //*((int64_t*)tobe_collected) = 0xBADCABF0; 
+
     /* Create the linked list nodes */
     void* ln0 = allocate(bin16, &ListNode);
     void* ln1 = allocate(bin16, &ListNode);
