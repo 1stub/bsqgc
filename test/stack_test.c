@@ -1,9 +1,8 @@
 #include "stack_test.h"
 
 int test_stack_walk() {
-    /* We assign these global pointers to hold addreses of stack variables, keeping them alive */
-    AllocatorBin* bin16 = initializeAllocatorBin(ListNode.type_size);
-    AllocatorBin* bin8 = initializeAllocatorBin(Empty.type_size);
+    AllocatorBin* bin16 = getBinForSize(16);
+    AllocatorBin* bin8 = getBinForSize(8);
 
     char try_to_make_weird_stack_pointer_offsets = 'a';
     debug_print("%i\n", try_to_make_weird_stack_pointer_offsets);
@@ -11,6 +10,9 @@ int test_stack_walk() {
     /* Create the end node (not part of the linked list, but pointed to by the last node) */
     void* end = allocate(bin8, &Empty);
     *((int64_t*)end) = 0xDEADBEF4; // Store some data in the end node
+
+    //void* tobe_collected = allocate(bin8, &Empty);
+    //*((int64_t*)tobe_collected) = 0xBADCABF0; 
 
     /* Create the linked list nodes */
     void* ln0 = allocate(bin16, &ListNode);

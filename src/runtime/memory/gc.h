@@ -63,14 +63,14 @@ bool isRoot(void* obj);
 * have old children AND that they have non zero references. If any references drops to zero
 * we can free from this method.
 **/
-void collect(AllocatorBin* bin);
+void collect();
 
 /**
  * We have a list containing all children nodes that will need to be moved
  * over to our evacuate page(s). Traverse this list, move nodes, update
  * pointers from their parents.
  **/
-void evacuate(struct Stack* marked_nodes_list, AllocatorBin* bin); 
+void evacuate(); 
 
 /**
 * Iterates through page looking for objects whos ref count has dropped to zero,
