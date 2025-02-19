@@ -120,7 +120,8 @@ void rebuild_freelist()
                 FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
                 void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
         
-                if (!GC_IS_ALLOCATED(obj)) {
+                /* Add non allocated OR old non roots with a ref count of 0 */
+                if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0 && !GC_IS_ROOT(obj))) {
                     if(first_nonalloc_block) {
                         cur->freelist = new_freelist_entry;
                         cur->freelist->next = NULL;
@@ -165,6 +166,7 @@ void evacuate()
         void* old_addr = stack_pop(void, marking_stack);
         AllocatorBin* bin = getBinForSize( GC_TYPE(old_addr)->type_size );
 
+        /* We evacuate non root young marked objects */
         if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             // Check if the current evacuation page's freelist is exhausted
             if (bin->page_manager->evacuate_page->freelist == NULL) {

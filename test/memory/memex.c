@@ -14,5 +14,8 @@ int main()
     test_stack_walk();
     collect();
 
+    test_stack_walk();
+    collect();
+
     return 0;
 }
