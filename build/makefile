@@ -37,6 +37,16 @@ MEMORY_OBJS=$(OUT_OBJ)allocator.o $(OUT_OBJ)gc.o
 
 all: $(OUT_EXE)memex
 
+test: $(SUPPORT_HEADERS) $(MEMORY_HEADERS) $(SUPPORT_OBJS) $(MEMORY_OBJS)
+	@if [ -z "$(TEST)" ]; then \
+		echo "Error: Please specify a test file with TEST=<filename>."; \
+		exit 1; \
+	fi
+	@mkdir -p $(OUT_EXE)
+	$(CC) $(CFLAGS_TEST) -o $(OUT_EXE)$(TEST) $(SUPPORT_OBJS) $(MEMORY_OBJS) $(TEST_DIR)$(TEST).c
+	@echo "Running test: $(TEST)"
+	@$(OUT_EXE)$(TEST)
+
 $(OUT_EXE)memex: $(SUPPORT_HEADERS) $(MEMORY_HEADERS) $(SUPPORT_OBJS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c
 	@mkdir -p $(OUT_EXE)
 	$(CC) $(CFLAGS) -o $(OUT_EXE)memex $(SUPPORT_OBJS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c

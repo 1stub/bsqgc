@@ -44,5 +44,7 @@ int main(int argc, char** argv) {
 
     // Need to do some asserts now
 
+    debug_print("Hello from tree_basic test\n");
+
     return 0;
 }

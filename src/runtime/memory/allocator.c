@@ -109,8 +109,18 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
 AllocatorBin* getBinForSize(uint16_t entrytsize)
 {
     switch(entrytsize){
-        case 8: return &a_bin8;
-        case 16: return &a_bin16;
+        case 8: {
+            if(a_bin8.page == NULL) {
+                return initializeAllocatorBin(8);
+            }
+            return &a_bin8;
+        }
+        case 16: {
+            if(a_bin8.page == NULL) {
+                return initializeAllocatorBin(16);
+            }
+            return &a_bin16;
+        }
         default: return NULL;
     }
 
