@@ -31,19 +31,15 @@ SUPPORT_HEADERS=$(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h  $(SUPPORT_DIR)sta
 SUPPORT_SOURCES=$(RUNTIME_DIR)common.c $(SUPPORT_DIR)xalloc.c  $(SUPPORT_DIR)stack.c $(SUPPORT_DIR)arraylist.c $(SUPPORT_DIR)worklist.c $(SUPPORT_DIR)threadinfo.c $(SUPPORT_DIR)pagetable.c
 SUPPORT_OBJS=$(OUT_OBJ)common.o $(OUT_OBJ)xalloc.o $(OUT_OBJ)stack.o $(OUT_OBJ)arraylist.o $(OUT_OBJ)worklist.o $(OUT_OBJ)threadinfo.o $(OUT_OBJ)pagetable.o
 
-LANGUAGE_HEADERS=$(LANGUAGE_DIR)bsqtype.h
-LANGUAGE_SOURCES=$(LANGUAGE_DIR)bsqtype.c
-LANGUAGE_OBJS=$(OUT_OBJ)bsqtype.o
-
-MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(MEMORY_DIR)allocator.h $(TEST_DIR)test.h $(TEST_DIR)stack_test.h $(MEMORY_DIR)gc.h
-MEMORY_SOURCES=$(MEMORY_DIR)allocator.c $(TEST_DIR)test.c $(MEMORY_DIR)gc.c $(TEST_DIR)stack_test.c
-MEMORY_OBJS=$(OUT_OBJ)allocator.o $(OUT_OBJ)test.o $(OUT_OBJ)stack_test.o $(OUT_OBJ)gc.o 
+MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(MEMORY_DIR)allocator.h $(MEMORY_DIR)gc.h
+MEMORY_SOURCES=$(MEMORY_DIR)allocator.c $(MEMORY_DIR)gc.c
+MEMORY_OBJS=$(OUT_OBJ)allocator.o $(OUT_OBJ)gc.o 
 
 all: $(OUT_EXE)memex
 
-$(OUT_EXE)memex: $(SUPPORT_HEADERS) $(LANGUAGE_HEADERS) $(MEMORY_HEADERS) $(SUPPORT_OBJS) $(LANGUAGE_OBJS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c
+$(OUT_EXE)memex: $(SUPPORT_HEADERS) $(MEMORY_HEADERS) $(SUPPORT_OBJS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c
 	@mkdir -p $(OUT_EXE)
-	$(CC) $(CFLAGS) -o $(OUT_EXE)memex $(SUPPORT_OBJS) $(LANGUAGE_OBJS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c
+	$(CC) $(CFLAGS) -o $(OUT_EXE)memex $(SUPPORT_OBJS) $(MEMORY_OBJS) $(MEMORY_TEST_DIR)/memex.c
 
 $(OUT_OBJ)allocator.o: $(MEMORY_HEADERS) $(MEMORY_DIR)allocator.c
 	@mkdir -p $(OUT_OBJ)
@@ -77,21 +73,9 @@ $(OUT_OBJ)pagetable.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)pagetable.c
 	@mkdir -p $(OUT_OBJ)
 	$(CC) $(CFLAGS) -o $(OUT_OBJ)pagetable.o -c $(SUPPORT_DIR)pagetable.c
 
-$(OUT_OBJ)bsqtype.o: $(LANGUAGE_HEADERS) $(LANGUAGE_DIR)bsqtype.c
-	@mkdir -p $(OUT_OBJ)
-	$(CC) $(CFLAGS) -o $(OUT_OBJ)bsqtype.o -c $(LANGUAGE_DIR)bsqtype.c
-
 $(OUT_OBJ)common.o: $(SUPPORT_HEADERS) $(RUNTIME_DIR)common.c
 	@mkdir -p $(OUT_OBJ)
 	$(CC) $(CFLAGS) -o $(OUT_OBJ)common.o -c $(RUNTIME_DIR)common.c
-
-$(OUT_OBJ)test.o: $(MEMORY_HEADERS) $(TEST_DIR)test.c
-	@mkdir -p $(OUT_OBJ)
-	$(CC) $(CFLAGS) -o $(OUT_OBJ)test.o -c $(TEST_DIR)test.c
-
-$(OUT_OBJ)stack_test.o: $(MEMORY_HEADERS) $(TEST_DIR)stack_test.c
-	@mkdir -p $(OUT_OBJ)
-	$(CC) $(CFLAGS) -o $(OUT_OBJ)stack_test.o -c $(TEST_DIR)stack_test.c
 
 clean:
 	rm -rf $(OUT_EXE)* $(OUT_OBJ)*.o $(BIN_DIR)*

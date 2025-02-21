@@ -16,7 +16,3 @@ struct TypeInfoBase {
 
     const char* typekey;
 };
-
-extern struct TypeInfoBase Empty;
-extern struct TypeInfoBase ListNode;
-
