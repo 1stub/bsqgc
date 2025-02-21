@@ -100,6 +100,10 @@ void update_references()
     }
 }
 
+/**
+* When we find an object that is eligble to be freed, we need to traverse what is points to
+* and decrement their refcount. This doesn't happen currently.
+**/
 void rebuild_freelist()
 {
     /* Very naive approach to looping through our bins */
@@ -120,8 +124,8 @@ void rebuild_freelist()
                 FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
                 void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
         
-                /* Add non allocated OR old non roots with a ref count of 0 */
-                if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0 && !GC_IS_ROOT(obj))) {
+                /* Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable */
+                if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0 && !GC_IS_ROOT(obj)) || !GC_IS_MARKED(obj)) {
                     if(first_nonalloc_block) {
                         cur->freelist = new_freelist_entry;
                         cur->freelist->next = NULL;
@@ -179,6 +183,7 @@ void evacuate()
             set_canaries(base, bin->entrysize);
         
             void* new_addr = copy_object_data(old_addr, base, bin->entrysize);
+            GC_IS_YOUNG(new_addr) = false; // When an object is evacuated, it is now old (tenured)
 
             /* Set objects old locations forward index to be found when updating references */
             MetaData* old_addr_meta = GC_GET_META_DATA_ADDR(old_addr);
@@ -193,69 +198,69 @@ void evacuate()
     rebuild_freelist();
 }
 
-void walk_stack(struct Stack* marked_nodes, struct WorkList* worklist) 
+void check_potential_ptr(void* addr, struct WorkList* worklist) {
+    bool canupdate = true;
+    if(pagetable_query(addr)) {
+        if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
+            if(POINTS_TO_DATA_SEG(addr)){
+                debug_print("address %p was not aligned but pointed into data seg\n", addr);
+                addr = PAGE_FIND_OBJ_BASE(addr);
+                canupdate = true;
+            } else {
+                debug_print("found pointer into alloc page that did not point into data seg at %p\n", addr);
+                canupdate = false;
+            }
+        }
+
+        /* Actual marking logic */
+        if(GC_IS_ALLOCATED(addr) && (GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && canupdate) {
+            bool valid = true;
+            if(GC_REF_COUNT(addr) > 0) valid = false;
+
+            if(!GC_IS_YOUNG(addr)) {
+                /* Need some way to handle old roots */
+                valid = false;
+            }
+
+            /* If we have a potential pointer with no references and its not marked, set mark bit and set as root */
+            if (GC_REF_COUNT(addr) == 0 && !GC_IS_MARKED(addr) && valid) {
+                GC_IS_MARKED(addr) = true;
+                GC_IS_ROOT(addr) = true;
+                worklist_push(*worklist, addr);
+                stack_push(void, marking_stack, addr);
+                roots_set[roots_set_index++] = addr;
+                debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
+            }
+
+        }
+    }
+}
+
+void walk_stack(struct WorkList* worklist) 
 {
     loadNativeRootSet();
 
     void** cur_stack = native_stack_contents;
     int i = 0;
 
-    while(cur_stack[i]) {
-        bool canupdate = true;
-        void* addr = cur_stack[i];
-        if(pagetable_query(addr)) {
-            if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
-                if(POINTS_TO_DATA_SEG(addr)){
-                    debug_print("address %p was not aligned but pointed into data seg\n", addr);
-                    addr = PAGE_FIND_OBJ_BASE(addr);
-                    canupdate = true;
-                } else {
-                    debug_print("found pointer into alloc page that did not point into data seg at %p\n", addr);
-                    canupdate = false;
-                }
-            }
-
-            /* Actual marking logic */
-            if(GC_IS_ALLOCATED(addr) && (GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && canupdate) {
-                if(GC_REF_COUNT(addr) > 0) continue;
-
-                if(!GC_IS_YOUNG(addr)) {
-                    /* Need some way to handle old roots */
-                    i++;
-                    continue;
-                }
-
-                /* If we have a potential pointer with no references and its not marked, set mark bit and set as root */
-                if (GC_REF_COUNT(addr) == 0 && !GC_IS_MARKED(addr)) {
-                    GC_IS_MARKED(addr) = true;
-                    GC_IS_ROOT(addr) = true;
-                    worklist_push(*worklist, addr);
-                    stack_push(void, *marked_nodes, addr);
-                    roots_set[roots_set_index++] = addr;
-                    debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
-                }
-
-            }
-        }
-
+    void* addr;
+    while((addr = cur_stack[i])) {
+        check_potential_ptr(addr, worklist);
         i++;
     }
 
-    /* This will need to actually modify our marked nodes stack */
-    pagetable_query(native_register_contents.rax);
-    pagetable_query(native_register_contents.rbx);
-    pagetable_query(native_register_contents.rcx);
-    pagetable_query(native_register_contents.rdx);
-    pagetable_query(native_register_contents.rsi);
-    pagetable_query(native_register_contents.rdi);
-    pagetable_query(native_register_contents.r8);
-    pagetable_query(native_register_contents.r9);
-    pagetable_query(native_register_contents.r10);
-    pagetable_query(native_register_contents.r11);
-    pagetable_query(native_register_contents.r12);
-    pagetable_query(native_register_contents.r13);
-    pagetable_query(native_register_contents.r14);
-    pagetable_query(native_register_contents.r15);
+    /* Funny pointer stuff to iterate through this struct, works since all elements are void* */
+    for (void** ptr = (void**)&native_register_contents; 
+         ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
+         ptr++) {
+        void* register_contents = *ptr;
+        debug_print("Checking pointer %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
+
+        if (pagetable_query(register_contents)) {
+            check_potential_ptr(register_contents, worklist);
+        }
+    }
+
 
     unloadNativeRootSet();
 }
@@ -266,7 +271,7 @@ void mark_and_evacuate()
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
-    walk_stack(&marking_stack, &worklist);
+    walk_stack(&worklist);
 
     /* Process the worklist in a BFS manner */
     while (!worklist_is_empty(&worklist)) {
