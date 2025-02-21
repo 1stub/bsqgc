@@ -183,6 +183,7 @@ void evacuate()
             set_canaries(base, bin->entrysize);
         
             void* new_addr = copy_object_data(old_addr, base, bin->entrysize);
+            GC_IS_YOUNG(new_addr) = false; // When an object is evacuated, it is now old (tenured)
 
             /* Set objects old locations forward index to be found when updating references */
             MetaData* old_addr_meta = GC_GET_META_DATA_ADDR(old_addr);
