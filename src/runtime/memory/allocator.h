@@ -176,5 +176,6 @@ static inline void* allocate(AllocatorBin* alloc, struct TypeInfoBase* type)
     MetaData* mdata = (MetaData*)((char*)obj - sizeof(MetaData));
     SETUP_META_FLAGS(mdata, type);
 
+    debug_print("Allocated object at %p\n", obj);
     return (void*)obj;
 }

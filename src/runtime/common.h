@@ -152,6 +152,17 @@ do {                                                 \
     (meta)->ref_count = 0;                           \
 } while(0)
 
+/* Macro for insertion of PageInfo object into list */
+#define INSERT_PAGE_IN_LIST(L, O) \
+do {                              \
+    if ((L) == NULL) {            \
+        (L) = (O);                \
+        (O)->next = NULL;         \
+    } else {                      \
+        (O)->next = (L);          \
+        (L) = (O);                \
+    }                             \
+} while (0)
 
 #ifdef ALLOC_DEBUG_CANARY
 

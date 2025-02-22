@@ -19,14 +19,6 @@ void collect()
     mark_and_evacuate();
 }
 
-static void update_evacuation_freelist(AllocatorBin *bin) {
-    if (bin->evac_page->freelist == NULL) {
-        bin->evac_page->next = allocateFreshPage(bin->evac_page->entrysize);
-        bin->evac_page = bin->evac_page->next;
-        bin->evac_page->next = NULL;
-    }
-}
-
 /* Set pre and post canaries in evacuation page if enabled */
 #ifdef ALLOC_DEBUG_CANARY
 static void set_canaries(void* base, size_t entry_size) 
@@ -101,6 +93,33 @@ void update_references()
 }
 
 /**
+* Idea here is after we finish collecting and all freelists that got manipulated a bunch
+* have been rebuilt we can return our pages to their managers respectively, going to their
+* appropriate utilization lists
+**/
+void return_to_pmanagers(AllocatorBin* bin, PageInfo* page) 
+{
+    float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
+
+    /* TODO: make these page insertions nice macros */
+    if(page_utilization < 0.01) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
+    }
+    else if(page_utilization > 0.01 && page_utilization < 0.3) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->low_utilization_pages, page);
+    }
+    else if(page_utilization > 0.3 && page_utilization < 0.85) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->mid_utilization_pages, page);
+    }
+    else if(page_utilization > 0.85 && page_utilization < 1.0f) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->high_utilization_pages, page);
+    }
+    else {
+        INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
+    }
+}
+
+/**
 * When we find an object that is eligble to be freed, we need to traverse what is points to
 * and decrement their refcount. This doesn't happen currently.
 **/
@@ -157,9 +176,11 @@ void rebuild_freelist()
 
             debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
+            /* return cur page to its bins page manager */
+            return_to_pmanagers(bin, cur);
+
             cur = cur->next;
         }
-
     }
 }
 
@@ -174,7 +195,7 @@ void evacuate()
         if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             // Check if the current evacuation page's freelist is exhausted
             if (bin->evac_page->freelist == NULL) {
-                update_evacuation_freelist(bin);
+                getFreshPageForEvacuation(bin);
             }
             
             FreeListEntry* base = bin->evac_page->freelist;
@@ -236,6 +257,11 @@ void check_potential_ptr(void* addr, struct WorkList* worklist) {
     }
 }
 
+/**
+* CURRENT BUG:
+* There are issues with alignment of pointer to be checked as roots. They seem to be
+* just slight not aligned, but this causes page table queries to fail
+**/
 void walk_stack(struct WorkList* worklist) 
 {
     loadNativeRootSet();
@@ -245,6 +271,7 @@ void walk_stack(struct WorkList* worklist)
 
     void* addr;
     while((addr = cur_stack[i])) {
+        debug_print("Checking stack pointer %p\n", addr);
         check_potential_ptr(addr, worklist);
         i++;
     }
@@ -254,7 +281,7 @@ void walk_stack(struct WorkList* worklist)
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
          ptr++) {
         void* register_contents = *ptr;
-        debug_print("Checking pointer %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
+        debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
 
         if (pagetable_query(register_contents)) {
             check_potential_ptr(register_contents, worklist);

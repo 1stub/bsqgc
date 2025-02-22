@@ -100,31 +100,20 @@ PageInfo* allocateFreshPage(uint16_t entrysize)
 
 void getFreshPageForAllocator(AllocatorBin* alloc)
 {   
+    PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
     /* Fetch a page from our manager and insert into alloc_page list */
-    if(alloc->alloc_page != NULL) {
-        alloc->alloc_page->next = getPageFromManager(alloc->page_manager, alloc->entrysize);
-        alloc->alloc_page = alloc->alloc_page->next;
-        alloc->alloc_page->next = NULL;
-    } 
-    else {
-        alloc->alloc_page = getPageFromManager(alloc->page_manager, alloc->entrysize);
-        alloc->alloc_page->next = NULL;
-    }
+    INSERT_PAGE_IN_LIST(alloc->alloc_page, page);
 
     alloc->freelist = alloc->alloc_page->freelist;
 }
 
 void getFreshPageForEvacuation(AllocatorBin* alloc) 
 {
-    if(alloc->evac_page != NULL) {
-        alloc->evac_page->next = getPageFromManager(alloc->page_manager, alloc->entrysize);
-        alloc->evac_page = alloc->evac_page->next;
-        alloc->evac_page->next = NULL;
-    }
-    else {
-        alloc->evac_page = getPageFromManager(alloc->page_manager, alloc->entrysize);
-        alloc->evac_page->next = NULL;
-    }
+    PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
+
+    INSERT_PAGE_IN_LIST(alloc->evac_page, page);
+
+    /* Need to update freelist? */
 }
 
 AllocatorBin* getBinForSize(uint16_t entrytsize)

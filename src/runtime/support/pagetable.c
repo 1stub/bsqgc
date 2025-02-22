@@ -14,11 +14,11 @@ void pagetable_init() {
 }
 
 void pagetable_insert(void* addr) {
-    uint64_t address = (uint64_t)addr;
-    uint64_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK; // Bits 47-36
-    uint64_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK; // Bits 35-24
-    uint64_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK; // Bits 23-12
-    uint64_t index4 = address & LEVEL_MASK;                   // Bits 11-0
+    uintptr_t address = (uintptr_t)addr;
+    uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK; // Bits 47-36
+    uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK; // Bits 35-24
+    uintptr_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK; // Bits 23-12
+    uintptr_t index4 = address & LEVEL_MASK;                   // Bits 11-0
 
     void** level1 = pagetable_root;
     if (!level1[index1]) {
@@ -43,11 +43,11 @@ void pagetable_insert(void* addr) {
 }
 
 bool pagetable_query(void* addr) {
-    uint64_t address = (uint64_t)addr;
-    uint64_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK;  // Bits 47-36
-    uint64_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK;  // Bits 35-24
-    uint64_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK;  // Bits 23-12
-    uint64_t index4 = (address & PAGE_ADDR_MASK) & LEVEL_MASK; // Bits 11-0
+    uintptr_t address = (uintptr_t)addr;
+    uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK;  // Bits 47-36
+    uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK;  // Bits 35-24
+    uintptr_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK;  // Bits 23-12
+    uintptr_t index4 = (address & PAGE_ADDR_MASK) & LEVEL_MASK; // Bits 11-0
 
     void** level1 = pagetable_root;
     if (!level1[index1]) return false;
