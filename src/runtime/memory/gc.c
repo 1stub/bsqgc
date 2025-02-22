@@ -20,10 +20,10 @@ void collect()
 }
 
 static void update_evacuation_freelist(AllocatorBin *bin) {
-    if (bin->page_manager->evacuate_page->freelist == NULL) {
-        bin->page_manager->evacuate_page->next = allocateFreshPage(bin->page_manager->evacuate_page->entrysize);
-        bin->page_manager->evacuate_page = bin->page_manager->evacuate_page->next;
-        bin->page_manager->evacuate_page->next = NULL;
+    if (bin->evac_page->freelist == NULL) {
+        bin->evac_page->next = allocateFreshPage(bin->evac_page->entrysize);
+        bin->evac_page = bin->evac_page->next;
+        bin->evac_page->next = NULL;
     }
 }
 
@@ -113,7 +113,7 @@ void rebuild_freelist()
 
     while(!stack_empty(bins)) {
         AllocatorBin* bin = stack_pop(AllocatorBin, bins);
-        PageInfo* cur = bin->page_manager->all_pages;
+        PageInfo* cur = bin->alloc_page;
 
         while(cur) {
             FreeListEntry* last_freelist_entry = NULL;
@@ -151,7 +151,7 @@ void rebuild_freelist()
 
             /* Now update the current page for bin if there are freeblocks */
             if(cur->freecount > 0) {
-                bin->page = cur;
+                bin->alloc_page = cur;
                 bin->freelist = cur->freelist;
             }
 
@@ -173,12 +173,12 @@ void evacuate()
         /* We evacuate non root young marked objects */
         if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             // Check if the current evacuation page's freelist is exhausted
-            if (bin->page_manager->evacuate_page->freelist == NULL) {
+            if (bin->evac_page->freelist == NULL) {
                 update_evacuation_freelist(bin);
             }
             
-            FreeListEntry* base = bin->page_manager->evacuate_page->freelist;
-            bin->page_manager->evacuate_page->freelist = base->next;
+            FreeListEntry* base = bin->evac_page->freelist;
+            bin->evac_page->freelist = base->next;
 
             set_canaries(base, bin->entrysize);
         
