@@ -24,7 +24,7 @@ struct TypeInfoBase TreeNode = {
     .typekey = "TreeNode"
 };
 
-int main(int argc, char** argv) {
+int run() {
     initializeStartup();
     initializeThreadLocalInfo();
 
@@ -41,10 +41,12 @@ int main(int argc, char** argv) {
 
     debug_print("%p %p %p \n", root, leaf1, leaf2);
 
-    collect(); // First GC cycle
-
     return 0;
 }
 
+int main(int argc, char** argv) {
+    run();
+    collect();
 
-
+    return 0;
+}

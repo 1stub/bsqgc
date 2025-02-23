@@ -47,8 +47,8 @@ void xmem_objclear(void* mem, size_t n);
 void xmem_pageclear(void* mem);
 
 // Gets min and max pointers on a page from any address in the page
-#define GET_MIN_FOR_SEGMENT(P, SEG) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG))
-#define GET_MAX_FOR_SEGMENT(P, SEG) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG + BSQ_BLOCK_ALLOCATION_SIZE - (SEG + sizeof(void*))))
+#define GET_MIN_FOR_SEGMENT(P, SEG_SIZE) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG_SIZE))
+#define GET_MAX_FOR_SEGMENT(P, SEG_SIZE) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG_SIZE + BSQ_BLOCK_ALLOCATION_SIZE - (SEG_SIZE + sizeof(void*))))
 
 extern mtx_t g_lock;
 extern size_t tl_id_counter;

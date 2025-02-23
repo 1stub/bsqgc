@@ -97,6 +97,8 @@ typedef struct AllocatorBin
     * We will store roots, pending decs, maybe a worklist
     * and other nice bin local structures 
     */
+    struct ArrayList roots;
+    struct ArrayList old_roots;
 
     PageInfo* alloc_page; // Page in which we are currently allocating from
     PageInfo* evac_page; // Page in which we are currently evacuating from
@@ -143,7 +145,7 @@ PageManager* initializePageManager(uint16_t entry_size);
 PageInfo* allocateFreshPage(uint16_t entrysize);
 
 /**
- * Slow path for usage with canaries --- debug
+ * Slow path for usage with canaries
  **/
 static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc){
     uint64_t* pre = (uint64_t*)ret;

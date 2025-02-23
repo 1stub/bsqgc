@@ -14,7 +14,7 @@ void arraylist_push_head_slow(struct ArrayList* al, void* obj)
 {
     /* A tad "weirder" than adding a tail. We neeed to make a new page and set our head to its max element */
     struct ArrayListSegment* xseg = XALLOC_PAGE(struct ArrayListSegment);
-    debug_print("NEW PAGE!!!!!!\n");
+    debug_print("NEW ARRAY LIST PAGE!!!!!!\n");
     xseg->data = (void*)((char*)xseg + sizeof(struct ArrayListSegment));
 
     /* Case when no pages have been linked */
@@ -43,7 +43,7 @@ void arraylist_push_head_slow(struct ArrayList* al, void* obj)
 void arraylist_push_tail_slow(struct ArrayList* al, void* obj)
 { 
     struct ArrayListSegment* xseg = XALLOC_PAGE(struct ArrayListSegment);
-    debug_print("NEW PAGE!!!!!!\n");
+    debug_print("NEW ARRAY LIST PAGE!!!!!!\n");
     xseg->data = (void*)((char*)xseg + sizeof(struct ArrayListSegment));
 
     /* Case when no pages have been linked */
@@ -113,5 +113,31 @@ void* arraylist_pop_tail_slow(struct ArrayList* al)
     }
 
     return res;
+}
+
+void** arraylist_get_iterator(struct ArrayList* al) {
+    return al->head;
+}
+
+void* arraylist_get_next(struct ArrayList* al, void** it) {
+    if(it == GET_MAX_FOR_SEGMENT(it, AL_SEG_SIZE)) {
+        struct ArrayListSegment* cur_segment = 
+            (struct ArrayListSegment*)((uintptr_t)it & PAGE_ADDR_MASK);
+        it = GET_MIN_FOR_SEGMENT(cur_segment->next, AL_SEG_SIZE);
+    }
+    else {
+        it++;
+    }
+
+    return it;
+}
+
+bool arraylist_is_empty(struct ArrayList* al) {
+    /* It is crucial we check the contents of these pointers, not addresses they hold */
+    return *al->head == NULL || *al->tail == NULL; 
+}
+
+bool arraylist_is_init(struct ArrayList* al) {
+    return al->head_segment && al->tail_segment;
 }
     
