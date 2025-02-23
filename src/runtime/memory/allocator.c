@@ -7,12 +7,12 @@
 #define CANARY_DEBUG_CHECK
 
 /* Static declarations of our allocator bin and page manager structures */
-AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .page = NULL, .page_manager = NULL};
-AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .page = NULL, .page_manager = NULL};
+AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr8};
+AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr16};
 
 /* Each AllocatorBin needs its own page manager */
-PageManager p_mgr8 = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
-PageManager p_mgr16 = {.all_pages = NULL, .evacuate_page = NULL, .filled_pages = NULL};
+PageManager p_mgr8 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};
+PageManager p_mgr16 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};
 
 static void setup_freelist(PageInfo* pinfo, uint16_t entrysize) {
     FreeListEntry* current = pinfo->freelist;
@@ -41,8 +41,42 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
 }
 
 /**
-* Whenever this method is called we need to insert address into our hierarchical page manager so its easy to 
-* see if said page exists.
+* Go into a bins page manager and grab us a page. This will need some rework in the future
+* to where we can decide more specifically what page utilizaiton levels we want for a specific
+* purpose. Ex if we want an evac page we may be more inclined to grab a full page. Or an alloc
+* page could be more useful to be mostly empty since most objects on it will die.
+**/
+PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize) 
+{
+    PageInfo* page = NULL;
+
+    if(pm->empty_pages != NULL) {
+        page = pm->empty_pages;
+        pm->empty_pages = pm->empty_pages->next;
+    }
+    else if(pm->low_utilization_pages != NULL) {
+        page = pm->low_utilization_pages;
+        pm->low_utilization_pages = pm->low_utilization_pages->next;
+    }
+    else if(pm->mid_utilization_pages != NULL) {
+        page = pm->mid_utilization_pages;
+        pm->mid_utilization_pages = pm->mid_utilization_pages->next;
+    } 
+    else if(pm->high_utilization_pages != NULL) {
+        page = pm->high_utilization_pages;
+        pm->high_utilization_pages = pm->high_utilization_pages->next;
+    }
+    else {
+        page = allocateFreshPage(entrysize);
+    }
+
+    return page;
+}
+
+/**
+* Insert into our mulitlevel page manager. We do not need to insert into page manager here
+* because we are assuming this page will directly be needed for allocation. No point in 
+* inserting into empty_pages just to have to go and grab it right away. Saves pointer overhead.
 **/
 PageInfo* allocateFreshPage(uint16_t entrysize)
 {
@@ -65,60 +99,30 @@ PageInfo* allocateFreshPage(uint16_t entrysize)
 }
 
 void getFreshPageForAllocator(AllocatorBin* alloc)
-{
-    if(alloc->page != NULL) {
-        //need to rotate our old page into the collector, now alloc->page
-        //exists in the needs_collection list
-        alloc->page->pagestate = AllocPageInfo_ActiveEvacuation;
-        alloc->page->next = alloc->page_manager->filled_pages;
-        alloc->page_manager->filled_pages = alloc->page;
-    }
-    PageInfo* new_page = allocateFreshPage(alloc->entrysize);
+{   
+    PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
+    /* Fetch a page from our manager and insert into alloc_page list */
+    INSERT_PAGE_IN_LIST(alloc->alloc_page, page);
 
-    // Add new page to all pages list
-    new_page->next = alloc->page_manager->all_pages;
-    alloc->page_manager->all_pages = new_page;
-
-    // Make sure the current alloc page points to this entry in the list
-    alloc->page = new_page;
-    alloc->freelist = new_page->freelist;
+    alloc->freelist = alloc->alloc_page->freelist;
 }
 
-AllocatorBin* initializeAllocatorBin(uint16_t entrysize)
+void getFreshPageForEvacuation(AllocatorBin* alloc) 
 {
-    /* Not too sure about using entry size to determine what bin to use here */
-    AllocatorBin* bin = NULL;
-    if(entrysize == 8) {
-        bin = &a_bin8;
-        bin->page_manager = &p_mgr8;
-    }else if (entrysize == 16) {
-        bin = &a_bin16;
-        bin->page_manager = &p_mgr16;
-    }
-    assert(bin != NULL);
+    PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
 
-    if(bin == NULL) return NULL;
+    INSERT_PAGE_IN_LIST(alloc->evac_page, page);
 
-    bin->page_manager->evacuate_page = allocateFreshPage(entrysize);
-
-    getFreshPageForAllocator(bin);
-
-    return bin;
+    /* Need to update freelist? */
 }
 
 AllocatorBin* getBinForSize(uint16_t entrytsize)
 {
     switch(entrytsize){
         case 8: {
-            if(a_bin8.page == NULL) {
-                return initializeAllocatorBin(8);
-            }
             return &a_bin8;
         }
         case 16: {
-            if(a_bin8.page == NULL) {
-                return initializeAllocatorBin(16);
-            }
             return &a_bin16;
         }
         default: return NULL;

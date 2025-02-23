@@ -47,8 +47,8 @@ void xmem_objclear(void* mem, size_t n);
 void xmem_pageclear(void* mem);
 
 // Gets min and max pointers on a page from any address in the page
-#define GET_MIN_FOR_SEGMENT(P, SEG) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG))
-#define GET_MAX_FOR_SEGMENT(P, SEG) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG + BSQ_BLOCK_ALLOCATION_SIZE - (SEG + sizeof(void*))))
+#define GET_MIN_FOR_SEGMENT(P, SEG_SIZE) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG_SIZE))
+#define GET_MAX_FOR_SEGMENT(P, SEG_SIZE) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG_SIZE + BSQ_BLOCK_ALLOCATION_SIZE - (SEG_SIZE + sizeof(void*))))
 
 extern mtx_t g_lock;
 extern size_t tl_id_counter;
@@ -152,6 +152,17 @@ do {                                                 \
     (meta)->ref_count = 0;                           \
 } while(0)
 
+/* Macro for insertion of PageInfo object into list */
+#define INSERT_PAGE_IN_LIST(L, O) \
+do {                              \
+    if ((L) == NULL) {            \
+        (L) = (O);                \
+        (O)->next = NULL;         \
+    } else {                      \
+        (O)->next = (L);          \
+        (L) = (O);                \
+    }                             \
+} while (0)
 
 #ifdef ALLOC_DEBUG_CANARY
 

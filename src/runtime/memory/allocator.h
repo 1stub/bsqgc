@@ -39,6 +39,16 @@ do {                                    \
     (M)->type = T;                      \
 } while(0)
 
+/**
+* This whole memory allocator needs some more thought. A new idea is
+* instead of each bin maininting its own page manager, we have a global page
+* manager in which they all share. Then what we could do is each page has
+* a pointer to "next" that is to be used bin locally and also a global pointer
+* into the overarching global page manager that links together all pages. We can throw
+* around this next pointer, however the manager_next or something will need to
+* be a bit more concrete.
+**/
+
 ////////////////////////////////
 //Memory allocator
 
@@ -66,25 +76,41 @@ typedef struct PageInfo
 
     PageStateInfo pagestate;
 
-    struct PageInfo* next; //need this for allocator page management
+    struct PageInfo* next;
 } PageInfo;
 
 typedef struct PageManager{
-    PageInfo* all_pages;
-    PageInfo* evacuate_page;
-    PageInfo* filled_pages; //Array list?
+    PageInfo* low_utilization_pages; // Pages with 1-30% utilization (does not hold fully empty)
+    PageInfo* mid_utilization_pages; // Pages with 31-85% utilization
+    PageInfo* high_utilization_pages; // Pages with 86-100% utilization 
+
+    PageInfo* filled_pages; // Completly empty pages
+    PageInfo* empty_pages; // Completeyly full pages
 } PageManager;
-extern PageManager p_mgr;
 
 typedef struct AllocatorBin
 {
     FreeListEntry* freelist;
     uint16_t entrysize;
-    PageInfo* page;
+
+    /* 
+    * We will store roots, pending decs, maybe a worklist
+    * and other nice bin local structures 
+    */
+    struct ArrayList roots;
+    struct ArrayList old_roots;
+
+    PageInfo* alloc_page; // Page in which we are currently allocating from
+    PageInfo* evac_page; // Page in which we are currently evacuating from
     PageManager* page_manager;
 } AllocatorBin;
+
+/* Since entry sizes varry, we can statically declare bins & page managers to avoid any mallocs */
 extern AllocatorBin a_bin8;
+extern PageManager p_mgr8;
+
 extern AllocatorBin a_bin16;
+extern PageManager p_mgr16;
 
 /**
  * When needed, get a fresh page from mmap to allocate from 
@@ -92,9 +118,15 @@ extern AllocatorBin a_bin16;
 void getFreshPageForAllocator(AllocatorBin* alloc);
 
 /**
- * For our allocator to be usable, the AllocatorBin must be initialized
- **/
-AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
+* If we cannot find a page to evacuate to use this
+**/
+void getFreshPageForEvacuation(AllocatorBin* alloc); 
+
+/**
+* Gets ptr to page from a bins manager that we can manipulate using
+* its bin_next pointer
+**/
+PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize);
 
 /**
 * Since our bins can vary in size (always multiple of 8 bytes) depending on the type they hold
@@ -103,8 +135,7 @@ AllocatorBin* initializeAllocatorBin(uint16_t entrysize);
 AllocatorBin* getBinForSize(uint16_t entrytsize);
 
 /**
- * Setup pointers for managing our pages 
- * we have a list of all pages and those that have stuff in them
+ * Sets up metafields for PageInfo
  **/
 PageManager* initializePageManager(uint16_t entry_size);
 
@@ -114,7 +145,7 @@ PageManager* initializePageManager(uint16_t entry_size);
 PageInfo* allocateFreshPage(uint16_t entrysize);
 
 /**
- * Slow path for usage with canaries --- debug
+ * Slow path for usage with canaries
  **/
 static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc){
     uint64_t* pre = (uint64_t*)ret;
@@ -147,5 +178,8 @@ static inline void* allocate(AllocatorBin* alloc, struct TypeInfoBase* type)
     MetaData* mdata = (MetaData*)((char*)obj - sizeof(MetaData));
     SETUP_META_FLAGS(mdata, type);
 
+    alloc->alloc_page->freecount--;
+
+    debug_print("Allocated object at %p\n", obj);
     return (void*)obj;
 }

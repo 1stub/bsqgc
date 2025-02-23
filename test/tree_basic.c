@@ -1,6 +1,4 @@
-#include "../src/language/bsqtype.h"
-#include "../src/runtime/memory/allocator.h"
-#include "../src/runtime/support/threadinfo.h"
+#include "../src/runtime/memory/gc.h"
 
 struct TypeInfoBase Empty = {
     .type_id = 0,
@@ -23,28 +21,32 @@ struct TypeInfoBase TreeNode = {
     .type_size = 16,
     .slot_size = 2,
     .ptr_mask = "11",  
-    .typekey = "ListNode"
+    .typekey = "TreeNode"
 };
 
-/* Lets create a simple tree and collect */
-int main(int argc, char** argv) {
-    /* Setup necessary bin and thread related stuff */
+int run() {
     initializeStartup();
     initializeThreadLocalInfo();
 
     AllocatorBin* bin16 = getBinForSize(16);
     AllocatorBin* bin8 = getBinForSize(8);
 
-    void** root = (void**)allocate(bin16, &TreeNode);
+    void** root = (void**)allocate(bin16, &TreeNode); // Root stays in main()
+
     void* leaf1 = allocate(bin8, &Empty);
     void* leaf2 = allocate(bin8, &Empty);
 
     root[0] = leaf1;
     root[1] = leaf2;
 
-    // Need to do some asserts now
+    debug_print("%p %p %p \n", root, leaf1, leaf2);
 
-    debug_print("Hello from tree_basic test\n");
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    run();
+    collect();
 
     return 0;
 }

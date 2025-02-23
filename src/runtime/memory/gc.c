@@ -10,21 +10,39 @@
 void* forward_table[MAX_PTRS];
 int forward_table_index = 0;
 
-/* This needs to be a actual SET!!!! */
-void* roots_set[MAX_PTRS];
-int roots_set_index = 0;
+void update_references(AllocatorBin* bin);
+void rebuild_freelist(AllocatorBin* bin);
 
 void collect() 
 {
     mark_and_evacuate();
-}
 
-static void update_evacuation_freelist(AllocatorBin *bin) {
-    if (bin->page_manager->evacuate_page->freelist == NULL) {
-        bin->page_manager->evacuate_page->next = allocateFreshPage(bin->page_manager->evacuate_page->entrysize);
-        bin->page_manager->evacuate_page = bin->page_manager->evacuate_page->next;
-        bin->page_manager->evacuate_page->next = NULL;
+    /** Now we need to do our decs - 
+    * If we discover an object who has ref count of zero, 
+    * was in our old root set, ans is not in current roots
+    * he is elligible for deletion 
+    * (he would also be old but this check is trivial)
+    **/
+
+    /* Very naive approach to looping through our bins */
+    struct Stack bins =  {NULL, NULL, NULL, NULL};
+    stack_push(AllocatorBin, bins, getBinForSize(8));
+    stack_push(AllocatorBin, bins, getBinForSize(16));
+
+    while(!stack_empty(bins)) {
+        AllocatorBin* bin = stack_pop(AllocatorBin, bins);
+
+        update_references(bin);
+        rebuild_freelist(bin);
+
+        while(arraylist_is_init(&bin->roots) && (!arraylist_is_empty(&bin->roots))) {
+            void* root = arraylist_pop_head(void, bin->roots);
+
+            // do some stuff
+            debug_print("hi from root %p\n", root);
+        }
     }
+
 }
 
 /* Set pre and post canaries in evacuation page if enabled */
@@ -58,15 +76,20 @@ static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size)
 }
 
 /* Starting from roots update pointers using forward table */
-void update_references() 
+void update_references(AllocatorBin* bin) 
 {
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
-    for(int i = 0; i < roots_set_index; i++) {
-        void* root = roots_set[i];
+    void** it = arraylist_get_iterator(&bin->roots);
+
+    while(it && *it) {
+        void* root = *it;
         worklist_push(worklist, root);
+
+        it = arraylist_get_next(&bin->roots, it);
     }
+    
 
     while(!worklist_is_empty(&worklist)) {
         void* addr = worklist_pop(void, worklist);
@@ -101,65 +124,72 @@ void update_references()
 }
 
 /**
+* Idea here is after we finish collecting and all freelists that got manipulated a bunch
+* have been rebuilt we can return our pages to their managers respectively, going to their
+* appropriate utilization lists
+**/
+void return_to_pmanagers(AllocatorBin* bin, PageInfo* page) 
+{
+    float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
+
+    /* TODO: make these page insertions nice macros */
+    if(page_utilization < 0.01) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
+    }
+    else if(page_utilization > 0.01 && page_utilization < 0.3) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->low_utilization_pages, page);
+    }
+    else if(page_utilization > 0.3 && page_utilization < 0.85) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->mid_utilization_pages, page);
+    }
+    else if(page_utilization > 0.85 && page_utilization < 1.0f) {
+        INSERT_PAGE_IN_LIST(bin->page_manager->high_utilization_pages, page);
+    }
+    else {
+        INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
+    }
+}
+
+/**
 * When we find an object that is eligble to be freed, we need to traverse what is points to
 * and decrement their refcount. This doesn't happen currently.
 **/
-void rebuild_freelist()
+void rebuild_freelist(AllocatorBin* bin)
 {
-    /* Very naive approach to looping through our bins */
-    struct Stack bins =  {NULL, NULL, NULL, NULL};
-    stack_push(AllocatorBin, bins, getBinForSize(8));
-    stack_push(AllocatorBin, bins, getBinForSize(16));
+    PageInfo* cur = bin->alloc_page;
 
-    while(!stack_empty(bins)) {
-        AllocatorBin* bin = stack_pop(AllocatorBin, bins);
-        PageInfo* cur = bin->page_manager->all_pages;
-
-        while(cur) {
-            FreeListEntry* last_freelist_entry = NULL;
-            bool first_nonalloc_block = true;
-            cur->freecount = 0;
-        
-            for (size_t i = 0; i < cur->entrycount; i++) {
-                FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
-                void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
-        
-                /* Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable */
-                if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0 && !GC_IS_ROOT(obj)) || !GC_IS_MARKED(obj)) {
-                    if(first_nonalloc_block) {
-                        cur->freelist = new_freelist_entry;
-                        cur->freelist->next = NULL;
-                        last_freelist_entry = cur->freelist;
-                        first_nonalloc_block = false;
-                    } else {
-                        last_freelist_entry->next = new_freelist_entry;
-                        new_freelist_entry->next = NULL; 
-                        last_freelist_entry = new_freelist_entry;
-                    }
-                    
-                    cur->freecount++;
+    while(cur) {
+        FreeListEntry* last_freelist_entry = NULL;
+        bool first_nonalloc_block = true;
+        cur->freecount = 0;
+    
+        for (size_t i = 0; i < cur->entrycount; i++) {
+            FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
+            void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
+    
+            /* Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable */
+            if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0 && !GC_IS_ROOT(obj)) || !GC_IS_MARKED(obj)) {
+                if(first_nonalloc_block) {
+                    cur->freelist = new_freelist_entry;
+                    cur->freelist->next = NULL;
+                    last_freelist_entry = cur->freelist;
+                    first_nonalloc_block = false;
+                } else {
+                    last_freelist_entry->next = new_freelist_entry;
+                    new_freelist_entry->next = NULL; 
+                    last_freelist_entry = new_freelist_entry;
                 }
+                
+                cur->freecount++;
             }
-
-            /**
-            * Currently I have no idea why I need to manually set the bins page here,
-            * I feel like manually doing this setting could create some really weird
-            * problems when running larger tests. It seems that modifying the current 
-            * page in bin through our page manager does not properly reflect in
-            * bin->page/freelist itself. hmm...
-            **/
-
-            /* Now update the current page for bin if there are freeblocks */
-            if(cur->freecount > 0) {
-                bin->page = cur;
-                bin->freelist = cur->freelist;
-            }
-
-            debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
-
-            cur = cur->next;
         }
 
+        debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
+
+        /* return cur page to its bins page manager */
+        return_to_pmanagers(bin, cur);
+
+        cur = cur->next;
     }
 }
 
@@ -172,13 +202,16 @@ void evacuate()
 
         /* We evacuate non root young marked objects */
         if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
-            // Check if the current evacuation page's freelist is exhausted
-            if (bin->page_manager->evacuate_page->freelist == NULL) {
-                update_evacuation_freelist(bin);
+            /* Check if our evac page doesnt exist yet or freelist is exhausted */
+            if (bin->evac_page == NULL) {
+                getFreshPageForEvacuation(bin);
+            }
+            else if(bin->evac_page->freelist == NULL) {
+                getFreshPageForEvacuation(bin);
             }
             
-            FreeListEntry* base = bin->page_manager->evacuate_page->freelist;
-            bin->page_manager->evacuate_page->freelist = base->next;
+            FreeListEntry* base = bin->evac_page->freelist;
+            bin->evac_page->freelist = base->next;
 
             set_canaries(base, bin->entrysize);
         
@@ -193,9 +226,6 @@ void evacuate()
             debug_print("Moved %p to %p\n", old_addr, new_addr);
         }
     }
-
-    update_references();
-    rebuild_freelist();
 }
 
 void check_potential_ptr(void* addr, struct WorkList* worklist) {
@@ -228,7 +258,12 @@ void check_potential_ptr(void* addr, struct WorkList* worklist) {
                 GC_IS_ROOT(addr) = true;
                 worklist_push(*worklist, addr);
                 stack_push(void, marking_stack, addr);
-                roots_set[roots_set_index++] = addr;
+
+                AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
+                if(bin->roots.head_segment == NULL || bin->roots.tail_segment == NULL) { 
+                    arraylist_initialize(&bin->roots);
+                }
+                arraylist_push_head(bin->roots, addr );
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
 
@@ -245,6 +280,7 @@ void walk_stack(struct WorkList* worklist)
 
     void* addr;
     while((addr = cur_stack[i])) {
+        debug_print("Checking stack pointer %p\n", addr);
         check_potential_ptr(addr, worklist);
         i++;
     }
@@ -254,7 +290,7 @@ void walk_stack(struct WorkList* worklist)
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
          ptr++) {
         void* register_contents = *ptr;
-        debug_print("Checking pointer %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
+        debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
 
         if (pagetable_query(register_contents)) {
             check_potential_ptr(register_contents, worklist);
