@@ -168,12 +168,6 @@ void rebuild_freelist()
             * bin->page/freelist itself. hmm...
             **/
 
-            /* Now update the current page for bin if there are freeblocks */
-            if(cur->freecount > 0) {
-                bin->alloc_page = cur;
-                bin->freelist = cur->freelist;
-            }
-
             debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
             /* return cur page to its bins page manager */
