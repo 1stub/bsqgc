@@ -1,12 +1,16 @@
 #include "gc.h"
 #include "allocator.h"
 
+#include <stdlib.h> //qsort
+
 void* forward_table[MAX_ROOTS];
 size_t forward_table_index = 0;
 
 void update_references(AllocatorBin* bin);
 void rebuild_freelist(AllocatorBin* bin);
 int compare(const void* a, const void* b);
+void compare_roots_and_oldroots(AllocatorBin* bin);
+
 
 void collect() 
 {
@@ -14,11 +18,12 @@ void collect()
     for(int i = 0; i < NUM_BINS; i++) {
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
-        /* If bin->roots isnt init there is definetly nothing in it so dont loop, itll get init later */
         for(size_t i = 0; i < bin->roots_count; i++) {
             bin->old_roots[bin->old_roots_count++] = bin->roots[i];
             debug_print("Insertion into old roots\n");
         }
+        bin->roots_count = 0;
+        qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
     }
 
     mark_and_evacuate();
@@ -32,22 +37,48 @@ void collect()
 
     for(int i = 0; i < NUM_BINS; i++) {
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
+
+        compare_roots_and_oldroots(bin);
+
         update_references(bin);
-        rebuild_freelist(bin);
-
-        for(size_t i = 0; i < bin->roots_count; i++) {
-            void* root = bin->roots[i];
-
-            // do some stuff
-            debug_print("hi from root %p\n", root);
-        }
+        rebuild_freelist(bin);        
     }
 
+    //process_decs();
 }
 
 /* use in sorting old/new roots and using two pointer walk to find existence in old roots */
 int compare(const void* a, const void* b) {
-    return (*(int*)a - *(int*)b);
+    return ((char*)a - (char*)b);
+}
+
+/**
+* This method is designed to walk the roots and oldroots set for each bin,
+* finding those who need decs
+**/
+void compare_roots_and_oldroots(AllocatorBin* bin) {
+    /* First we need to sort the roots we find */
+    qsort(bin->roots, bin->roots_count, sizeof(void*), compare);
+    
+    size_t roots_idx = 0;
+    size_t oldroots_idx = 0;
+
+    while(oldroots_idx < bin->old_roots_count) {
+        char* cur_oldroot = bin->old_roots[oldroots_idx];
+        char* cur_root = bin->roots[roots_idx];
+        if(cur_root < cur_oldroot) {
+            roots_idx++;
+        }
+        else if(cur_oldroot < cur_root) {
+            worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
+            debug_print("old root %p not in current roots (current at %p)\n", cur_oldroot, cur_root);
+            oldroots_idx++;
+        }
+        else {
+            roots_idx++;
+            oldroots_idx++;
+        }
+    }
 }
 
 /* Set pre and post canaries in evacuation page if enabled */
