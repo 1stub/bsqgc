@@ -31,7 +31,7 @@ int run() {
     AllocatorBin* bin16 = getBinForSize(16);
     AllocatorBin* bin8 = getBinForSize(8);
 
-    void** root = (void**)allocate(bin16, &TreeNode); // Root stays in main()
+    void** root = (void**)allocate(bin16, &TreeNode);
 
     void* leaf1 = allocate(bin8, &Empty);
     void* leaf2 = allocate(bin8, &Empty);
@@ -45,6 +45,9 @@ int run() {
 }
 
 int main(int argc, char** argv) {
+    run();
+    collect();
+
     run();
     collect();
 

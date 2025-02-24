@@ -2,9 +2,7 @@
 #include "allocator.h"
 
 /** 
-* Not totally confident on determining size or proper data structures for these two.
-* It's looking like this is where we need quick sort for sortring based on addreses
-* to avoid excessive and slow lookups
+* Not totally confident on determing if this can be converted to array list
 **/
 #define MAX_PTRS 1024
 void* forward_table[MAX_PTRS];
@@ -15,6 +13,20 @@ void rebuild_freelist(AllocatorBin* bin);
 
 void collect() 
 {
+    /* Before we mark and evac we populate old roots list, clearing roots list */
+    for(int i = 0; i < NUM_BINS; i++) {
+        AllocatorBin* bin = getBinForSize(8 * (1 << i));
+
+        /* If bin->roots isnt init there is definetly nothing in it so dont loop, itll get init later */
+        while(arraylist_is_init(&bin->roots) && (!arraylist_is_empty(&bin->roots))) {
+            if(!arraylist_is_init(&bin->old_roots)) {
+                arraylist_initialize(&bin->old_roots);
+            }
+            arraylist_push_tail(bin->old_roots, arraylist_pop_head(void, bin->roots));
+            debug_print("Insertion into old roots\n");
+        }
+    }
+
     mark_and_evacuate();
 
     /** Now we need to do our decs - 
@@ -24,14 +36,8 @@ void collect()
     * (he would also be old but this check is trivial)
     **/
 
-    /* Very naive approach to looping through our bins */
-    struct Stack bins =  {NULL, NULL, NULL, NULL};
-    stack_push(AllocatorBin, bins, getBinForSize(8));
-    stack_push(AllocatorBin, bins, getBinForSize(16));
-
-    while(!stack_empty(bins)) {
-        AllocatorBin* bin = stack_pop(AllocatorBin, bins);
-
+    for(int i = 0; i < NUM_BINS; i++) {
+        AllocatorBin* bin = getBinForSize(8 * (1 << i));
         update_references(bin);
         rebuild_freelist(bin);
 
@@ -128,8 +134,9 @@ void update_references(AllocatorBin* bin)
 * have been rebuilt we can return our pages to their managers respectively, going to their
 * appropriate utilization lists
 **/
-void return_to_pmanagers(AllocatorBin* bin, PageInfo* page) 
+void return_to_pmanagers(AllocatorBin* bin) 
 {
+    PageInfo* page = bin->alloc_page;
     float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
 
     /* TODO: make these page insertions nice macros */
@@ -147,6 +154,15 @@ void return_to_pmanagers(AllocatorBin* bin, PageInfo* page)
     }
     else {
         INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
+    }
+
+    /* Need to update bins alloc page now, since it just got returned */
+    bin->alloc_page = bin->alloc_page->next;
+    if(bin->alloc_page == NULL) {
+        bin->freelist = NULL;
+    } 
+    else {
+        bin->freelist = bin->alloc_page->freelist;
     }
 }
 
@@ -187,7 +203,7 @@ void rebuild_freelist(AllocatorBin* bin)
         debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
         /* return cur page to its bins page manager */
-        return_to_pmanagers(bin, cur);
+        return_to_pmanagers(bin);
 
         cur = cur->next;
     }

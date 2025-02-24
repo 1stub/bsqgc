@@ -88,17 +88,17 @@ typedef struct PageManager{
     PageInfo* empty_pages; // Completeyly full pages
 } PageManager;
 
+/* Only have 2 different bins (for now) */
+#define NUM_BINS 2
 typedef struct AllocatorBin
 {
     FreeListEntry* freelist;
     uint16_t entrysize;
 
-    /* 
-    * We will store roots, pending decs, maybe a worklist
-    * and other nice bin local structures 
-    */
     struct ArrayList roots;
     struct ArrayList old_roots;
+
+    struct WorkList pending_decs;
 
     PageInfo* alloc_page; // Page in which we are currently allocating from
     PageInfo* evac_page; // Page in which we are currently evacuating from
