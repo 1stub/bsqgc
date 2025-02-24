@@ -8,9 +8,13 @@ size_t forward_table_index = 0;
 
 void update_references(AllocatorBin* bin);
 void rebuild_freelist(AllocatorBin* bin);
-int compare(const void* a, const void* b);
 void compare_roots_and_oldroots(AllocatorBin* bin);
+void process_decs(AllocatorBin* bin);
 
+/* use in sorting old/new roots and using two pointer walk to find existence in old roots */
+int compare(const void* a, const void* b) {
+    return ((char*)a - (char*)b);
+}
 
 void collect() 
 {
@@ -39,17 +43,11 @@ void collect()
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
         compare_roots_and_oldroots(bin);
+        process_decs(bin);
 
         update_references(bin);
         rebuild_freelist(bin);        
     }
-
-    //process_decs();
-}
-
-/* use in sorting old/new roots and using two pointer walk to find existence in old roots */
-int compare(const void* a, const void* b) {
-    return ((char*)a - (char*)b);
 }
 
 /**
@@ -78,6 +76,46 @@ void compare_roots_and_oldroots(AllocatorBin* bin) {
             roots_idx++;
             oldroots_idx++;
         }
+    }
+    bin->old_roots_count = 0;
+}
+
+void process_decs(AllocatorBin* bin) {
+    while(!worklist_is_empty(&bin->pending_decs)) {
+        void* obj = worklist_pop(void, bin->pending_decs);
+
+        // Skip if the object is already freed
+        if (!GC_IS_ALLOCATED(obj)) {
+            continue;
+        }
+
+        // Decrement ref counts of objects this object points to
+        struct TypeInfoBase* type_info = GC_TYPE(obj);
+        for (size_t i = 0; i < type_info->slot_size; i++) {
+            char mask = *((type_info->ptr_mask) + i);
+
+            if (mask == PTR_MASK_PTR) {
+                void* child = *(void**)((char*)obj + i * sizeof(void*));
+                if (child != NULL) {
+                    decrement_ref_count(child);
+
+                    // If the child's ref count drops to zero, add it to the pending_decs list
+                    if (GC_REF_COUNT(child) == 0) {
+                        worklist_push(bin->pending_decs, child);
+                    }
+                }
+            }
+        }
+
+        // Put object onto its pages freelist by masking to the page itself then pusing to front of list 
+        PageInfo* objects_page = PAGE_MASK_EXTRACT_PINFO(obj);
+        FreeListEntry* entry = (FreeListEntry*)((char*)obj - sizeof(MetaData));
+        entry->next = objects_page->freelist;
+        objects_page->freelist = entry;
+
+        // Mark the object as unallocated
+        GC_IS_ALLOCATED(obj) = false;
+        debug_print("Freed object at %p\n", obj);
     }
 }
 
@@ -317,7 +355,7 @@ void walk_stack(struct WorkList* worklist)
 
     void* addr;
     while((addr = cur_stack[i])) {
-        debug_print("Checking stack pointer %p\n", addr);
+        //debug_print("Checking stack pointer %p\n", addr);
         check_potential_ptr(addr, worklist);
         i++;
     }
@@ -327,7 +365,7 @@ void walk_stack(struct WorkList* worklist)
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
          ptr++) {
         void* register_contents = *ptr;
-        debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
+        //debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
 
         if (pagetable_query(register_contents)) {
             check_potential_ptr(register_contents, worklist);

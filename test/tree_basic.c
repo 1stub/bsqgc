@@ -36,6 +36,8 @@ int run() {
     root[0] = leaf1;
     root[1] = leaf2;
 
+    collect();
+
     debug_print("%p %p %p\n", root, leaf1, leaf2);
 
     return 0;
@@ -50,10 +52,7 @@ int main(int argc, char** argv) {
     initializeThreadLocalInfo();
 
     run();
-    collect();
-
     run();
-    collect();
 
     return 0;
 }

@@ -48,7 +48,7 @@ static inline void decrement_ref_count(void* obj) {
         GC_REF_COUNT(obj)--;
     }
 
-    // Maybe free object if not root and ref count 0 here?
+    // might make more sense to put back on freelist here if refcnt 0
 }
 
 /* Idk of a good forever home for these canary methods */
