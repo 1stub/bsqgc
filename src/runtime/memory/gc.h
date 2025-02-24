@@ -38,12 +38,14 @@ void mark_and_evacuate();
 void walk_stack(struct WorkList* worklist);
 
 /* Incremented in marking */
-static inline void increment_ref_count(void* obj) {
+static inline void increment_ref_count(void* obj) 
+{
     GC_REF_COUNT(obj)++;
 }
 
 /* Old location decremented in evacuation */
-static inline void decrement_ref_count(void* obj) {   
+static inline void decrement_ref_count(void* obj) 
+{   
     if(GC_REF_COUNT(obj) > 0) {
         GC_REF_COUNT(obj)--;
     }

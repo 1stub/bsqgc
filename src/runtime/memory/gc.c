@@ -12,7 +12,8 @@ void compare_roots_and_oldroots(AllocatorBin* bin);
 void process_decs(AllocatorBin* bin);
 
 /* use in sorting old/new roots and using two pointer walk to find existence in old roots */
-int compare(const void* a, const void* b) {
+int compare(const void* a, const void* b) 
+{
     return ((char*)a - (char*)b);
 }
 
@@ -48,13 +49,16 @@ void collect()
         update_references(bin);
         rebuild_freelist(bin);        
     }
+
+    /* Wouldnt be a bad idea to check canaries here (if enabled) */
 }
 
 /**
 * This method is designed to walk the roots and oldroots set for each bin,
 * finding those who need decs
 **/
-void compare_roots_and_oldroots(AllocatorBin* bin) {
+void compare_roots_and_oldroots(AllocatorBin* bin) 
+{
     /* First we need to sort the roots we find */
     qsort(bin->roots, bin->roots_count, sizeof(void*), compare);
     
@@ -66,13 +70,11 @@ void compare_roots_and_oldroots(AllocatorBin* bin) {
         char* cur_root = bin->roots[roots_idx];
         if(cur_root < cur_oldroot) {
             roots_idx++;
-        }
-        else if(cur_oldroot < cur_root) {
+        } else if(cur_oldroot < cur_root) {
             worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
             debug_print("old root %p not in current roots (current at %p)\n", cur_oldroot, cur_root);
             oldroots_idx++;
-        }
-        else {
+        } else {
             roots_idx++;
             oldroots_idx++;
         }
@@ -80,12 +82,14 @@ void compare_roots_and_oldroots(AllocatorBin* bin) {
     bin->old_roots_count = 0;
 }
 
-void process_decs(AllocatorBin* bin) {
+void process_decs(AllocatorBin* bin) 
+{
     while(!worklist_is_empty(&bin->pending_decs)) {
         void* obj = worklist_pop(void, bin->pending_decs);
 
         // Skip if the object is already freed
         if (!GC_IS_ALLOCATED(obj)) {
+            debug_print("object a %p has already been freed\n", obj);
             continue;
         }
 
@@ -166,10 +170,7 @@ void update_references(AllocatorBin* bin)
         for (size_t i = 0; i < addr_type->slot_size; i++) {
             char mask = *((addr_type->ptr_mask) + i);
 
-            if(mask == PTR_MASK_NOP) {
-                // Nothing to do, not a pointer
-            } 
-            else if (mask == PTR_MASK_PTR) {
+            if (mask == PTR_MASK_PTR) {
                 void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
 
                 /* Need to update pointers from this old reference now, put on worklist */
@@ -184,9 +185,6 @@ void update_references(AllocatorBin* bin)
                     debug_print("update reference to %p\n", ref);
                 }
             } 
-            else {
-                // Do nothing
-            }
         }
     }
 }
@@ -204,17 +202,13 @@ void return_to_pmanagers(AllocatorBin* bin)
     /* TODO: make these page insertions nice macros */
     if(page_utilization < 0.01) {
         INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
-    }
-    else if(page_utilization > 0.01 && page_utilization < 0.3) {
+    } else if(page_utilization > 0.01 && page_utilization < 0.3) {
         INSERT_PAGE_IN_LIST(bin->page_manager->low_utilization_pages, page);
-    }
-    else if(page_utilization > 0.3 && page_utilization < 0.85) {
+    } else if(page_utilization > 0.3 && page_utilization < 0.85) {
         INSERT_PAGE_IN_LIST(bin->page_manager->mid_utilization_pages, page);
-    }
-    else if(page_utilization > 0.85 && page_utilization < 1.0f) {
+    } else if(page_utilization > 0.85 && page_utilization < 1.0f) {
         INSERT_PAGE_IN_LIST(bin->page_manager->high_utilization_pages, page);
-    }
-    else {
+    } else {
         INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
     }
 
@@ -222,8 +216,7 @@ void return_to_pmanagers(AllocatorBin* bin)
     bin->alloc_page = bin->alloc_page->next;
     if(bin->alloc_page == NULL) {
         bin->freelist = NULL;
-    } 
-    else {
+    } else {
         bin->freelist = bin->alloc_page->freelist;
     }
 }
@@ -283,8 +276,7 @@ void evacuate()
             /* Check if our evac page doesnt exist yet or freelist is exhausted */
             if (bin->evac_page == NULL) {
                 getFreshPageForEvacuation(bin);
-            }
-            else if(bin->evac_page->freelist == NULL) {
+            } else if(bin->evac_page->freelist == NULL) {
                 getFreshPageForEvacuation(bin);
             }
             
@@ -306,7 +298,8 @@ void evacuate()
     }
 }
 
-void check_potential_ptr(void* addr, struct WorkList* worklist) {
+void check_potential_ptr(void* addr, struct WorkList* worklist) 
+{
     bool canupdate = true;
     if(pagetable_query(addr)) {
         if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
@@ -393,10 +386,7 @@ void mark_and_evacuate()
         for (size_t i = 0; i < parent_type->slot_size; i++) {
             char mask = *((parent_type->ptr_mask) + i);
 
-            if(mask == PTR_MASK_NOP) {
-                // Nothing to do, not a pointer
-            } 
-            else if (mask == PTR_MASK_PTR) {
+            if (mask == PTR_MASK_PTR) {
                 void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
                 debug_print("pointer slot points to %p\n", child);
 
@@ -407,9 +397,6 @@ void mark_and_evacuate()
                     worklist_push(worklist, child);
                     stack_push(void, marking_stack, child);
                 }
-            } 
-            else {
-                // Do nothing
             }
         }
     }
