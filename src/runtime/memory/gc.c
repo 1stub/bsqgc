@@ -1,20 +1,36 @@
 #include "gc.h"
 #include "allocator.h"
 
-/** 
-* Not totally confident on determining size or proper data structures for these two.
-* It's looking like this is where we need quick sort for sortring based on addreses
-* to avoid excessive and slow lookups
-**/
-#define MAX_PTRS 1024
-void* forward_table[MAX_PTRS];
-int forward_table_index = 0;
+#include <stdlib.h> //qsort
+
+void* forward_table[MAX_ROOTS];
+size_t forward_table_index = 0;
 
 void update_references(AllocatorBin* bin);
 void rebuild_freelist(AllocatorBin* bin);
+void compare_roots_and_oldroots(AllocatorBin* bin);
+void process_decs(AllocatorBin* bin);
+
+/* use in sorting old/new roots and using two pointer walk to find existence in old roots */
+int compare(const void* a, const void* b) 
+{
+    return ((char*)a - (char*)b);
+}
 
 void collect() 
 {
+    /* Before we mark and evac we populate old roots list, clearing roots list */
+    for(int i = 0; i < NUM_BINS; i++) {
+        AllocatorBin* bin = getBinForSize(8 * (1 << i));
+
+        for(size_t i = 0; i < bin->roots_count; i++) {
+            bin->old_roots[bin->old_roots_count++] = bin->roots[i];
+            debug_print("Insertion into old roots\n");
+        }
+        bin->roots_count = 0;
+        qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
+    }
+
     mark_and_evacuate();
 
     /** Now we need to do our decs - 
@@ -24,25 +40,87 @@ void collect()
     * (he would also be old but this check is trivial)
     **/
 
-    /* Very naive approach to looping through our bins */
-    struct Stack bins =  {NULL, NULL, NULL, NULL};
-    stack_push(AllocatorBin, bins, getBinForSize(8));
-    stack_push(AllocatorBin, bins, getBinForSize(16));
+    for(int i = 0; i < NUM_BINS; i++) {
+        AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
-    while(!stack_empty(bins)) {
-        AllocatorBin* bin = stack_pop(AllocatorBin, bins);
+        compare_roots_and_oldroots(bin);
+        process_decs(bin);
 
         update_references(bin);
-        rebuild_freelist(bin);
-
-        while(arraylist_is_init(&bin->roots) && (!arraylist_is_empty(&bin->roots))) {
-            void* root = arraylist_pop_head(void, bin->roots);
-
-            // do some stuff
-            debug_print("hi from root %p\n", root);
-        }
+        rebuild_freelist(bin);        
     }
 
+    /* Wouldnt be a bad idea to check canaries here (if enabled) */
+}
+
+/**
+* This method is designed to walk the roots and oldroots set for each bin,
+* finding those who need decs
+**/
+void compare_roots_and_oldroots(AllocatorBin* bin) 
+{
+    /* First we need to sort the roots we find */
+    qsort(bin->roots, bin->roots_count, sizeof(void*), compare);
+    
+    size_t roots_idx = 0;
+    size_t oldroots_idx = 0;
+
+    while(oldroots_idx < bin->old_roots_count) {
+        char* cur_oldroot = bin->old_roots[oldroots_idx];
+        char* cur_root = bin->roots[roots_idx];
+        if(cur_root < cur_oldroot) {
+            roots_idx++;
+        } else if(cur_oldroot < cur_root) {
+            worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
+            debug_print("old root %p not in current roots (current at %p)\n", cur_oldroot, cur_root);
+            oldroots_idx++;
+        } else {
+            roots_idx++;
+            oldroots_idx++;
+        }
+    }
+    bin->old_roots_count = 0;
+}
+
+void process_decs(AllocatorBin* bin) 
+{
+    while(!worklist_is_empty(&bin->pending_decs)) {
+        void* obj = worklist_pop(void, bin->pending_decs);
+
+        // Skip if the object is already freed
+        if (!GC_IS_ALLOCATED(obj)) {
+            debug_print("object a %p has already been freed\n", obj);
+            continue;
+        }
+
+        // Decrement ref counts of objects this object points to
+        struct TypeInfoBase* type_info = GC_TYPE(obj);
+        for (size_t i = 0; i < type_info->slot_size; i++) {
+            char mask = *((type_info->ptr_mask) + i);
+
+            if (mask == PTR_MASK_PTR) {
+                void* child = *(void**)((char*)obj + i * sizeof(void*));
+                if (child != NULL) {
+                    decrement_ref_count(child);
+
+                    // If the child's ref count drops to zero, add it to the pending_decs list
+                    if (GC_REF_COUNT(child) == 0) {
+                        worklist_push(bin->pending_decs, child);
+                    }
+                }
+            }
+        }
+
+        // Put object onto its pages freelist by masking to the page itself then pusing to front of list 
+        PageInfo* objects_page = PAGE_MASK_EXTRACT_PINFO(obj);
+        FreeListEntry* entry = (FreeListEntry*)((char*)obj - sizeof(MetaData));
+        entry->next = objects_page->freelist;
+        objects_page->freelist = entry;
+
+        // Mark the object as unallocated
+        GC_IS_ALLOCATED(obj) = false;
+        debug_print("Freed object at %p\n", obj);
+    }
 }
 
 /* Set pre and post canaries in evacuation page if enabled */
@@ -81,27 +159,18 @@ void update_references(AllocatorBin* bin)
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
-    void** it = arraylist_get_iterator(&bin->roots);
-
-    while(it && *it) {
-        void* root = *it;
-        worklist_push(worklist, root);
-
-        it = arraylist_get_next(&bin->roots, it);
+    for(size_t i = 0; i < bin->roots_count; i++) {
+        worklist_push(worklist, bin->roots[i]);
     }
-    
 
     while(!worklist_is_empty(&worklist)) {
         void* addr = worklist_pop(void, worklist);
         struct TypeInfoBase* addr_type = GC_TYPE( addr );
 
         for (size_t i = 0; i < addr_type->slot_size; i++) {
-            char mask = *(addr_type->ptr_mask) + i;
+            char mask = *((addr_type->ptr_mask) + i);
 
-            if(mask == PTR_MASK_NOP) {
-                // Nothing to do, not a pointer
-            } 
-            else if (mask == PTR_MASK_PTR) {
+            if (mask == PTR_MASK_PTR) {
                 void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
 
                 /* Need to update pointers from this old reference now, put on worklist */
@@ -116,9 +185,6 @@ void update_references(AllocatorBin* bin)
                     debug_print("update reference to %p\n", ref);
                 }
             } 
-            else {
-                // Do nothing
-            }
         }
     }
 }
@@ -128,25 +194,30 @@ void update_references(AllocatorBin* bin)
 * have been rebuilt we can return our pages to their managers respectively, going to their
 * appropriate utilization lists
 **/
-void return_to_pmanagers(AllocatorBin* bin, PageInfo* page) 
+void return_to_pmanagers(AllocatorBin* bin) 
 {
+    PageInfo* page = bin->alloc_page;
     float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
 
     /* TODO: make these page insertions nice macros */
     if(page_utilization < 0.01) {
         INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
-    }
-    else if(page_utilization > 0.01 && page_utilization < 0.3) {
+    } else if(page_utilization > 0.01 && page_utilization < 0.3) {
         INSERT_PAGE_IN_LIST(bin->page_manager->low_utilization_pages, page);
-    }
-    else if(page_utilization > 0.3 && page_utilization < 0.85) {
+    } else if(page_utilization > 0.3 && page_utilization < 0.85) {
         INSERT_PAGE_IN_LIST(bin->page_manager->mid_utilization_pages, page);
-    }
-    else if(page_utilization > 0.85 && page_utilization < 1.0f) {
+    } else if(page_utilization > 0.85 && page_utilization < 1.0f) {
         INSERT_PAGE_IN_LIST(bin->page_manager->high_utilization_pages, page);
-    }
-    else {
+    } else {
         INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
+    }
+
+    /* Need to update bins alloc page now, since it just got returned */
+    bin->alloc_page = bin->alloc_page->next;
+    if(bin->alloc_page == NULL) {
+        bin->freelist = NULL;
+    } else {
+        bin->freelist = bin->alloc_page->freelist;
     }
 }
 
@@ -187,7 +258,7 @@ void rebuild_freelist(AllocatorBin* bin)
         debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
         /* return cur page to its bins page manager */
-        return_to_pmanagers(bin, cur);
+        return_to_pmanagers(bin);
 
         cur = cur->next;
     }
@@ -205,8 +276,7 @@ void evacuate()
             /* Check if our evac page doesnt exist yet or freelist is exhausted */
             if (bin->evac_page == NULL) {
                 getFreshPageForEvacuation(bin);
-            }
-            else if(bin->evac_page->freelist == NULL) {
+            } else if(bin->evac_page->freelist == NULL) {
                 getFreshPageForEvacuation(bin);
             }
             
@@ -228,7 +298,8 @@ void evacuate()
     }
 }
 
-void check_potential_ptr(void* addr, struct WorkList* worklist) {
+void check_potential_ptr(void* addr, struct WorkList* worklist) 
+{
     bool canupdate = true;
     if(pagetable_query(addr)) {
         if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
@@ -260,10 +331,7 @@ void check_potential_ptr(void* addr, struct WorkList* worklist) {
                 stack_push(void, marking_stack, addr);
 
                 AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
-                if(bin->roots.head_segment == NULL || bin->roots.tail_segment == NULL) { 
-                    arraylist_initialize(&bin->roots);
-                }
-                arraylist_push_head(bin->roots, addr );
+                bin->roots[bin->roots_count++] = addr;
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
 
@@ -280,7 +348,7 @@ void walk_stack(struct WorkList* worklist)
 
     void* addr;
     while((addr = cur_stack[i])) {
-        debug_print("Checking stack pointer %p\n", addr);
+        //debug_print("Checking stack pointer %p\n", addr);
         check_potential_ptr(addr, worklist);
         i++;
     }
@@ -290,7 +358,7 @@ void walk_stack(struct WorkList* worklist)
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
          ptr++) {
         void* register_contents = *ptr;
-        debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
+        //debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
 
         if (pagetable_query(register_contents)) {
             check_potential_ptr(register_contents, worklist);
@@ -316,12 +384,9 @@ void mark_and_evacuate()
         debug_print("parent pointer at %p\n", parent_ptr);
         
         for (size_t i = 0; i < parent_type->slot_size; i++) {
-            char mask = *(parent_type->ptr_mask) + i;
+            char mask = *((parent_type->ptr_mask) + i);
 
-            if(mask == PTR_MASK_NOP) {
-                // Nothing to do, not a pointer
-            } 
-            else if (mask == PTR_MASK_PTR) {
+            if (mask == PTR_MASK_PTR) {
                 void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
                 debug_print("pointer slot points to %p\n", child);
 
@@ -332,9 +397,6 @@ void mark_and_evacuate()
                     worklist_push(worklist, child);
                     stack_push(void, marking_stack, child);
                 }
-            } 
-            else {
-                // Do nothing
             }
         }
     }

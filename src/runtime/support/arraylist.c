@@ -132,6 +132,13 @@ void* arraylist_get_next(struct ArrayList* al, void** it) {
     return it;
 }
 
+/**
+* Sort list based on pointer addresses so we can easily compare roots and old_roots
+**/
+void arraylist_sort(struct ArrayList* al) {
+    
+}
+
 bool arraylist_is_empty(struct ArrayList* al) {
     /* It is crucial we check the contents of these pointers, not addresses they hold */
     return *al->head == NULL || *al->tail == NULL; 

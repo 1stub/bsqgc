@@ -37,7 +37,6 @@ void initializeThreadLocalInfo()
     native_stack_base = rbp;
 }
 
-/* Need to discuss specifics of this walking, not totally sure about taking the potential ptr to be cur_frame + 1 */
 void loadNativeRootSet()
 {
     native_stack_contents = (void**)xallocAllocatePage();
@@ -45,7 +44,6 @@ void loadNativeRootSet()
 
     //this code should load from the asm stack pointers and copy the native stack into the roots memory
     #ifdef __x86_64__
-        /* originally current_frame used rsp */
         register void* rbp asm("rbp");
         register void* rsp asm("rsp");
         void** current_frame = rbp;
@@ -63,8 +61,6 @@ void loadNativeRootSet()
                 void* potential_ptr = *it;
                 if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, end_of_frame, potential_ptr)) {
                     native_stack_contents[i++] = potential_ptr;
-
-                    debug_print("found potential pointer at %p\n", potential_ptr);
                 }
                 it--;
             }
@@ -97,3 +93,20 @@ void unloadNativeRootSet()
 {
     xallocFreePage(native_stack_contents);
 }
+
+/* Walks from rsp to native stack base, not base to rsp*/
+#if 0
+
+        register void* rsp asm("rsp");
+        void** current_frame = rsp;
+        int i = 0;
+
+        while (current_frame < native_stack_base) {
+            void* potential_ptr = *(current_frame + 1);
+            if (PTR_IN_RANGE(potential_ptr) & PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
+                native_stack_contents[i++] = potential_ptr;
+            }
+            current_frame++;
+        }
+
+#endif

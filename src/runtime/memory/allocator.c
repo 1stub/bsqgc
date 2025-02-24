@@ -7,8 +7,8 @@
 #define CANARY_DEBUG_CHECK
 
 /* Static declarations of our allocator bin and page manager structures */
-AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr8};
-AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr16};
+AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .roots_count = 0, .old_roots_count = 0, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr8};
+AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .roots_count = 0, .old_roots_count = 0, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr16};
 
 /* Each AllocatorBin needs its own page manager */
 PageManager p_mgr8 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};

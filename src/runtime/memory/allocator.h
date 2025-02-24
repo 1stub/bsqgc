@@ -93,12 +93,14 @@ typedef struct AllocatorBin
     FreeListEntry* freelist;
     uint16_t entrysize;
 
-    /* 
-    * We will store roots, pending decs, maybe a worklist
-    * and other nice bin local structures 
-    */
-    struct ArrayList roots;
-    struct ArrayList old_roots;
+    /* Proved to be difficult to work with sorting, using static arrays for now */
+    void* roots[MAX_ROOTS];
+    void* old_roots[MAX_ROOTS];
+
+    size_t roots_count;
+    size_t old_roots_count;
+
+    struct WorkList pending_decs;
 
     PageInfo* alloc_page; // Page in which we are currently allocating from
     PageInfo* evac_page; // Page in which we are currently evacuating from
