@@ -49,8 +49,6 @@ void collect()
         update_references(bin);
         rebuild_freelist(bin);        
     }
-
-    /* Wouldnt be a bad idea to check canaries here (if enabled) */
 }
 
 /**
@@ -257,6 +255,9 @@ void rebuild_freelist(AllocatorBin* bin)
 
         debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
+        /* Important to check canaries before we return the page to its manager */
+        verifyCanariesInPage(cur);
+
         /* return cur page to its bins page manager */
         return_to_pmanagers(bin);
 
@@ -290,6 +291,7 @@ void evacuate()
 
             /* Set objects old locations forward index to be found when updating references */
             MetaData* old_addr_meta = GC_GET_META_DATA_ADDR(old_addr);
+            GC_IS_ALLOCATED(old_addr) = false;
             old_addr_meta->forward_index = forward_table_index;
             forward_table[forward_table_index++] = new_addr;
 
