@@ -1,15 +1,12 @@
 #include "gc.h"
 #include "allocator.h"
 
-/** 
-* Not totally confident on determing if this can be converted to array list
-**/
-#define MAX_PTRS 1024
-void* forward_table[MAX_PTRS];
-int forward_table_index = 0;
+void* forward_table[MAX_ROOTS];
+size_t forward_table_index = 0;
 
 void update_references(AllocatorBin* bin);
 void rebuild_freelist(AllocatorBin* bin);
+int compare(const void* a, const void* b);
 
 void collect() 
 {
@@ -18,11 +15,8 @@ void collect()
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
         /* If bin->roots isnt init there is definetly nothing in it so dont loop, itll get init later */
-        while(arraylist_is_init(&bin->roots) && (!arraylist_is_empty(&bin->roots))) {
-            if(!arraylist_is_init(&bin->old_roots)) {
-                arraylist_initialize(&bin->old_roots);
-            }
-            arraylist_push_tail(bin->old_roots, arraylist_pop_head(void, bin->roots));
+        for(size_t i = 0; i < bin->roots_count; i++) {
+            bin->old_roots[bin->old_roots_count++] = bin->roots[i];
             debug_print("Insertion into old roots\n");
         }
     }
@@ -41,14 +35,19 @@ void collect()
         update_references(bin);
         rebuild_freelist(bin);
 
-        while(arraylist_is_init(&bin->roots) && (!arraylist_is_empty(&bin->roots))) {
-            void* root = arraylist_pop_head(void, bin->roots);
+        for(size_t i = 0; i < bin->roots_count; i++) {
+            void* root = bin->roots[i];
 
             // do some stuff
             debug_print("hi from root %p\n", root);
         }
     }
 
+}
+
+/* use in sorting old/new roots and using two pointer walk to find existence in old roots */
+int compare(const void* a, const void* b) {
+    return (*(int*)a - *(int*)b);
 }
 
 /* Set pre and post canaries in evacuation page if enabled */
@@ -87,22 +86,16 @@ void update_references(AllocatorBin* bin)
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
-    void** it = arraylist_get_iterator(&bin->roots);
-
-    while(it && *it) {
-        void* root = *it;
-        worklist_push(worklist, root);
-
-        it = arraylist_get_next(&bin->roots, it);
+    for(size_t i = 0; i < bin->roots_count; i++) {
+        worklist_push(worklist, bin->roots[i]);
     }
-    
 
     while(!worklist_is_empty(&worklist)) {
         void* addr = worklist_pop(void, worklist);
         struct TypeInfoBase* addr_type = GC_TYPE( addr );
 
         for (size_t i = 0; i < addr_type->slot_size; i++) {
-            char mask = *(addr_type->ptr_mask) + i;
+            char mask = *((addr_type->ptr_mask) + i);
 
             if(mask == PTR_MASK_NOP) {
                 // Nothing to do, not a pointer
@@ -276,10 +269,7 @@ void check_potential_ptr(void* addr, struct WorkList* worklist) {
                 stack_push(void, marking_stack, addr);
 
                 AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
-                if(bin->roots.head_segment == NULL || bin->roots.tail_segment == NULL) { 
-                    arraylist_initialize(&bin->roots);
-                }
-                arraylist_push_head(bin->roots, addr );
+                bin->roots[bin->roots_count++] = addr;
                 debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
 
@@ -332,7 +322,7 @@ void mark_and_evacuate()
         debug_print("parent pointer at %p\n", parent_ptr);
         
         for (size_t i = 0; i < parent_type->slot_size; i++) {
-            char mask = *(parent_type->ptr_mask) + i;
+            char mask = *((parent_type->ptr_mask) + i);
 
             if(mask == PTR_MASK_NOP) {
                 // Nothing to do, not a pointer

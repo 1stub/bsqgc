@@ -88,15 +88,17 @@ typedef struct PageManager{
     PageInfo* empty_pages; // Completeyly full pages
 } PageManager;
 
-/* Only have 2 different bins (for now) */
-#define NUM_BINS 2
 typedef struct AllocatorBin
 {
     FreeListEntry* freelist;
     uint16_t entrysize;
 
-    struct ArrayList roots;
-    struct ArrayList old_roots;
+    /* Proved to be difficult to work with sorting, using static arrays for now */
+    void* roots[MAX_ROOTS];
+    void* old_roots[MAX_ROOTS];
+
+    size_t roots_count;
+    size_t old_roots_count;
 
     struct WorkList pending_decs;
 

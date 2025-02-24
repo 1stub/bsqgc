@@ -42,6 +42,8 @@ void* arraylist_pop_tail_slow(struct ArrayList* al);
 void** arraylist_get_iterator(struct ArrayList* al);
 void* arraylist_get_next(struct ArrayList* al, void** it);
 
+void arraylist_sort(struct ArrayList* al);
+
 bool arraylist_is_empty(struct ArrayList* al);
 bool arraylist_is_init(struct ArrayList* al);
 

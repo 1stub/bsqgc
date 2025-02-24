@@ -25,9 +25,6 @@ struct TypeInfoBase TreeNode = {
 };
 
 int run() {
-    initializeStartup();
-    initializeThreadLocalInfo();
-
     AllocatorBin* bin16 = getBinForSize(16);
     AllocatorBin* bin8 = getBinForSize(8);
 
@@ -39,12 +36,19 @@ int run() {
     root[0] = leaf1;
     root[1] = leaf2;
 
-    debug_print("%p %p %p \n", root, leaf1, leaf2);
+    debug_print("%p %p %p\n", root, leaf1, leaf2);
 
     return 0;
 }
 
+/**
+* If we do not initialize startup and thread stuff from main THEN do our allocations
+* ceratin objects do not get found on the stack. 
+**/
 int main(int argc, char** argv) {
+    initializeStartup();
+    initializeThreadLocalInfo();
+
     run();
     collect();
 

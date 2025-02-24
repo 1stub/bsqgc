@@ -122,6 +122,21 @@ extern size_t tl_id_counter;
 
 #define MAX_FWD_INDEX UINT32_MAX
 
+/**
+* Some allocator bin related constants 
+**/
+
+/* Only have 2 different bins (for now) */
+#define NUM_BINS 2
+
+/**
+* If we decide every 4mb we run a collection, we can just force the max number of roots to be capped
+* at 4mb. This even accounts for worst case where every single object is a root AND all new/old only
+*
+**/
+#define GC_COLLECTION_THRESHOLD 4000000 //4mb
+#define MAX_ROOTS GC_COLLECTION_THRESHOLD //maybe some other stuff
+
 #ifdef VERBOSE_HEADER
 typedef struct MetaData 
 {
