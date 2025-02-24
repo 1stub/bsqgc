@@ -147,6 +147,13 @@ PageManager* initializePageManager(uint16_t entry_size);
 PageInfo* allocateFreshPage(uint16_t entrysize);
 
 /**
+* After allocation, evac, or whatever verify integrity of alloc pages
+**/
+void verifyAllCanaries();
+void verifyCanariesInPage(PageInfo* page);
+bool verifyCanariesInBlock(char* block, uint16_t entry_size);
+
+/**
  * Slow path for usage with canaries
  **/
 static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc){
