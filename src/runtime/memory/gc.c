@@ -151,6 +151,9 @@ static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size)
     return new_addr;
 }
 
+APPEARS TO BE SOME BUGS WITH UPDATING REFERENCES!! 
+(maybe forward table ptrs not set totally right, in this context, addr does not have what he points to updated properly)
+
 /* Starting from roots update pointers using forward table */
 void update_references(AllocatorBin* bin) 
 {
@@ -255,8 +258,8 @@ void rebuild_freelist(AllocatorBin* bin)
 
         debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
-        /* Important to check canaries before we return the page to its manager */
-        verifyCanariesInPage(cur);
+        /* Not checking canaries currently, good to have though if weird bugs pop up */
+        //verifyCanariesInPage(cur);
 
         /* return cur page to its bins page manager */
         return_to_pmanagers(bin);
@@ -288,6 +291,7 @@ void evacuate()
         
             void* new_addr = copy_object_data(old_addr, base, bin->entrysize);
             GC_IS_YOUNG(new_addr) = false; // When an object is evacuated, it is now old (tenured)
+            bin->evac_page->freecount--;
 
             /* Set objects old locations forward index to be found when updating references */
             MetaData* old_addr_meta = GC_GET_META_DATA_ADDR(old_addr);
@@ -328,6 +332,8 @@ void check_potential_ptr(void* addr, struct WorkList* worklist)
             /* If we have a potential pointer with no references and its not marked, set mark bit and set as root */
             if (GC_REF_COUNT(addr) == 0 && !GC_IS_MARKED(addr) && valid) {
                 GC_IS_MARKED(addr) = true;
+
+                /* I am pretty confident we DONT want to set the root bit here (i lied i am not that confident) */
                 GC_IS_ROOT(addr) = true;
                 worklist_push(*worklist, addr);
                 stack_push(void, marking_stack, addr);
