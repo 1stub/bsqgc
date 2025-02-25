@@ -51,7 +51,8 @@ void loadNativeRootSet()
         int i = 0;
 
         /* Walk the stack */
-        while (current_frame <= native_stack_base) {            
+        /* Note - be careful to not use <= here. we dont want to scan base. */
+        while (current_frame < native_stack_base) {            
             assert(IS_ALIGNED(current_frame));
             assert(IS_ALIGNED(end_of_frame));
 
