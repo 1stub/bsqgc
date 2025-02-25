@@ -93,17 +93,20 @@ void process_decs(AllocatorBin* bin)
 
         // Decrement ref counts of objects this object points to
         struct TypeInfoBase* type_info = GC_TYPE(obj);
-        for (size_t i = 0; i < type_info->slot_size; i++) {
-            char mask = *((type_info->ptr_mask) + i);
 
-            if (mask == PTR_MASK_PTR) {
-                void* child = *(void**)((char*)obj + i * sizeof(void*));
-                if (child != NULL) {
-                    decrement_ref_count(child);
+        if(type_info->ptr_mask != LEAF_PTR_MASK) {
+            for (size_t i = 0; i < type_info->slot_size; i++) {
+                char mask = *((type_info->ptr_mask) + i);
 
-                    // If the child's ref count drops to zero, add it to the pending_decs list
-                    if (GC_REF_COUNT(child) == 0) {
-                        worklist_push(bin->pending_decs, child);
+                if (mask == PTR_MASK_PTR) {
+                    void* child = *(void**)((char*)obj + i * sizeof(void*));
+                    if (child != NULL) {
+                        decrement_ref_count(child);
+
+                        // If the child's ref count drops to zero, add it to the pending_decs list
+                        if (GC_REF_COUNT(child) == 0) {
+                            worklist_push(bin->pending_decs, child);
+                        }
                     }
                 }
             }
@@ -151,9 +154,6 @@ static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size)
     return new_addr;
 }
 
-APPEARS TO BE SOME BUGS WITH UPDATING REFERENCES!! 
-(maybe forward table ptrs not set totally right, in this context, addr does not have what he points to updated properly)
-
 /* Starting from roots update pointers using forward table */
 void update_references(AllocatorBin* bin) 
 {
@@ -168,24 +168,28 @@ void update_references(AllocatorBin* bin)
         void* addr = worklist_pop(void, worklist);
         struct TypeInfoBase* addr_type = GC_TYPE( addr );
 
-        for (size_t i = 0; i < addr_type->slot_size; i++) {
-            char mask = *((addr_type->ptr_mask) + i);
+        if(addr_type->ptr_mask != LEAF_PTR_MASK) {
 
-            if (mask == PTR_MASK_PTR) {
-                void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
+            for (size_t i = 0; i < addr_type->slot_size; i++) {
+                /* This nesting is not ideal, but ok for now */
+                char mask = *((addr_type->ptr_mask) + i);
 
-                /* Need to update pointers from this old reference now, put on worklist */
-                worklist_push(worklist, ref);
+                if (mask == PTR_MASK_PTR) {
+                    void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
 
-                /* If forward index is set, set old location to be non alloc and query forward table */
-                uint32_t fwd_index = GC_FWD_INDEX(ref);
-                if(fwd_index != MAX_FWD_INDEX) {
-                    debug_print("old ref %p\n", ref);
-                    GC_IS_ALLOCATED(ref) = false;
-                    ref = forward_table[fwd_index];
-                    debug_print("update reference to %p\n", ref);
+                    /* Need to update pointers from this old reference now, put on worklist */
+                    worklist_push(worklist, ref);
+
+                    /* If forward index is set, set old location to be non alloc and query forward table */
+                    uint32_t fwd_index = GC_FWD_INDEX(ref);
+                    if(fwd_index != MAX_FWD_INDEX) {
+                        debug_print("old ref %p\n", ref);
+                        GC_IS_ALLOCATED(ref) = false;
+                        ((void**)addr)[i] = forward_table[fwd_index]; //need to be careful with this void** cast
+                        debug_print("update reference to %p\n", ref);
+                    }
                 }
-            } 
+            }
         }
     }
 }
@@ -240,7 +244,7 @@ void rebuild_freelist(AllocatorBin* bin)
             void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
     
             /* Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable */
-            if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0 && !GC_IS_ROOT(obj)) || !GC_IS_MARKED(obj)) {
+            if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0) || !GC_IS_MARKED(obj)) {
                 if(first_nonalloc_block) {
                     cur->freelist = new_freelist_entry;
                     cur->freelist->next = NULL;
@@ -275,8 +279,8 @@ void evacuate()
         void* old_addr = stack_pop(void, marking_stack);
         AllocatorBin* bin = getBinForSize( GC_TYPE(old_addr)->type_size );
 
-        /* We evacuate non root young marked objects */
-        if(!GC_IS_ROOT(old_addr) && GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
+        /* Need to evacuate young marked objects */
+        if(GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             /* Check if our evac page doesnt exist yet or freelist is exhausted */
             if (bin->evac_page == NULL) {
                 getFreshPageForEvacuation(bin);
@@ -319,30 +323,19 @@ void check_potential_ptr(void* addr, struct WorkList* worklist)
             }
         }
 
-        /* Actual marking logic */
-        if(GC_IS_ALLOCATED(addr) && (GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && canupdate) {
-            bool valid = true;
-            if(GC_REF_COUNT(addr) > 0) valid = false;
+        /* Need to verify our object is allocated and not already marked */
+        if(GC_IS_ALLOCATED(addr) && !GC_IS_MARKED(addr) && canupdate) {
+            GC_IS_MARKED(addr) = true;
 
-            if(!GC_IS_YOUNG(addr)) {
-                /* Need some way to handle old roots */
-                valid = false;
-            }
+            AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
+            bin->roots[bin->roots_count++] = addr;
 
-            /* If we have a potential pointer with no references and its not marked, set mark bit and set as root */
-            if (GC_REF_COUNT(addr) == 0 && !GC_IS_MARKED(addr) && valid) {
-                GC_IS_MARKED(addr) = true;
-
-                /* I am pretty confident we DONT want to set the root bit here (i lied i am not that confident) */
-                GC_IS_ROOT(addr) = true;
+            /* If it is not a leaf we will need to add to worklist */
+            if((GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && GC_IS_YOUNG(addr)) {
                 worklist_push(*worklist, addr);
-                stack_push(void, marking_stack, addr);
-
-                AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
-                bin->roots[bin->roots_count++] = addr;
-                debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
             }
 
+            debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
         }
     }
 }
@@ -368,9 +361,7 @@ void walk_stack(struct WorkList* worklist)
         void* register_contents = *ptr;
         //debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
 
-        if (pagetable_query(register_contents)) {
-            check_potential_ptr(register_contents, worklist);
-        }
+        check_potential_ptr(register_contents, worklist);
     }
 
 
@@ -391,19 +382,33 @@ void mark_and_evacuate()
         struct TypeInfoBase* parent_type = GC_TYPE( parent_ptr );
         debug_print("parent pointer at %p\n", parent_ptr);
         
-        for (size_t i = 0; i < parent_type->slot_size; i++) {
-            char mask = *((parent_type->ptr_mask) + i);
+        if(parent_type->ptr_mask != LEAF_PTR_MASK) {
+            for (size_t i = 0; i < parent_type->slot_size; i++) {
+                /* This nesting is not ideal, but ok for now */
+                char mask = *((parent_type->ptr_mask) + i);
 
-            if (mask == PTR_MASK_PTR) {
-                void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
-                debug_print("pointer slot points to %p\n", child);
+                if (mask == PTR_MASK_PTR) {
+                    void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
+                    debug_print("pointer slot points to %p\n", child);
 
-                /* Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers */
-                if(child != NULL && !GC_IS_MARKED(child)) {
-                    increment_ref_count(child);
-                    GC_IS_MARKED(child) = true;
-                    worklist_push(worklist, child);
-                    stack_push(void, marking_stack, child);
+                    /** 
+                    * I do wonder how exactly roots pointing to roots are handled here? is this even possible?
+                    * it happens (atleast as of 02/25/2025) when running tests even on simple graphs. 
+                    * The last allocated object appears on the calling stack which then attemps to be explored
+                    * and since it is pointed to BY a root we would need to do ref counts and such, but its already
+                    * marked when we are checking for valid root refs in check potential pointer.
+                    * 
+                    * Quite funky... I suspect the problem is related to HOW i am testing, lesser so the current 
+                    * impl but this may just be me being optimistic...
+                    **/
+
+                    /* Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers */
+                    if(!GC_IS_MARKED(child)) {
+                        increment_ref_count(child);
+                        GC_IS_MARKED(child) = true;
+                        worklist_push(worklist, child);
+                        stack_push(void, marking_stack, child);
+                    }
                 }
             }
         }

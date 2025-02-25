@@ -52,14 +52,14 @@ void loadNativeRootSet()
 
         /* Walk the stack */
         while (current_frame <= native_stack_base) {            
-            assert((uintptr_t)current_frame % 8 == 0);
-            assert((uintptr_t)end_of_frame % 8 == 0);
+            assert(IS_ALIGNED(current_frame));
+            assert(IS_ALIGNED(end_of_frame));
 
             /* Walk entire frame looking for valid pointers */
             void** it = current_frame;
             while(it > end_of_frame) {            
                 void* potential_ptr = *it;
-                if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, end_of_frame, potential_ptr)) {
+                if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, rsp, potential_ptr)) {
                     native_stack_contents[i++] = potential_ptr;
                 }
                 it--;

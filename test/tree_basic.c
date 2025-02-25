@@ -4,7 +4,7 @@ struct TypeInfoBase Empty = {
     .type_id = 0,
     .type_size = 8,
     .slot_size = 1,
-    .ptr_mask = "0",  
+    .ptr_mask = NULL,  
     .typekey = "Empty"
 };
 
@@ -25,12 +25,13 @@ struct TypeInfoBase TreeNode = {
 };
 
 /**
-* This whole test is pretty scuffed. I am not totally confident with exactly what is expected
-* to happen in this unique case. To my knowledge we should have one root that points to two
-* gc local variables eligible for evacuation. Our root variable cannot be moved because 
-* he is pointed to externally.
+* If we do not initialize startup and thread stuff from main THEN do our allocations
+* ceratin objects do not get found on the stack. 
 **/
-int run() {
+int main(int argc, char** argv) {
+    initializeStartup();
+    initializeThreadLocalInfo();
+
     AllocatorBin* bin16 = getBinForSize(16);
     AllocatorBin* bin8 = getBinForSize(8);
 
@@ -38,6 +39,8 @@ int run() {
 
     root[0] = allocate(bin8, &Empty);
     root[1] = allocate(bin8, &Empty);
+
+    debug_print("%p %p %p\n", root, root[0], root[1]);
 
     collect();
 
@@ -71,19 +74,6 @@ int run() {
     assert(GC_IS_YOUNG(root) == false);
     assert(GC_IS_YOUNG(root[0]) == false);
     assert(GC_IS_YOUNG(root[1]) == false);
-
-    return 0;
-}
-
-/**
-* If we do not initialize startup and thread stuff from main THEN do our allocations
-* ceratin objects do not get found on the stack. 
-**/
-int main(int argc, char** argv) {
-    initializeStartup();
-    initializeThreadLocalInfo();
-
-    run();
 
     return 0;
 }
