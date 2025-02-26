@@ -39,16 +39,6 @@ do {                                    \
     (M)->type = T;                      \
 } while(0)
 
-/**
-* This whole memory allocator needs some more thought. A new idea is
-* instead of each bin maininting its own page manager, we have a global page
-* manager in which they all share. Then what we could do is each page has
-* a pointer to "next" that is to be used bin locally and also a global pointer
-* into the overarching global page manager that links together all pages. We can throw
-* around this next pointer, however the manager_next or something will need to
-* be a bit more concrete.
-**/
-
 ////////////////////////////////
 //Memory allocator
 
@@ -171,6 +161,8 @@ static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc){
  **/
 static inline void* allocate(AllocatorBin* alloc, struct TypeInfoBase* type)
 {
+    assert(alloc->entrysize == type->type_size);
+
     if(alloc->freelist == NULL) {
         getFreshPageForAllocator(alloc);
     }
