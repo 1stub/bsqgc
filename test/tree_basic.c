@@ -8,14 +8,6 @@ struct TypeInfoBase Empty = {
     .typekey = "Empty"
 };
 
-struct TypeInfoBase ListNode = {
-    .type_id = 1,
-    .type_size = 16,
-    .slot_size = 2,
-    .ptr_mask = "01",  
-    .typekey = "ListNode"
-};
-
 struct TypeInfoBase TreeNode = {
     .type_id = 1,
     .type_size = 16,
@@ -25,12 +17,18 @@ struct TypeInfoBase TreeNode = {
 };
 
 /**
+* Very simple tree with a singular root object and two leafs
+**/
+
+/**
 * If we do not initialize startup and thread stuff from main THEN do our allocations
 * ceratin objects do not get found on the stack. 
 **/
 int main(int argc, char** argv) {
     initializeStartup();
-    initializeThreadLocalInfo();
+
+    register void* rbp asm("rbp");
+    initializeThreadLocalInfo(rbp);
 
     AllocatorBin* bin16 = getBinForSize(16);
     AllocatorBin* bin8 = getBinForSize(8);
@@ -42,6 +40,7 @@ int main(int argc, char** argv) {
 
     debug_print("%p %p %p\n", root, root[0], root[1]);
 
+    loadNativeRootSet();
     collect();
 
     debug_print("%p %p %p\n", root, root[0], root[1]);

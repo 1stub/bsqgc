@@ -33,7 +33,7 @@ extern thread_local void** native_stack_contents;
 extern thread_local struct RegisterContents native_register_contents;
 
 void initializeStartup();
-void initializeThreadLocalInfo();
+void initializeThreadLocalInfo(void* caller_rbp);
 
 void loadNativeRootSet();
 void unloadNativeRootSet();

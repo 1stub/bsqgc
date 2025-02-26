@@ -18,7 +18,7 @@ int compare(const void* a, const void* b)
 }
 
 void collect() 
-{
+{   
     /* Before we mark and evac we populate old roots list, clearing roots list */
     for(int i = 0; i < NUM_BINS; i++) {
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
@@ -30,7 +30,7 @@ void collect()
         bin->roots_count = 0;
         qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
     }
-
+    
     mark_and_evacuate();
 
     /** Now we need to do our decs - 
@@ -342,8 +342,6 @@ void check_potential_ptr(void* addr, struct WorkList* worklist)
 
 void walk_stack(struct WorkList* worklist) 
 {
-    loadNativeRootSet();
-
     void** cur_stack = native_stack_contents;
     int i = 0;
 
@@ -359,7 +357,7 @@ void walk_stack(struct WorkList* worklist)
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
          ptr++) {
         void* register_contents = *ptr;
-        //debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
+        debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
 
         check_potential_ptr(register_contents, worklist);
     }
