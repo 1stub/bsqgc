@@ -364,6 +364,8 @@ void walk_stack(struct WorkList* worklist)
         i++;
     }
 
+    #if 0
+
     /* Funny pointer stuff to iterate through this struct, works since all elements are void* */
     for (void** ptr = (void**)&native_register_contents; 
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
@@ -373,6 +375,8 @@ void walk_stack(struct WorkList* worklist)
 
         check_potential_ptr(register_contents, worklist);
     }
+    
+    #endif
     
     unloadNativeRootSet();
 }

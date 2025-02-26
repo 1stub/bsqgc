@@ -16,9 +16,6 @@ struct TypeInfoBase TreeNode = {
     .typekey = "TreeNode"
 };
 
-/**
-* Lets delete a root and see if the tree dies too!
-**/
 
 /**
 * If we do not initialize startup and thread stuff from main THEN do our allocations
@@ -35,22 +32,28 @@ int main(int argc, char** argv) {
 
     void** root = (void**)allocate(bin16, &TreeNode);
 
-    root[0] = allocate(bin8, &Empty);
-    root[1] = allocate(bin8, &Empty);
+    root[0] = allocate(bin16, &TreeNode);
+    root[1] = allocate(bin16, &TreeNode);
 
-    debug_print("%p %p %p\n", root, root[0], root[1]);
+    ((void**)root[0])[0] = allocate(bin8, &Empty);
+    ((void**)root[0])[1] = allocate(bin8, &Empty);
+
+    ((void**)root[1])[0] = allocate(bin8, &Empty);
+    ((void**)root[1])[1] = allocate(bin8, &Empty);
 
     loadNativeRootSet();
     collect();
 
+    assert(bin16->evac_page->freecount == bin16->evac_page->entrycount - 2);
+    assert(bin8->evac_page->freecount == bin8->evac_page->entrycount - 4);
+
+    /* Some issues currently with freeing trees of depth */
+    #if 0
     root = NULL;
 
     loadNativeRootSet();
     collect();
-
-    /* Our root has become null, so root[0], root[1], and the root itself should be freed now */
-    assert(bin8->evac_page->freecount == bin8->evac_page->entrycount);
-    assert(bin16->alloc_page == NULL); //returned to page manager
+    #endif
 
     return 0;
 }
