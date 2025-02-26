@@ -24,8 +24,13 @@ void collect()
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
         for(size_t i = 0; i < bin->roots_count; i++) {
+            /* Reset marked bit for root to ensure discovery */
+            GC_IS_MARKED(bin->roots[i]) = false;
+
             bin->old_roots[bin->old_roots_count++] = bin->roots[i];
-            debug_print("Insertion into old roots\n");
+
+            debug_print("Insertion into old roots %p\n", bin->roots[i]);
+            bin->roots[i] = NULL;
         }
         bin->roots_count = 0;
         qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
@@ -66,7 +71,12 @@ void compare_roots_and_oldroots(AllocatorBin* bin)
     while(oldroots_idx < bin->old_roots_count) {
         char* cur_oldroot = bin->old_roots[oldroots_idx];
         char* cur_root = bin->roots[roots_idx];
-        if(cur_root < cur_oldroot) {
+        if(cur_root == NULL) {
+            /* No roots in roots->bin case */
+            worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
+            oldroots_idx++;
+        }
+        else if(cur_root < cur_oldroot) {
             roots_idx++;
         } else if(cur_oldroot < cur_root) {
             worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
@@ -117,6 +127,8 @@ void process_decs(AllocatorBin* bin)
         FreeListEntry* entry = (FreeListEntry*)((char*)obj - sizeof(MetaData));
         entry->next = objects_page->freelist;
         objects_page->freelist = entry;
+
+        objects_page->freecount++;
 
         // Mark the object as unallocated
         GC_IS_ALLOCATED(obj) = false;
@@ -361,8 +373,7 @@ void walk_stack(struct WorkList* worklist)
 
         check_potential_ptr(register_contents, worklist);
     }
-
-
+    
     unloadNativeRootSet();
 }
 
