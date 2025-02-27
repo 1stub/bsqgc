@@ -32,8 +32,8 @@ int main(int argc, char** argv) {
 
     void** root = (void**)allocate(bin16, &TreeNode);
 
-    root[0] = allocate(bin16, &TreeNode);
-    root[1] = allocate(bin16, &TreeNode);
+    root[0] = (void**)allocate(bin16, &TreeNode);
+    root[1] = (void**)allocate(bin16, &TreeNode);
 
     ((void**)root[0])[0] = allocate(bin8, &Empty);
     ((void**)root[0])[1] = allocate(bin8, &Empty);
@@ -41,19 +41,32 @@ int main(int argc, char** argv) {
     ((void**)root[1])[0] = allocate(bin8, &Empty);
     ((void**)root[1])[1] = allocate(bin8, &Empty);
 
+    debug_print("root[0] left ptr %p\n", ((void**)root[0])[0]);
+    debug_print("root[0] right ptr %p\n", ((void**)root[0])[1]);
+
+    debug_print("root[1] left ptr %p\n", ((void**)root[1])[0]);
+    debug_print("root[1] right ptr %p\n", ((void**)root[1])[1]);
+
     loadNativeRootSet();
     collect();
+
+    debug_print("root[0] left ptr %p\n", ((void**)root[0])[0]);
+    debug_print("root[0] right ptr %p\n", ((void**)root[0])[1]);
+
+    debug_print("root[1] left ptr %p\n", ((void**)root[1])[0]);
+    debug_print("root[1] right ptr %p\n", ((void**)root[1])[1]);
 
     assert(bin16->evac_page->freecount == bin16->evac_page->entrycount - 2);
     assert(bin8->evac_page->freecount == bin8->evac_page->entrycount - 4);
 
     /* Some issues currently with freeing trees of depth */
-    #if 0
     root = NULL;
 
     loadNativeRootSet();
     collect();
-    #endif
+
+    assert(bin16->evac_page->freecount == bin16->evac_page->entrycount);
+    assert(bin8->evac_page->freecount == bin8->evac_page->entrycount);
 
     return 0;
 }
