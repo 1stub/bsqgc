@@ -24,8 +24,9 @@ void collect()
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
         for(size_t i = 0; i < bin->roots_count; i++) {
-            /* Reset marked bit for root to ensure discovery */
+            /* Reset marked bit for root to ensure discovery and promote to old space */
             GC_IS_MARKED(bin->roots[i]) = false;
+            GC_IS_YOUNG(bin->roots[i]) = false;
 
             bin->old_roots[bin->old_roots_count++] = bin->roots[i];
 
@@ -136,39 +137,17 @@ void process_decs(AllocatorBin* bin)
     }
 }
 
-/* Set pre and post canaries in evacuation page if enabled */
-#ifdef ALLOC_DEBUG_CANARY
-static void set_canaries(void* base, size_t entry_size) 
-{
-    uint64_t* pre = (uint64_t*)base;
-    *pre = ALLOC_DEBUG_CANARY_VALUE;
-
-    uint64_t* post = (uint64_t*)((char*)base + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
-    *post = ALLOC_DEBUG_CANARY_VALUE;
-}
-#endif
-
-/* Actual moving of pointers over to evacuation page */
-static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size) 
-{
-    void* new_addr;
-
-#ifdef ALLOC_DEBUG_CANARY
-    // If canaries are enabled, skip the pre-canary and copy the object data + metadata
-    new_addr = (char*)new_base + ALLOC_DEBUG_CANARY_SIZE;
-    memcpy(new_addr, (char*)old_addr - sizeof(MetaData), entry_size + sizeof(MetaData));
-#else
-    // If canaries are not enabled, copy the object data + metadata directly
-    new_addr = new_base;
-    memcpy(new_addr, (char*)old_addr - sizeof(MetaData), entry_size + sizeof(MetaData));
-#endif
-
-    return new_addr;
-}
-
 /* Starting from roots update pointers using forward table */
 void update_references(AllocatorBin* bin) 
 {
+    /* Idea is to maybe do post order traversal and updates rather than breadth */
+    
+    /** 
+    * Current issue is related to how we update deep trees references, we update
+    * the closest to root nodes first, but what they point to becomes garbage 
+    * (still not totally sure where or why this is garbage though)
+    **/
+
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
@@ -189,16 +168,16 @@ void update_references(AllocatorBin* bin)
                 if (mask == PTR_MASK_PTR) {
                     void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
 
-                    /* Need to update pointers from this old reference now, put on worklist */
-                    worklist_push(worklist, ref);
-
                     /* If forward index is set, set old location to be non alloc and query forward table */
                     uint32_t fwd_index = GC_FWD_INDEX(ref);
                     if(fwd_index != MAX_FWD_INDEX) {
-                        debug_print("old ref %p\n", ref);
                         GC_IS_ALLOCATED(ref) = false;
-                        ((void**)addr)[i] = forward_table[fwd_index]; //need to be careful with this void** cast
-                        debug_print("update reference to %p\n", ref);
+                        ((void**)addr)[i] = forward_table[fwd_index]; 
+
+                        debug_print("update reference from %p to %p\n", ref, ((void**)addr)[i]);
+
+                        /* We need to explore these new evacuated pointers*/
+                        worklist_push(worklist, ((void**)addr)[i]);
                     }
                 }
             }
@@ -284,9 +263,41 @@ void rebuild_freelist(AllocatorBin* bin)
     }
 }
 
+/* Set pre and post canaries in evacuation page if enabled */
+#ifdef ALLOC_DEBUG_CANARY
+static void set_canaries(void* base, size_t entry_size) 
+{
+    uint64_t* pre = (uint64_t*)base;
+    *pre = ALLOC_DEBUG_CANARY_VALUE;
+
+    uint64_t* post = (uint64_t*)((char*)base + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
+    *post = ALLOC_DEBUG_CANARY_VALUE;
+}
+#endif
+
+/* Actual moving of pointers over to evacuation page */
+static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size) 
+{
+    void* new_addr;
+
+#ifdef ALLOC_DEBUG_CANARY
+    // If canaries are enabled, skip the pre-canary and copy the object data + metadata
+    new_addr = (char*)new_base + ALLOC_DEBUG_CANARY_SIZE;
+    memcpy(new_addr, (char*)old_addr - sizeof(MetaData), entry_size + sizeof(MetaData));
+#else
+    // If canaries are not enabled, copy the object data + metadata directly
+    new_addr = new_base;
+    memcpy(new_addr, (char*)old_addr - sizeof(MetaData), entry_size + sizeof(MetaData));
+#endif
+
+    return (void*)((char*)new_addr + sizeof(MetaData));
+}
+
+
 /* Move non root young objects to evacuation page then update roots */
 void evacuate() 
 {
+    /* Freelist is big goofed */
     while(!stack_empty(marking_stack)) {
         void* old_addr = stack_pop(void, marking_stack);
         AllocatorBin* bin = getBinForSize( GC_TYPE(old_addr)->type_size );
@@ -294,11 +305,9 @@ void evacuate()
         /* Need to evacuate young marked objects */
         if(GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             /* Check if our evac page doesnt exist yet or freelist is exhausted */
-            if (bin->evac_page == NULL) {
+            if (bin->evac_page == NULL || bin->evac_page->freelist == NULL) {
                 getFreshPageForEvacuation(bin);
-            } else if(bin->evac_page->freelist == NULL) {
-                getFreshPageForEvacuation(bin);
-            }
+            } 
             
             FreeListEntry* base = bin->evac_page->freelist;
             bin->evac_page->freelist = base->next;
@@ -310,9 +319,8 @@ void evacuate()
             bin->evac_page->freecount--;
 
             /* Set objects old locations forward index to be found when updating references */
-            MetaData* old_addr_meta = GC_GET_META_DATA_ADDR(old_addr);
             GC_IS_ALLOCATED(old_addr) = false;
-            old_addr_meta->forward_index = forward_table_index;
+            GC_FWD_INDEX(old_addr) = forward_table_index;
             forward_table[forward_table_index++] = new_addr;
 
             debug_print("Moved %p to %p\n", old_addr, new_addr);
