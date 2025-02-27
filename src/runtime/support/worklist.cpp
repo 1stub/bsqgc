@@ -1,13 +1,5 @@
 #include "worklist.h"
 
-void worklist_initialize(struct WorkList* l) 
-{
-    l->head = NULL;
-    l->tail = NULL;
-    l->head_segment = NULL;
-    l->tail_segment = NULL;
-}
-
 void worklist_push_slow(struct WorkList* l, void* obj) 
 {
     struct WorkListSegment* xseg = XALLOC_PAGE(struct WorkListSegment);

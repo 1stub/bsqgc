@@ -23,13 +23,8 @@
 #endif
 
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
-// Original address for base was ((void*)(281474976710656ul)), prev was causing MAP_FAILED
-#define XALLOC_BASE_ADDRESS ((void*)(0x4000000000ul)) 
-#define XALLOC_ADDRESS_SPAN 2147483648ul
-
-#define GC_ALLOC_BASE_ADDRESS ((void*)(0x8000000000ul)) 
-#define GC_ALLOC_ADDRESS_SPAN 2147483648ul
-
+#define ALLOC_BASE_ADDRESS ((void*)(0x4000000000ul)) 
+#define ALLOC_ADDRESS_SPAN 2147483648ul
 #endif
 
 #define PAGE_ADDR_MASK 0xFFFFFFFFFFFFF000ul
@@ -41,17 +36,42 @@
 #define BSQ_BLOCK_ALLOCATION_SIZE 4096ul
 
 //mem is an 8byte alliged pointer and n is the number of 8byte words to clear
-void xmem_objclear(void* mem, size_t n);
+inline void xmem_zerofill(void* mem, size_t n) 
+{
+    void** obj = (void**)mem;
+    void** end = obj + n;
+    while(obj < end) {
+        *obj = NULL;
+        obj++;
+    }
+}
 
 //Clears a page of memory
-void xmem_pageclear(void* mem);
+inline void xmem_zerofillpage(void* mem)
+{
+    void** obj = (void**)mem;
+    void** end = obj + (BSQ_BLOCK_ALLOCATION_SIZE / sizeof(void*));
+    while(obj < end) {
+        *obj = NULL;
+        obj++;
+    }
+}
 
-// Gets min and max pointers on a page from any address in the page
-#define GET_MIN_FOR_SEGMENT(P, SEG_SIZE) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG_SIZE))
-#define GET_MAX_FOR_SEGMENT(P, SEG_SIZE) ((void**)(((uintptr_t)(P) & PAGE_ADDR_MASK) + SEG_SIZE + BSQ_BLOCK_ALLOCATION_SIZE - (SEG_SIZE + sizeof(void*))))
-
+//A global mutex lock that all threads will use when accessing shared page lists (and when doing their inc/dec ref loops)
 extern mtx_t g_lock;
-extern size_t tl_id_counter;
+
+#define ALLOC_LOCK_ACQUIRE() assert(mtx_lock(&g_lock) == thrd_success)
+#define ALLOC_LOCK_RELEASE() assert(mtx_unlock(&g_lock) == thrd_success)
+
+// Track information that needs to be globally accessible for threads
+class GlobalThreadAllocInfo
+{
+public:
+    static size_t s_thread_counter;
+    static void* s_current_page_address;
+
+    //TODO: if we need to do deterministic replay we can add a thread page-get buffer here to record/replay from
+};
 
 //A handy stack allocation macro
 #define BSQ_STACK_ALLOC(SIZE) ((SIZE) == 0 ? nullptr : alloca(SIZE))

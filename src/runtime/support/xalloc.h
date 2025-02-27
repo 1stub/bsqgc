@@ -9,18 +9,47 @@
 
 #include "../common.h"
 
-void xallocInitializePageManager(size_t tcount);
+struct XAllocPage {
+    XAllocPage* next;
+};
 
-/**
- * Get a page from the system
- */
-void* xallocAllocatePage();
+//This class is responsible for managing the allocation of pages for support data structures (NOT GC pages)
+//All threads will share this pool of pages for their operations
+class XAllocPageManager
+{
+private:
+    XAllocPage* freelist;
 
-/**
- * Free a page back to the system
- */
-void xallocFreePage(void* page);
+    static XAllocPageManager g_page_manager;
 
-#define XALLOC_PAGE(T) ((T*)xallocAllocatePage())
-#define XALLOC_FREE_PAGE(P) xallocFreePage((void*)P)
+    void* allocatePage_impl();
+    void freePage_impl(void* page);
+
+    XAllocPageManager() : freelist(nullptr) {}
+public:
+    // Gets min and max pointers on a page from any address in the page
+    template <typename T>
+    inline void** get_min_for_segment(T* p)
+    {
+        return (void**)(((uintptr_t)p & PAGE_ADDR_MASK) + sizeof(T));
+    }
+
+    template <typename T>
+    inline void** get_max_for_segment(T* p)
+    {
+        return (void**)(((uintptr_t)p & PAGE_ADDR_MASK) + BSQ_BLOCK_ALLOCATION_SIZE - sizeof(void*));
+    }
+
+    template <typename T>
+    T* allocatePage()
+    {
+        return (T*)xallocAllocatePage_impl();
+    }
+
+    template <typename T>
+    void freePage(T* page)
+    {
+        xallocFreePage_impl((void*)page);
+    }
+};
 
