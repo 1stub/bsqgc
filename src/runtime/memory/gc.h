@@ -6,21 +6,13 @@
 /**
 *   
 * This generational garbage collector is designed to have a compacted young space
-* and a reference counted old space. The specifics of both have not been perfectly
-* implemented thus far, but much of the core logic is present.
+* and a reference counted old space. 
 *
 **/
 
 /**
-* Not implemented yet, but we use this for determining eligibility for deletion.
-* Whenever we find a "prev root" that is not in "current roots" with a ref count
-* of zero, he is eligible for deletion.
-**/
-// extern struct ArrayList prev_roots_set;
-
-/**
-* Wrapper around marking, evacuation, and rebuilding.
-* Exists incase more logic needs to be added in addition to those aforementioned
+* Wrapper around marking, evacuation, and rebuilding. Useful for 
+* throwing other helper methods in here
 **/
 void collect();
 

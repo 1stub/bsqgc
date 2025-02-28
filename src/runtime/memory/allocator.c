@@ -50,6 +50,7 @@ PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize)
 {
     PageInfo* page = NULL;
 
+    /* Perhaps macro some of this repition? */
     if(pm->empty_pages != NULL) {
         page = pm->empty_pages;
         pm->empty_pages = pm->empty_pages->next;

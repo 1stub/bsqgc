@@ -70,12 +70,13 @@ typedef struct PageInfo
 } PageInfo;
 
 typedef struct PageManager{
+    /* The utilization specifics are not concrete */
     PageInfo* low_utilization_pages; // Pages with 1-30% utilization (does not hold fully empty)
     PageInfo* mid_utilization_pages; // Pages with 31-85% utilization
     PageInfo* high_utilization_pages; // Pages with 86-100% utilization 
 
-    PageInfo* filled_pages; // Completly empty pages
-    PageInfo* empty_pages; // Completeyly full pages
+    PageInfo* filled_pages;
+    PageInfo* empty_pages; 
 } PageManager;
 
 typedef struct AllocatorBin
@@ -125,11 +126,6 @@ PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize);
 * we need to be able to "dynamically" determine what bin is appropriate given an objects size.
 **/
 AllocatorBin* getBinForSize(uint16_t entrytsize);
-
-/**
- * Sets up metafields for PageInfo
- **/
-PageManager* initializePageManager(uint16_t entry_size);
 
 /**
 * Allocates fresh page without updates of allocator bin

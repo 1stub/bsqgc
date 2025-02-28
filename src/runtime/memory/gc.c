@@ -39,7 +39,8 @@ void collect()
     
     mark_and_evacuate();
 
-    /** Now we need to do our decs - 
+    /** 
+    * Now we need to do our decs - 
     * If we discover an object who has ref count of zero, 
     * was in our old root set, ans is not in current roots
     * he is elligible for deletion 
@@ -96,13 +97,13 @@ void process_decs(AllocatorBin* bin)
     while(!worklist_is_empty(&bin->pending_decs)) {
         void* obj = worklist_pop(void, bin->pending_decs);
 
-        // Skip if the object is already freed
+        /* Skip if the object is already freed */
         if (!GC_IS_ALLOCATED(obj)) {
             debug_print("object a %p has already been freed\n", obj);
             continue;
         }
 
-        // Decrement ref counts of objects this object points to
+        /* Decrement ref counts of objects this object points to */
         struct TypeInfoBase* type_info = GC_TYPE(obj);
 
         if(type_info->ptr_mask != LEAF_PTR_MASK) {
@@ -114,7 +115,7 @@ void process_decs(AllocatorBin* bin)
                     if (child != NULL) {
                         decrement_ref_count(child);
 
-                        // If the child's ref count drops to zero, add it to the pending_decs list
+                        /* If the child's ref count drops to zero, add it to the pending_decs list */
                         if (GC_REF_COUNT(child) == 0) {
                             worklist_push(bin->pending_decs, child);
                         }
@@ -123,7 +124,7 @@ void process_decs(AllocatorBin* bin)
             }
         }
 
-        // Put object onto its pages freelist by masking to the page itself then pusing to front of list 
+        /* Put object onto its pages freelist by masking to the page itself then pusing to front of list */
         PageInfo* objects_page = PAGE_MASK_EXTRACT_PINFO(obj);
         FreeListEntry* entry = (FreeListEntry*)((char*)obj - sizeof(MetaData));
         entry->next = objects_page->freelist;
@@ -131,7 +132,7 @@ void process_decs(AllocatorBin* bin)
 
         objects_page->freecount++;
 
-        // Mark the object as unallocated
+        /* Mark the object as unallocated */
         GC_IS_ALLOCATED(obj) = false;
         debug_print("Freed object at %p\n", obj);
     }
@@ -140,14 +141,6 @@ void process_decs(AllocatorBin* bin)
 /* Starting from roots update pointers using forward table */
 void update_references(AllocatorBin* bin) 
 {
-    /* Idea is to maybe do post order traversal and updates rather than breadth */
-    
-    /** 
-    * Current issue is related to how we update deep trees references, we update
-    * the closest to root nodes first, but what they point to becomes garbage 
-    * (still not totally sure where or why this is garbage though)
-    **/
-
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
@@ -195,7 +188,6 @@ void return_to_pmanagers(AllocatorBin* bin)
     PageInfo* page = bin->alloc_page;
     float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
 
-    /* TODO: make these page insertions nice macros */
     if(page_utilization < 0.01) {
         INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
     } else if(page_utilization > 0.01 && page_utilization < 0.3) {
@@ -372,8 +364,6 @@ void walk_stack(struct WorkList* worklist)
         i++;
     }
 
-    #if 0
-
     /* Funny pointer stuff to iterate through this struct, works since all elements are void* */
     for (void** ptr = (void**)&native_register_contents; 
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
@@ -383,9 +373,7 @@ void walk_stack(struct WorkList* worklist)
 
         check_potential_ptr(register_contents, worklist);
     }
-    
-    #endif
-    
+        
     unloadNativeRootSet();
 }
 
@@ -405,23 +393,13 @@ void mark_and_evacuate()
         
         if(parent_type->ptr_mask != LEAF_PTR_MASK) {
             for (size_t i = 0; i < parent_type->slot_size; i++) {
-                /* This nesting is not ideal, but ok for now */
                 char mask = *((parent_type->ptr_mask) + i);
 
                 if (mask == PTR_MASK_PTR) {
-                    void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
+                    void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); /* Macro? */
                     debug_print("pointer slot points to %p\n", child);
 
-                    /** 
-                    * I do wonder how exactly roots pointing to roots are handled here? is this even possible?
-                    * it happens (atleast as of 02/25/2025) when running tests even on simple graphs. 
-                    * The last allocated object appears on the calling stack which then attemps to be explored
-                    * and since it is pointed to BY a root we would need to do ref counts and such, but its already
-                    * marked when we are checking for valid root refs in check potential pointer.
-                    * 
-                    * Quite funky... I suspect the problem is related to HOW i am testing, lesser so the current 
-                    * impl but this may just be me being optimistic...
-                    **/
+                    /* Still lacking through testing for cases where root points to another root*/
 
                     /* Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers */
                     if(!GC_IS_MARKED(child)) {
@@ -434,13 +412,6 @@ void mark_and_evacuate()
             }
         }
     }
-
-    /* This clears the marking stack which we dont want, but can be used as a sanity check */
-    #if 0
-    while(!stack_empty(marking_stack)) {
-        debug_print("marked node %p\n", stack_pop(void, marking_stack));
-    }
-    #endif
 
     evacuate();
 }
