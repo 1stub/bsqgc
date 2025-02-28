@@ -2,7 +2,7 @@
 
 XAllocPageManager XAllocPageManager::g_page_manager;
 
-void* XAllocPageManager::allocatePage_impl()
+void* XAllocPageManager::allocatePage_impl() noexcept
 {
     ALLOC_LOCK_ACQUIRE();
     
@@ -31,7 +31,7 @@ void* XAllocPageManager::allocatePage_impl()
     return (void*)xpage;
 }
 
-void XAllocPageManager::freePage_impl(void* page)
+void XAllocPageManager::freePage_impl(void* page) noexcept
 {
     XAllocPage* xpage = (XAllocPage*)page;
 

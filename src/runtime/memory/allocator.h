@@ -1,5 +1,5 @@
 #pragma once
-
+/*
 #include "../common.h"
 #include "../support/arraylist.h"
 #include "../support/stack.h"
@@ -83,7 +83,7 @@ typedef struct AllocatorBin
     FreeListEntry* freelist;
     uint16_t entrysize;
 
-    /* Proved to be difficult to work with sorting, using static arrays for now */
+    //Proved to be difficult to work with sorting, using static arrays for now
     void* roots[MAX_ROOTS];
     void* old_roots[MAX_ROOTS];
 
@@ -97,55 +97,27 @@ typedef struct AllocatorBin
     PageManager* page_manager;
 } AllocatorBin;
 
-/* Since entry sizes varry, we can statically declare bins & page managers to avoid any mallocs */
+//Since entry sizes varry, we can statically declare bins & page managers to avoid any mallocs
 extern AllocatorBin a_bin8;
 extern PageManager p_mgr8;
 
 extern AllocatorBin a_bin16;
 extern PageManager p_mgr16;
 
-/**
- * When needed, get a fresh page from mmap to allocate from 
- **/
 void getFreshPageForAllocator(AllocatorBin* alloc);
-
-/**
-* If we cannot find a page to evacuate to use this
-**/
 void getFreshPageForEvacuation(AllocatorBin* alloc); 
 
-/**
-* Gets ptr to page from a bins manager that we can manipulate using
-* its bin_next pointer
-**/
 PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize);
 
-/**
-* Since our bins can vary in size (always multiple of 8 bytes) depending on the type they hold
-* we need to be able to "dynamically" determine what bin is appropriate given an objects size.
-**/
 AllocatorBin* getBinForSize(uint16_t entrytsize);
 
-/**
- * Sets up metafields for PageInfo
- **/
 PageManager* initializePageManager(uint16_t entry_size);
-
-/**
-* Allocates fresh page without updates of allocator bin
-**/
 PageInfo* allocateFreshPage(uint16_t entrysize);
 
-/**
-* After allocation, evac, or whatever verify integrity of alloc pages
-**/
 void verifyAllCanaries();
 void verifyCanariesInPage(PageInfo* page);
 bool verifyCanariesInBlock(char* block, uint16_t entry_size);
 
-/**
- * Slow path for usage with canaries
- **/
 static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc){
     uint64_t* pre = (uint64_t*)ret;
     *pre = ALLOC_DEBUG_CANARY_VALUE;
@@ -156,9 +128,6 @@ static inline void* setupSlowPath(FreeListEntry* ret, AllocatorBin* alloc){
     return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
 }
 
-/**
- * Allocate a block of memory of size `size` from the given page.
- **/
 static inline void* allocate(AllocatorBin* alloc, struct TypeInfoBase* type)
 {
     assert(alloc->entrysize == type->type_size);
@@ -184,3 +153,4 @@ static inline void* allocate(AllocatorBin* alloc, struct TypeInfoBase* type)
     debug_print("Allocated object at %p\n", obj);
     return (void*)obj;
 }
+*/

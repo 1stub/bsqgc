@@ -1,12 +1,5 @@
 #pragma once
-
-/** 
-* This Array List implementation is NOT perfect. It does boast dynamic resizing utilizing fixed sized pages
-* which is really nice. There are most definitely bugs that I have not found or logic errors, but for the
-* sake of having a paging array list its fine for now. Needs some more work and I suspect the more I stare
-* at it the more stupid bugs I will notice or flaws in my logic. 
-**/
-
+/*
 #include "../common.h"
 #include <stdio.h>
 
@@ -47,4 +40,4 @@ void arraylist_sort(struct ArrayList* al);
 bool arraylist_is_empty(struct ArrayList* al);
 bool arraylist_is_init(struct ArrayList* al);
 
-    
+*/

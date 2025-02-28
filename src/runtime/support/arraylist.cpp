@@ -1,7 +1,7 @@
 #include "arraylist.h"
 #include "xalloc.h"
 
-/* Really this is just important so our head and tail are both initialized before adding elements */
+/*
 void arraylist_initialize(struct ArrayList* al)
 {
     al->head = NULL;
@@ -12,12 +12,12 @@ void arraylist_initialize(struct ArrayList* al)
 
 void arraylist_push_head_slow(struct ArrayList* al, void* obj) 
 {
-    /* A tad "weirder" than adding a tail. We neeed to make a new page and set our head to its max element */
+    //A tad "weirder" than adding a tail. We neeed to make a new page and set our head to its max element
     struct ArrayListSegment* xseg = XALLOC_PAGE(struct ArrayListSegment);
     debug_print("NEW ARRAY LIST PAGE!!!!!!\n");
     xseg->data = (void*)((char*)xseg + sizeof(struct ArrayListSegment));
 
-    /* Case when no pages have been linked */
+    //Case when no pages have been linked
     xseg->prev = NULL;
     if(al->head_segment == NULL && al->tail_segment == NULL) {
         xseg->next = NULL;
@@ -46,7 +46,7 @@ void arraylist_push_tail_slow(struct ArrayList* al, void* obj)
     debug_print("NEW ARRAY LIST PAGE!!!!!!\n");
     xseg->data = (void*)((char*)xseg + sizeof(struct ArrayListSegment));
 
-    /* Case when no pages have been linked */
+    //Case when no pages have been linked
     xseg->next = NULL;
     if(al->head_segment == NULL && al->tail_segment == NULL) {
         xseg->prev = NULL;
@@ -95,7 +95,7 @@ void* arraylist_pop_tail_slow(struct ArrayList* al)
 { 
     void* res = *(al->tail);
 
-    /* The tail segment was the only segment so just reset everything */
+    //The tail segment was the only segment so just reset everything
     if(al->tail_segment->prev == NULL && al->tail_segment->next == NULL)
     {
         al->tail_segment = NULL;
@@ -132,19 +132,16 @@ void* arraylist_get_next(struct ArrayList* al, void** it) {
     return it;
 }
 
-/**
-* Sort list based on pointer addresses so we can easily compare roots and old_roots
-**/
 void arraylist_sort(struct ArrayList* al) {
     
 }
 
 bool arraylist_is_empty(struct ArrayList* al) {
-    /* It is crucial we check the contents of these pointers, not addresses they hold */
+    //It is crucial we check the contents of these pointers, not addresses they hold
     return *al->head == NULL || *al->tail == NULL; 
 }
 
 bool arraylist_is_init(struct ArrayList* al) {
     return al->head_segment && al->tail_segment;
 }
-    
+*/

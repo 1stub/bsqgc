@@ -1,15 +1,8 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
-#include <stdalign.h>
-#include <assert.h>
-
-#include <threads.h>
-#include <sys/mman.h> //mmap
-
 #include "../language/bsqtype.h"
+
+#include <sys/mman.h> //mmap
 
 //DEFAULT ENABLED WHILE LOTS OF DEVELOPMENT!!!!
 #define BSQ_GC_CHECK_ENABLED
@@ -36,7 +29,7 @@
 #define BSQ_BLOCK_ALLOCATION_SIZE 4096ul
 
 //mem is an 8byte alliged pointer and n is the number of 8byte words to clear
-inline void xmem_zerofill(void* mem, size_t n) 
+inline void xmem_zerofill(void* mem, size_t n) noexcept
 {
     void** obj = (void**)mem;
     void** end = obj + n;
@@ -47,7 +40,7 @@ inline void xmem_zerofill(void* mem, size_t n)
 }
 
 //Clears a page of memory
-inline void xmem_zerofillpage(void* mem)
+inline void xmem_zerofillpage(void* mem) noexcept
 {
     void** obj = (void**)mem;
     void** end = obj + (BSQ_BLOCK_ALLOCATION_SIZE / sizeof(void*));
@@ -57,11 +50,19 @@ inline void xmem_zerofillpage(void* mem)
     }
 }
 
-//A global mutex lock that all threads will use when accessing shared page lists (and when doing their inc/dec ref loops)
-extern mtx_t g_lock;
+//A global mutex lock that all threads will use when accessing shared page lists 
+extern mtx_t g_alloclock;
 
-#define ALLOC_LOCK_ACQUIRE() assert(mtx_lock(&g_lock) == thrd_success)
-#define ALLOC_LOCK_RELEASE() assert(mtx_unlock(&g_lock) == thrd_success)
+#define ALLOC_LOCK_INIT() assert(mtx_init(&g_alloclock, mtx_plain) == thrd_success)
+#define ALLOC_LOCK_ACQUIRE() assert(mtx_lock(&g_alloclock) == thrd_success)
+#define ALLOC_LOCK_RELEASE() assert(mtx_unlock(&g_alloclock) == thrd_success)
+
+//A global mutex lock that all threads will use when doing shared GC ops (e.g. when doing their inc/dec ref loops)
+extern mtx_t g_gclock;
+
+#define GC_LOCK_INIT() assert(mtx_init(&g_gclock, mtx_plain) == thrd_success)
+#define GC_LOCK_ACQUIRE() assert(mtx_lock(&g_gclock) == thrd_success)
+#define GC_LOCK_RELEASE() assert(mtx_unlock(&g_gclock) == thrd_success)
 
 // Track information that needs to be globally accessible for threads
 class GlobalThreadAllocInfo

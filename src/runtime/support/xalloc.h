@@ -20,34 +20,34 @@ class XAllocPageManager
 private:
     XAllocPage* freelist;
 
+    void* allocatePage_impl() noexcept;
+    void freePage_impl(void* page) noexcept;
+
+    XAllocPageManager() noexcept : freelist(nullptr) {}
+public:
     static XAllocPageManager g_page_manager;
 
-    void* allocatePage_impl();
-    void freePage_impl(void* page);
-
-    XAllocPageManager() : freelist(nullptr) {}
-public:
     // Gets min and max pointers on a page from any address in the page
     template <typename T>
-    inline void** get_min_for_segment(T* p)
+    inline void** get_min_for_segment(T* p) noexcept
     {
         return (void**)(((uintptr_t)p & PAGE_ADDR_MASK) + sizeof(T));
     }
 
     template <typename T>
-    inline void** get_max_for_segment(T* p)
+    inline void** get_max_for_segment(T* p) noexcept
     {
         return (void**)(((uintptr_t)p & PAGE_ADDR_MASK) + BSQ_BLOCK_ALLOCATION_SIZE - sizeof(void*));
     }
 
     template <typename T>
-    T* allocatePage()
+    T* allocatePage() noexcept
     {
         return (T*)xallocAllocatePage_impl();
     }
 
     template <typename T>
-    void freePage(T* page)
+    void freePage(T* page) noexcept
     {
         xallocFreePage_impl((void*)page);
     }

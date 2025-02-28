@@ -1,8 +1,7 @@
 #include "gc.h"
 #include "allocator.h"
 
-#include <stdlib.h> //qsort
-
+/*
 void* forward_table[MAX_ROOTS];
 size_t forward_table_index = 0;
 
@@ -11,7 +10,6 @@ void rebuild_freelist(AllocatorBin* bin);
 void compare_roots_and_oldroots(AllocatorBin* bin);
 void process_decs(AllocatorBin* bin);
 
-/* use in sorting old/new roots and using two pointer walk to find existence in old roots */
 int compare(const void* a, const void* b) 
 {
     return ((char*)a - (char*)b);
@@ -19,12 +17,12 @@ int compare(const void* a, const void* b)
 
 void collect() 
 {   
-    /* Before we mark and evac we populate old roots list, clearing roots list */
+    //Before we mark and evac we populate old roots list, clearing roots list
     for(int i = 0; i < NUM_BINS; i++) {
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
         for(size_t i = 0; i < bin->roots_count; i++) {
-            /* Reset marked bit for root to ensure discovery and promote to old space */
+            //Reset marked bit for root to ensure discovery and promote to old space
             GC_IS_MARKED(bin->roots[i]) = false;
             GC_IS_YOUNG(bin->roots[i]) = false;
 
@@ -39,13 +37,6 @@ void collect()
     
     mark_and_evacuate();
 
-    /** Now we need to do our decs - 
-    * If we discover an object who has ref count of zero, 
-    * was in our old root set, ans is not in current roots
-    * he is elligible for deletion 
-    * (he would also be old but this check is trivial)
-    **/
-
     for(int i = 0; i < NUM_BINS; i++) {
         AllocatorBin* bin = getBinForSize(8 * (1 << i));
 
@@ -57,13 +48,9 @@ void collect()
     }
 }
 
-/**
-* This method is designed to walk the roots and oldroots set for each bin,
-* finding those who need decs
-**/
 void compare_roots_and_oldroots(AllocatorBin* bin) 
 {
-    /* First we need to sort the roots we find */
+    //First we need to sort the roots we find
     qsort(bin->roots, bin->roots_count, sizeof(void*), compare);
     
     size_t roots_idx = 0;
@@ -73,7 +60,7 @@ void compare_roots_and_oldroots(AllocatorBin* bin)
         char* cur_oldroot = bin->old_roots[oldroots_idx];
         char* cur_root = bin->roots[roots_idx];
         if(cur_root == NULL) {
-            /* No roots in roots->bin case */
+            //No roots in roots->bin case
             worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
             oldroots_idx++;
         }
@@ -137,17 +124,9 @@ void process_decs(AllocatorBin* bin)
     }
 }
 
-/* Starting from roots update pointers using forward table */
+//Starting from roots update pointers using forward table
 void update_references(AllocatorBin* bin) 
 {
-    /* Idea is to maybe do post order traversal and updates rather than breadth */
-    
-    /** 
-    * Current issue is related to how we update deep trees references, we update
-    * the closest to root nodes first, but what they point to becomes garbage 
-    * (still not totally sure where or why this is garbage though)
-    **/
-
     struct WorkList worklist;
     worklist_initialize(&worklist);
 
@@ -162,13 +141,13 @@ void update_references(AllocatorBin* bin)
         if(addr_type->ptr_mask != LEAF_PTR_MASK) {
 
             for (size_t i = 0; i < addr_type->slot_size; i++) {
-                /* This nesting is not ideal, but ok for now */
+                //This nesting is not ideal, but ok for now
                 char mask = *((addr_type->ptr_mask) + i);
 
                 if (mask == PTR_MASK_PTR) {
                     void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
 
-                    /* If forward index is set, set old location to be non alloc and query forward table */
+                    //If forward index is set, set old location to be non alloc and query forward table
                     uint32_t fwd_index = GC_FWD_INDEX(ref);
                     if(fwd_index != MAX_FWD_INDEX) {
                         GC_IS_ALLOCATED(ref) = false;
@@ -176,7 +155,7 @@ void update_references(AllocatorBin* bin)
 
                         debug_print("update reference from %p to %p\n", ref, ((void**)addr)[i]);
 
-                        /* We need to explore these new evacuated pointers*/
+                        //We need to explore these new evacuated pointers
                         worklist_push(worklist, ((void**)addr)[i]);
                     }
                 }
@@ -185,17 +164,12 @@ void update_references(AllocatorBin* bin)
     }
 }
 
-/**
-* Idea here is after we finish collecting and all freelists that got manipulated a bunch
-* have been rebuilt we can return our pages to their managers respectively, going to their
-* appropriate utilization lists
-**/
 void return_to_pmanagers(AllocatorBin* bin) 
 {
     PageInfo* page = bin->alloc_page;
     float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
 
-    /* TODO: make these page insertions nice macros */
+    //TODO: make these page insertions nice macros
     if(page_utilization < 0.01) {
         INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
     } else if(page_utilization > 0.01 && page_utilization < 0.3) {
@@ -208,7 +182,7 @@ void return_to_pmanagers(AllocatorBin* bin)
         INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
     }
 
-    /* Need to update bins alloc page now, since it just got returned */
+    //Need to update bins alloc page now, since it just got returned
     bin->alloc_page = bin->alloc_page->next;
     if(bin->alloc_page == NULL) {
         bin->freelist = NULL;
@@ -217,10 +191,6 @@ void return_to_pmanagers(AllocatorBin* bin)
     }
 }
 
-/**
-* When we find an object that is eligble to be freed, we need to traverse what is points to
-* and decrement their refcount. This doesn't happen currently.
-**/
 void rebuild_freelist(AllocatorBin* bin)
 {
     PageInfo* cur = bin->alloc_page;
@@ -234,7 +204,7 @@ void rebuild_freelist(AllocatorBin* bin)
             FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
             void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
     
-            /* Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable */
+            //Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable
             if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0) || !GC_IS_MARKED(obj)) {
                 if(first_nonalloc_block) {
                     cur->freelist = new_freelist_entry;
@@ -253,17 +223,17 @@ void rebuild_freelist(AllocatorBin* bin)
 
         debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
 
-        /* Not checking canaries currently, good to have though if weird bugs pop up */
+        //Not checking canaries currently, good to have though if weird bugs pop up
         //verifyCanariesInPage(cur);
 
-        /* return cur page to its bins page manager */
+        //return cur page to its bins page manager
         return_to_pmanagers(bin);
 
         cur = cur->next;
     }
 }
 
-/* Set pre and post canaries in evacuation page if enabled */
+//Set pre and post canaries in evacuation page if enabled
 #ifdef ALLOC_DEBUG_CANARY
 static void set_canaries(void* base, size_t entry_size) 
 {
@@ -275,7 +245,7 @@ static void set_canaries(void* base, size_t entry_size)
 }
 #endif
 
-/* Actual moving of pointers over to evacuation page */
+//Actual moving of pointers over to evacuation page
 static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size) 
 {
     void* new_addr;
@@ -294,17 +264,17 @@ static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size)
 }
 
 
-/* Move non root young objects to evacuation page then update roots */
+/Move non root young objects to evacuation page then update roots
 void evacuate() 
 {
-    /* Freelist is big goofed */
+    //Freelist is big goofed
     while(!stack_empty(marking_stack)) {
         void* old_addr = stack_pop(void, marking_stack);
         AllocatorBin* bin = getBinForSize( GC_TYPE(old_addr)->type_size );
 
-        /* Need to evacuate young marked objects */
+        //Need to evacuate young marked objects
         if(GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
-            /* Check if our evac page doesnt exist yet or freelist is exhausted */
+            //Check if our evac page doesnt exist yet or freelist is exhausted
             if (bin->evac_page == NULL || bin->evac_page->freelist == NULL) {
                 getFreshPageForEvacuation(bin);
             } 
@@ -318,7 +288,7 @@ void evacuate()
             GC_IS_YOUNG(new_addr) = false; // When an object is evacuated, it is now old (tenured)
             bin->evac_page->freecount--;
 
-            /* Set objects old locations forward index to be found when updating references */
+            //Set objects old locations forward index to be found when updating references
             GC_IS_ALLOCATED(old_addr) = false;
             GC_FWD_INDEX(old_addr) = forward_table_index;
             forward_table[forward_table_index++] = new_addr;
@@ -343,14 +313,14 @@ void check_potential_ptr(void* addr, struct WorkList* worklist)
             }
         }
 
-        /* Need to verify our object is allocated and not already marked */
+        //Need to verify our object is allocated and not already marked
         if(GC_IS_ALLOCATED(addr) && !GC_IS_MARKED(addr) && canupdate) {
             GC_IS_MARKED(addr) = true;
 
             AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
             bin->roots[bin->roots_count++] = addr;
 
-            /* If it is not a leaf we will need to add to worklist */
+            //If it is not a leaf we will need to add to worklist
             if((GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && GC_IS_YOUNG(addr)) {
                 worklist_push(*worklist, addr);
             }
@@ -374,7 +344,7 @@ void walk_stack(struct WorkList* worklist)
 
     #if 0
 
-    /* Funny pointer stuff to iterate through this struct, works since all elements are void* */
+    //Funny pointer stuff to iterate through this struct, works since all elements are void*
     for (void** ptr = (void**)&native_register_contents; 
          ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
          ptr++) {
@@ -389,7 +359,7 @@ void walk_stack(struct WorkList* worklist)
     unloadNativeRootSet();
 }
 
-/* Algorithm 2.2 from The Gargage Collection Handbook */
+//Algorithm 2.2 from The Gargage Collection Handbook
 void mark_and_evacuate()
 {
     struct WorkList worklist;
@@ -397,7 +367,7 @@ void mark_and_evacuate()
 
     walk_stack(&worklist);
 
-    /* Process the worklist in a BFS manner */
+    //Process the worklist in a BFS manner
     while (!worklist_is_empty(&worklist)) {
         void* parent_ptr = worklist_pop(void, worklist);
         struct TypeInfoBase* parent_type = GC_TYPE( parent_ptr );
@@ -405,25 +375,14 @@ void mark_and_evacuate()
         
         if(parent_type->ptr_mask != LEAF_PTR_MASK) {
             for (size_t i = 0; i < parent_type->slot_size; i++) {
-                /* This nesting is not ideal, but ok for now */
+                //This nesting is not ideal, but ok for now
                 char mask = *((parent_type->ptr_mask) + i);
 
                 if (mask == PTR_MASK_PTR) {
                     void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
                     debug_print("pointer slot points to %p\n", child);
 
-                    /** 
-                    * I do wonder how exactly roots pointing to roots are handled here? is this even possible?
-                    * it happens (atleast as of 02/25/2025) when running tests even on simple graphs. 
-                    * The last allocated object appears on the calling stack which then attemps to be explored
-                    * and since it is pointed to BY a root we would need to do ref counts and such, but its already
-                    * marked when we are checking for valid root refs in check potential pointer.
-                    * 
-                    * Quite funky... I suspect the problem is related to HOW i am testing, lesser so the current 
-                    * impl but this may just be me being optimistic...
-                    **/
-
-                    /* Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers */
+                    //Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers
                     if(!GC_IS_MARKED(child)) {
                         increment_ref_count(child);
                         GC_IS_MARKED(child) = true;
@@ -435,12 +394,6 @@ void mark_and_evacuate()
         }
     }
 
-    /* This clears the marking stack which we dont want, but can be used as a sanity check */
-    #if 0
-    while(!stack_empty(marking_stack)) {
-        debug_print("marked node %p\n", stack_pop(void, marking_stack));
-    }
-    #endif
-
     evacuate();
 }
+*/

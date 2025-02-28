@@ -1,11 +1,6 @@
 #include "threadinfo.h"
 
-#include <stdio.h>
-
-thread_local size_t tl_id;
-thread_local void** native_stack_base;
-thread_local void** native_stack_contents;
-thread_local struct RegisterContents native_register_contents;
+thread_local BSQMemoryTheadLocalInfo gtl_info;
 
 #define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= V) && (V <= MAX_ALLOCATED_ADDRESS))
 #define PTR_NOT_IN_STACK(BASE, CURR, V) ((((void*)V) < ((void*)CURR)) || (((void*)BASE) < ((void*)V)))
@@ -17,42 +12,20 @@ thread_local struct RegisterContents native_register_contents;
     native_register_contents.R = NULL;                                        \
     if(PTR_IN_RANGE(R) && PTR_NOT_IN_STACK(BASE, CURR, R)) { native_register_contents.R = R; }
 
-void initializeStartup()
+void BSQMemoryTheadLocalInfo::initialize(size_t tl_id, void** caller_rbp) noexcept
 {
-    mtx_init(&g_lock, mtx_plain);
+    this->tl_id = tl_id;
+    this->native_stack_base = caller_rbp;
 }
 
-void initializeThreadLocalInfo(void* caller_rbp)
+void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
 {
-    int lckok = mtx_lock(&g_lock);
-    assert(lckok == thrd_success);
-
-    tl_id = tl_id_counter++;
-    xallocInitializePageManager(tl_id);
-
-    int unlckok = mtx_unlock(&g_lock);
-    assert(unlckok == thrd_success);
-    
-    /**
-    * Here is what is happening. When we enter this method, we are setting 
-    * native_stack_base to be the base pointer for
-    * the frame corresponding to this specific method. This causes a new frame 
-    * to get pushed onto the stack, rbp becoming rbp for
-    * this method and stored, then popped off. This misses the original base 
-    * BEFORE we call this method, that base
-    * being what we are actually intereseted in.
-    **/
-    native_stack_base = caller_rbp;
-}
-
-void loadNativeRootSet()
-{
-    native_stack_contents = (void**)xallocAllocatePage();
-    xmem_pageclear(native_stack_contents);
+    this->native_stack_contents = XAllocPageManager::g_page_manager.allocatePage<void*>();
+    xmem_zerofillpage(this->native_stack_contents);
 
     //this code should load from the asm stack pointers and copy the native stack into the roots memory
     #ifdef __x86_64__
-        register void* rbp asm("rbp");
+        register void** rbp asm("rbp");
         void** current_frame = rbp;
         int i = 0;
         
@@ -64,8 +37,7 @@ void loadNativeRootSet()
             void** it = current_frame;
             void* potential_ptr = *it;
             if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
-                debug_print("potential pointer %p\n", potential_ptr);
-                native_stack_contents[i++] = potential_ptr;
+                this->native_stack_contents[i++] = potential_ptr;
             }
             it--;
             
@@ -93,24 +65,7 @@ void loadNativeRootSet()
     #endif
 }
 
-void unloadNativeRootSet()
+void BSQMemoryTheadLocalInfo::unloadNativeRootSet() noexcept
 {
-    xallocFreePage(native_stack_contents);
+    XAllocPageManager::g_page_manager.freePage(this->native_stack_contents);
 }
-
-/* Walks from rsp to native stack base, not base to rsp*/
-#if 0
-
-        register void* rsp asm("rsp");
-        void** current_frame = rsp;
-        int i = 0;
-
-        while (current_frame < native_stack_base) {
-            void* potential_ptr = *(current_frame + 1);
-            if (PTR_IN_RANGE(potential_ptr) & PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
-                native_stack_contents[i++] = potential_ptr;
-            }
-            current_frame++;
-        }
-
-#endif

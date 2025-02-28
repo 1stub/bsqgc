@@ -27,7 +27,7 @@ CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
 CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}
 
 SUPPORT_HEADERS=$(SUPPORT_DIR)threadinfo.h $(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h  $(SUPPORT_DIR)stack.h $(SUPPORT_DIR)arraylist.h $(SUPPORT_DIR)worklist.h $(SUPPORT_DIR)pagetable.h
-SUPPORT_SOURCES=$(SUPPORT_DIR)threadinfo.cpp $(RUNTIME_DIR)common.cpp $(SUPPORT_DIR)xalloc.cpp  $(SUPPORT_DIR)stack.cpp $(SUPPORT_DIR)arraylist.cpp $(SUPPORT_DIR)worklist.cpp $(SUPPORT_DIR)pagetable.cpp
+SUPPORT_SOURCES=$(SUPPORT_DIR)threadinfo.cpp $(RUNTIME_DIR)common.cpp $(SUPPORT_DIR)xalloc.cpp  $(SUPPORT_DIR)stack.cpp $(SUPPORT_DIR)arraylist.cpp $(SUPPORT_DIR)pagetable.cpp
 SUPPORT_OBJS=$(OUT_OBJ)threadinfo.o $(OUT_OBJ)common.o $(OUT_OBJ)xalloc.o $(OUT_OBJ)stack.o $(OUT_OBJ)arraylist.o $(OUT_OBJ)worklist.o $(OUT_OBJ)pagetable.o
 
 MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(MEMORY_DIR)allocator.h $(MEMORY_DIR)gc.h
@@ -69,10 +69,6 @@ $(OUT_OBJ)arraylist.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)arraylist.cpp
 $(OUT_OBJ)threadinfo.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)threadinfo.cpp
 	@mkdir -p $(OUT_OBJ)
 	$(CC) $(CFLAGS) -o $(OUT_OBJ)threadinfo.o -c $(SUPPORT_DIR)threadinfo.cpp
-
-$(OUT_OBJ)worklist.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)worklist.cpp
-	@mkdir -p $(OUT_OBJ)
-	$(CC) $(CFLAGS) -o $(OUT_OBJ)worklist.o -c $(SUPPORT_DIR)worklist.cpp
 
 $(OUT_OBJ)xalloc.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)xalloc.cpp
 	@mkdir -p $(OUT_OBJ)

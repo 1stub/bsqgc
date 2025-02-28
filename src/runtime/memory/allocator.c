@@ -1,3 +1,4 @@
+/*
 #include "allocator.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -6,11 +7,9 @@
 
 #define CANARY_DEBUG_CHECK
 
-/* Static declarations of our allocator bin and page manager structures */
 AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .roots_count = 0, .old_roots_count = 0, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr8};
 AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .roots_count = 0, .old_roots_count = 0, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr16};
 
-/* Each AllocatorBin needs its own page manager */
 PageManager p_mgr8 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};
 PageManager p_mgr16 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};
 
@@ -40,12 +39,6 @@ static PageInfo* initializePage(void* page, uint16_t entrysize)
     return pinfo;
 }
 
-/**
-* Go into a bins page manager and grab us a page. This will need some rework in the future
-* to where we can decide more specifically what page utilizaiton levels we want for a specific
-* purpose. Ex if we want an evac page we may be more inclined to grab a full page. Or an alloc
-* page could be more useful to be mostly empty since most objects on it will die.
-**/
 PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize) 
 {
     PageInfo* page = NULL;
@@ -73,11 +66,6 @@ PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize)
     return page;
 }
 
-/**
-* Insert into our mulitlevel page manager. We do not need to insert into page manager here
-* because we are assuming this page will directly be needed for allocation. No point in 
-* inserting into empty_pages just to have to go and grab it right away. Saves pointer overhead.
-**/
 PageInfo* allocateFreshPage(uint16_t entrysize)
 {
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
@@ -101,7 +89,7 @@ PageInfo* allocateFreshPage(uint16_t entrysize)
 void getFreshPageForAllocator(AllocatorBin* alloc)
 {   
     PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
-    /* Fetch a page from our manager and insert into alloc_page list */
+    // Fetch a page from our manager and insert into alloc_page list
     INSERT_PAGE_IN_LIST(alloc->alloc_page, page);
 
     alloc->freelist = alloc->alloc_page->freelist;
@@ -113,7 +101,7 @@ void getFreshPageForEvacuation(AllocatorBin* alloc)
 
     INSERT_PAGE_IN_LIST(alloc->evac_page, page);
 
-    /* Need to update freelist? */
+    //Need to update freelist?
 }
 
 AllocatorBin* getBinForSize(uint16_t entrytsize)
@@ -131,7 +119,7 @@ AllocatorBin* getBinForSize(uint16_t entrytsize)
     return NULL;
 }
 
-/* Following 3 methods verify integrity of canaries */
+//Following 3 methods verify integrity of canaries
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {
     uint64_t* pre_canary = (uint64_t*)(block);
@@ -213,4 +201,4 @@ void verifyAllCanaries()
         }
     }
 }
-
+*/

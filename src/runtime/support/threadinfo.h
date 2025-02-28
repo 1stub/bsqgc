@@ -1,9 +1,8 @@
 #pragma once 
 
-#include "../common.h"
 #include "xalloc.h"
 
-extern thread_local size_t tl_id;
+#define InitBSQMemoryTheadLocalInfo { ALLOC_LOCK_ACQUIRE(); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, __builtin_frame_address(0)) ALLOC_LOCK_RELEASE(); }
 
 struct RegisterContents
 {
@@ -27,13 +26,21 @@ struct RegisterContents
     void* r15;
 };
 
-//This needs to be initialized on thread creation
-extern thread_local void** native_stack_base;
-extern thread_local void** native_stack_contents;
-extern thread_local struct RegisterContents native_register_contents;
+struct BSQMemoryTheadLocalInfo
+{
+    size_t tl_id;
+    void** native_stack_base;
 
-void initializeStartup();
-void initializeThreadLocalInfo(void* caller_rbp);
+    void** native_stack_contents;
+    RegisterContents native_register_contents;
 
-void loadNativeRootSet();
-void unloadNativeRootSet();
+    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr) {}
+
+    void initialize(size_t tl_id, void** caller_rbp) noexcept;
+
+    void loadNativeRootSet() noexcept;
+    void unloadNativeRootSet() noexcept;
+};
+
+extern thread_local BSQMemoryTheadLocalInfo gtl_info;
+

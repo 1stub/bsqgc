@@ -1,5 +1,5 @@
 #include "pagetable.h"
-
+/*
 #define LEVEL1_SHIFT 36
 #define LEVEL2_SHIFT 24
 #define LEVEL3_SHIFT 12
@@ -61,3 +61,4 @@ bool pagetable_query(void* addr) {
     void** level4 = (void**)level3[index3];
     return level4[index4] == (void*)PAGE_PRESENT;
 }
+*/

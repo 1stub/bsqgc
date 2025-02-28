@@ -1,5 +1,5 @@
 #include "stack.h"
-
+/*
 thread_local struct Stack marking_stack = {NULL, NULL, NULL, NULL};
 
 void stack_push_slow(struct Stack* s, void* obj)
@@ -43,3 +43,4 @@ void* stack_pop_slow(struct Stack* s)
 
     return res;
 }
+*/

@@ -1,2 +1,10 @@
 {
+    "files.associations": {
+        "concepts": "cpp",
+        "cstddef": "cpp",
+        "type_traits": "cpp",
+        "cmath": "cpp",
+        "limits": "cpp",
+        "new": "cpp"
+    }
 }
