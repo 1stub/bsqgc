@@ -1,5 +1,19 @@
 #include "arraylist.h"
-#include "xalloc.h"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 void arraylist_initialize(struct ArrayList* al)

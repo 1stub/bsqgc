@@ -1,6 +1,8 @@
 #pragma once 
 
 #include "xalloc.h"
+#include "stack.h"
+#include "worklist.h"
 
 #define InitBSQMemoryTheadLocalInfo { ALLOC_LOCK_ACQUIRE(); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, __builtin_frame_address(0)) ALLOC_LOCK_RELEASE(); }
 
@@ -33,6 +35,8 @@ struct BSQMemoryTheadLocalInfo
 
     void** native_stack_contents;
     RegisterContents native_register_contents;
+
+    Stack<void*> marking_stack;
 
     BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr) {}
 

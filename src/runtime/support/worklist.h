@@ -2,6 +2,12 @@
 
 #include "xalloc.h"
 
+#ifdef DSA_INVARIANTS
+#define DSA_INVARIANT_CHECK(x) assert(x)
+#else
+#define DSA_INVARIANT_CHECK(x)
+#endif
+
 template <typename T>
 struct WorkListSegment
 {
@@ -16,65 +22,48 @@ private:
     T* head;
     T* tail;
 
-    WorkListSegment<T>* head_segment;
     T* head_max;
-
-    WorkListSegment<T>* tail_segment;
     T* tail_max;
 
-    void worklist_push_slow(T* obj) noexcept
+    WorkListSegment<T>* head_segment;
+    WorkListSegment<T>* tail_segment;
+
+    void worklist_enqueue_slow(T* obj) noexcept
     {
-        WorkListSegment<T>* xseg = XAllocPageManager::g_page_manager.allocatePage<WorkListSegment<T>>();
-        xseg->data = (T*)((char*)xseg + sizeof(WorkListSegment<T>));
-
-        //Case when no pages have been linked
+        WorkListSegment<T>* xseg = (WorkListSegment<T>*)XAllocPageManager::g_page_manager.allocatePage<WorkListSegment<T>>();
+        xseg->data = (T*)((uint8_t*)xseg + sizeof(WorkListSegment<T>));
         xseg->next = nullptr;
-        if(this->head_segment == nullptr && this->tail_segment == nullptr) {
-            this->head_segment = xseg;
-            this->head_max = XAllocPageManager::get_max_for_segment(xseg);
 
-            this->tail_segment = xseg;
-            this->tail_max = XAllocPageManager::get_max_for_segment(xseg);
+        this->tail_segment->next = xseg;
 
-            this->tail = xseg->data;
-            this->head = xseg->data;
-        }
-        else {
-            if(this->tail_segment != nullptr) {
-                this->tail_segment->next = xseg;
-            }
-            this->tail_segment = xseg;
-            this->tail_max = XAllocPageManager::get_max_for_segment(xseg);
+        this->tail_segment = xseg;
+        this->tail = xseg->data;
+        this->tail_max = (T*)((uint8_t*)xseg + BSQ_BLOCK_ALLOCATION_SIZE);
 
-            this->tail = xseg->data;
-        }
-
-        *(this->tail) = obj;
+        *(this->tail++) = obj;
     }
 
-    void* worklist_pop_slow() noexcept
+    void* worklist_dequeue_slow() noexcept
     {
-#ifdef BSQ_GC_CHECK_ENABLED
-        assert(this->head != nullptr);
-#endif
-        void* res = *(this->head);
+        void* res = *(this->head++);
 
         //Only segment, reset everything
         if(this->head_segment->next == nullptr) {
             this->head_segment = nullptr;
+            this->head = nullptr;
             this->head_max = nullptr;
 
             this->tail_segment = nullptr;
-            this->tail_max = nullptr;
-            
-            this->head = nullptr;
             this->tail = nullptr;
+            this->tail_max = nullptr;
         }
         else {
             WorkListSegment* xseg = this->head_segment;
+
             this->head_segment = this->head_segment->next;
-            this->head_max = XAllocPageManager::get_max_for_segment(this->head_segment);
-            this->head = XAllocPageManager::get_min_for_segment(this->head_segment);
+            this->head = this->head_segment->data;
+            this->head_max = (T*)((uint8_t*)this->head_segment + BSQ_BLOCK_ALLOCATION_SIZE);
+
             XAllocPageManager::g_page_manager.freePage<WorkListSegment<T>>(xseg);
         }
 
@@ -82,30 +71,74 @@ private:
     }
 
 public:
-    WorkList() noexcept : head(nullptr), tail(nullptr), head_segment(nullptr), tail_segment(nullptr) {}
+    WorkList() noexcept : head(nullptr), tail(nullptr), head_max(nullptr), tail_max(nullptr), head_segment(nullptr), tail_segment(nullptr) {}
+
+    void initialize() noexcept
+    {
+        DSA_INVARIANT_CHECK(this->invariant());
+        DSA_INVARIANT_CHECK(this->head == nullptr);
+
+        WorkListSegment<T>* xseg = (WorkListSegment<T>*)XAllocPageManager::g_page_manager.allocatePage<WorkListSegment<T>>();
+        xseg->data = (T*)((uint8_t*)xseg + sizeof(WorkListSegment<T>));
+        xseg->next = nullptr;
+
+        //Empty case and we need to set head too
+        this->head_segment = xseg;
+        this->head = xseg->data;
+        this->head_max = (T*)((uint8_t*)xseg + BSQ_BLOCK_ALLOCATION_SIZE);
+
+        this->tail_segment = xseg;
+        this->tail = xseg->data;
+        this->tail_max = (T*)((uint8_t*)xseg + BSQ_BLOCK_ALLOCATION_SIZE);
+    }
+
+    void clear() noexcept
+    {
+        DSA_INVARIANT_CHECK(this->invariant());
+
+        while(this->head_segment != nullptr) {
+            WorkListSegment<T>* xseg = this->head_segment;
+            this->head_segment = this->head_segment->next;
+
+            XAllocPageManager::g_page_manager.freePage<WorkListSegment<T>>(xseg);
+        }
+
+        this->head_segment = nullptr;
+        this->head = nullptr;
+        this->head_max = nullptr;
+
+        this->tail_segment = nullptr;
+        this->tail = nullptr;
+        this->tail_max = nullptr;
+    }
 
     const inline isEmpty() noexcept
     {
-        return this->head == nullptr || this->tail == nullptr;
+        return this->head == this->tail;
     }
 
-    inline void push(T* obj) noexcept
+    inline void enqueue(T* obj) noexcept
     {
-        if(this->tail != nullptr && this->tail < this->tail_max) { 
-            *(++this->tail) = obj; 
+        DSA_INVARIANT_CHECK(this->invariant());
+
+        if(this->tail < this->tail_max) [[likely]] { 
+            *(this->tail++) = obj; 
         } 
-        else { 
-            this->worklist_push_slow(obj);
+        else [[unlikely]] { 
+            this->worklist_enqueue_slow(obj);
         }
     }
 
-    inline T* pop() noexcept
+    inline T* dequeue() noexcept
     {
-        if(this->head != this->tail) {
+        DSA_INVARIANT_CHECK(this->invariant());
+        DSA_INVARIANT_CHECK(this->head != this->tail);
+
+        if(this->head < this->head_max) [[likely]] {
             return *(this->head++);
         }
-        else {
-            this->worklist_pop_slow();
+        else [[unlikely]] {
+            this->worklist_dequeue_slow();
         }
     }
 };

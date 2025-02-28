@@ -26,9 +26,9 @@ CFLAGS_OPT.release=-O3 -march=x86-64-v3
 CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
 CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}
 
-SUPPORT_HEADERS=$(SUPPORT_DIR)threadinfo.h $(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h  $(SUPPORT_DIR)stack.h $(SUPPORT_DIR)arraylist.h $(SUPPORT_DIR)worklist.h $(SUPPORT_DIR)pagetable.h
-SUPPORT_SOURCES=$(SUPPORT_DIR)threadinfo.cpp $(RUNTIME_DIR)common.cpp $(SUPPORT_DIR)xalloc.cpp  $(SUPPORT_DIR)stack.cpp $(SUPPORT_DIR)arraylist.cpp $(SUPPORT_DIR)pagetable.cpp
-SUPPORT_OBJS=$(OUT_OBJ)threadinfo.o $(OUT_OBJ)common.o $(OUT_OBJ)xalloc.o $(OUT_OBJ)stack.o $(OUT_OBJ)arraylist.o $(OUT_OBJ)worklist.o $(OUT_OBJ)pagetable.o
+SUPPORT_HEADERS=$(SUPPORT_DIR)threadinfo.h $(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h $(SUPPORT_DIR)arraylist.h $(SUPPORT_DIR)pagetable.h
+SUPPORT_SOURCES=$(SUPPORT_DIR)threadinfo.cpp $(RUNTIME_DIR)common.cpp $(SUPPORT_DIR)xalloc.cpp $(SUPPORT_DIR)arraylist.cpp $(SUPPORT_DIR)pagetable.cpp
+SUPPORT_OBJS=$(OUT_OBJ)threadinfo.o $(OUT_OBJ)common.o $(OUT_OBJ)xalloc.o $(OUT_OBJ)arraylist.o $(OUT_OBJ)pagetable.o
 
 MEMORY_HEADERS=$(RUNTIME_DIR)common.h $(MEMORY_DIR)allocator.h $(MEMORY_DIR)gc.h
 MEMORY_SOURCES=$(MEMORY_DIR)allocator.cpp $(MEMORY_DIR)gc.cpp
@@ -57,10 +57,6 @@ $(OUT_OBJ)allocator.o: $(MEMORY_HEADERS) $(MEMORY_DIR)allocator.cpp
 $(OUT_OBJ)gc.o: $(MEMORY_HEADERS) $(MEMORY_DIR)gc.cpp
 	@mkdir -p $(OUT_OBJ)
 	$(CC) $(CFLAGS) -o $(OUT_OBJ)gc.o -c $(MEMORY_DIR)gc.cpp
-
-$(OUT_OBJ)stack.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)stack.cpp
-	@mkdir -p $(OUT_OBJ)
-	$(CC) $(CFLAGS) -o $(OUT_OBJ)stack.o -c $(SUPPORT_DIR)stack.cpp
 
 $(OUT_OBJ)arraylist.o: $(SUPPORT_HEADERS) $(SUPPORT_DIR)arraylist.cpp
 	@mkdir -p $(OUT_OBJ)

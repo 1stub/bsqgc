@@ -27,29 +27,14 @@ private:
 public:
     static XAllocPageManager g_page_manager;
 
-    // Gets min and max pointers on a page from any address in the page
-    template <typename T>
-    inline void** get_min_for_segment(T* p) noexcept
+    void* allocatePage() noexcept
     {
-        return (void**)(((uintptr_t)p & PAGE_ADDR_MASK) + sizeof(T));
+        return this->allocatePage_impl();
     }
 
-    template <typename T>
-    inline void** get_max_for_segment(T* p) noexcept
+    void freePage(void* page) noexcept
     {
-        return (void**)(((uintptr_t)p & PAGE_ADDR_MASK) + BSQ_BLOCK_ALLOCATION_SIZE - sizeof(void*));
-    }
-
-    template <typename T>
-    T* allocatePage() noexcept
-    {
-        return (T*)xallocAllocatePage_impl();
-    }
-
-    template <typename T>
-    void freePage(T* page) noexcept
-    {
-        xallocFreePage_impl((void*)page);
+        this->freePage_impl((void*)page);
     }
 };
 
