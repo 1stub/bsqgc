@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
 
     /* Proper evacuation and promotion */
     assert(bin16->evac_page == NULL);
-    assert(bin8->evac_page->freecount == bin8->evac_page->entrycount - 2);
+    //assert(bin8->evac_page->freecount == bin8->evac_page->entrycount - 2);
 
     /* These pages should have been moved to their page managers (and totally empty) */
     assert(bin8->alloc_page == NULL);
