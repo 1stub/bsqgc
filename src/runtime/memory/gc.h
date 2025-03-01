@@ -1,5 +1,5 @@
 #pragma once
-/*
+
 #include "allocator.h"
 #include "../support/threadinfo.h"
 
@@ -24,4 +24,3 @@ static inline void decrement_ref_count(void* obj)
 
     // might make more sense to put back on freelist here if refcnt 0
 }
-*/

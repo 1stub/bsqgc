@@ -1,16 +1,8 @@
 #pragma once
-/*
+
 #include "../common.h"
 #include "../support/arraylist.h"
-#include "../support/stack.h"
-#include "../support/worklist.h"
 #include "../support/pagetable.h"
-
-#ifdef MEM_STATS
-#include <stdio.h> //printf
-#endif
-
-#include <string.h> //memcpy
 
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
@@ -28,6 +20,81 @@
 #define MEM_STATS_ARG(X)
 #endif
 
+////////////////////////////////
+//Memory allocator
+
+struct FreeListEntry
+{
+   FreeListEntry* next;
+};
+static_assert(sizeof(FreeListEntry) <= sizeof(MetaData), "BlockHeader size is not 8 bytes");
+
+typedef uint16_t PageStateInfo;
+#define PageStateInfo_GroundState 0x0
+#define AllocPageInfo_ActiveAllocation 0x1
+#define AllocPageInfo_ActiveEvacuation 0x2
+
+class PageInfo
+{
+private:
+    FreeListEntry* freelist; //allocate from here until nullptr
+
+    uint16_t allocsize; //size of the alloc entries in this page (excluding metadata)
+    uint16_t realsize; //size of the alloc entries in this page (including metadata and other stuff)
+    uint16_t entrycount; //max number of objects that can be allocated from this Page
+
+    uint16_t freecount;
+
+    PageStateInfo pagestate;
+
+    PageInfo* next;
+
+public:
+    static inline constexpr PageInfo* extractPageFromPointer(void* p) noexcept {
+        return (PageInfo*)((uintptr_t)(p) & PAGE_ADDR_MASK);
+    }
+
+    static inline constexpr uint8_t* extractPageDataBase(void* p) noexcept {
+        return (uint8_t*)((uintptr_t)(p) & PAGE_ADDR_MASK) + sizeof(PageInfo);
+    }
+
+    static inline constexpr size_t extractIndexForObjectInPage(void* p) noexcept {
+        const PageInfo* page = extractPageFromPointer(p);
+        const uint8_t* base = extractPageDataBase(p);
+
+        return ((uint8_t*)p - base) / page->realsize;
+    }
+};
+
+#ifdef ALLOC_DEBUG_CANARY
+#define PAGE_FIND_OBJ_BASE(O) (PAGE_MASK_EXTRACT_DATA(O) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + (PAGE_MASK_EXTRACT_INDEX(O) * REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize )))
+#define PAGE_IS_OBJ_ALIGNED(O) (((char*)O - (PAGE_MASK_EXTRACT_DATA(O) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData))) % REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize ) == 0)
+#else
+#define PAGE_FIND_OBJ_BASE(O) (PAGE_MASK_EXTRACT_DATA(O) + sizeof(MetaData) + (PAGE_MASK_EXTRACT_INDEX(O) * REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize) ))
+#define PAGE_IS_OBJ_ALIGNED(O) (((char*)O - (PAGE_MASK_EXTRACT_DATA(O) + sizeof(MetaData))) % REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize ) == 0)
+#endif
+
+
+#define GC_GET_META_DATA_ADDR(O) PAGE_IS_OBJ_ALIGNED(O) ? (MetaData*)((char*)O - sizeof(MetaData)) : (MetaData*)(PAGE_FIND_OBJ_BASE(O) - sizeof(MetaData))
+
+
+#define FREE_LIST_ENTRY_AT(page, index) ((FreeListEntry*)(PAGE_MASK_EXTRACT_DATA(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
+
+#ifdef ALLOC_DEBUG_CANARY
+//Gives us the beginning of block (just before canary in case of canaries enabled)
+#define BLOCK_START_FROM_PTR(obj) ((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE)
+
+//Start of our object from the begginning of block (address returned from allocate())
+#define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
+#define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)((char*)f_entry + ALLOC_DEBUG_CANARY_SIZE))
+#else
+#define BLOCK_START_FROM_PTR(obj) ((char*)obj - sizeof(MetaData))
+#define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData))
+#define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)f_entry)
+
+#endif
+
+
 #define SETUP_META_FLAGS(M, T)          \
 do {                                    \
     (M)->isalloc = true;                \
@@ -38,36 +105,6 @@ do {                                    \
     (M)->ref_count = 0;                 \
     (M)->type = T;                      \
 } while(0)
-
-////////////////////////////////
-//Memory allocator
-
-struct FreeListEntry
-{
-   struct FreeListEntry* next;
-};
-typedef struct FreeListEntry FreeListEntry;
-
-static_assert(sizeof(FreeListEntry) <= sizeof(MetaData), "BlockHeader size is not 8 bytes");
-
-typedef uint16_t PageStateInfo;
-#define PageStateInfo_GroundState 0x0
-#define AllocPageInfo_ActiveAllocation 0x1
-#define AllocPageInfo_ActiveEvacuation 0x2
-
-typedef struct PageInfo
-{
-    FreeListEntry* freelist; //allocate from here until nullptr
-
-    uint16_t entrysize; //size of the alloc entries in this page (excluding metadata)
-    uint16_t entrycount; //max number of objects that can be allocated from this Page
-
-    uint16_t freecount;
-
-    PageStateInfo pagestate;
-
-    struct PageInfo* next;
-} PageInfo;
 
 typedef struct PageManager{
     PageInfo* low_utilization_pages; // Pages with 1-30% utilization (does not hold fully empty)
@@ -153,4 +190,3 @@ static inline void* allocate(AllocatorBin* alloc, struct TypeInfoBase* type)
     debug_print("Allocated object at %p\n", obj);
     return (void*)obj;
 }
-*/

@@ -1,6 +1,13 @@
 #include "gc.h"
 #include "allocator.h"
 
+/* Used to determine if a pointer points into the data segment of an object */
+#define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
+
+
+// After we evacuate an object we need to update the original metadata
+#define RESET_METADATA_FOR_OBJECT(meta) (meta) = {false, false, false, false, MAX_FWD_INDEX, 0}
+
 /*
 void* forward_table[MAX_ROOTS];
 size_t forward_table_index = 0;
