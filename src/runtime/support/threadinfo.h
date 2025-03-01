@@ -1,8 +1,7 @@
 #pragma once 
 
 #include "xalloc.h"
-#include "stack.h"
-#include "worklist.h"
+#include "arraylist.h"
 
 #define InitBSQMemoryTheadLocalInfo { ALLOC_LOCK_ACQUIRE(); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, __builtin_frame_address(0)) ALLOC_LOCK_RELEASE(); }
 
@@ -28,15 +27,18 @@ struct RegisterContents
     void* r15;
 };
 
+//All of the data that a thread local allocator needs to run it's operations
 struct BSQMemoryTheadLocalInfo
 {
-    size_t tl_id;
-    void** native_stack_base;
+    size_t tl_id; //ID of the thread
 
-    void** native_stack_contents;
-    RegisterContents native_register_contents;
+    ////
+    //Mark Phase information
+    void** native_stack_base; //the base of the native stack
+    void** native_stack_contents; //the contents of the native stack extracted in the mark phase
+    RegisterContents native_register_contents; //the contents of the native registers extracted in the mark phase
 
-    Stack<void*> marking_stack;
+    ArrayList<void*> marking_stack; //the stack structured used to talk the heap in the mark phase
 
     BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr) {}
 

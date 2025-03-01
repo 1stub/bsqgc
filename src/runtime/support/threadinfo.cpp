@@ -6,7 +6,6 @@ thread_local BSQMemoryTheadLocalInfo gtl_info;
 #define PTR_NOT_IN_STACK(BASE, CURR, V) ((((void*)V) < ((void*)CURR)) || (((void*)BASE) < ((void*)V)))
 #define IS_ALIGNED(V) (((uintptr_t)(V) % sizeof(void*)) == 0)
 
-/* Was originally ..._contents.##R but preprocessor was not happy */
 #define PROCESS_REGISTER(BASE, CURR, R)                                       \
     register void* R asm(#R);                                                 \
     native_register_contents.R = NULL;                                        \
@@ -20,7 +19,7 @@ void BSQMemoryTheadLocalInfo::initialize(size_t tl_id, void** caller_rbp) noexce
 
 void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
 {
-    this->native_stack_contents = XAllocPageManager::g_page_manager.allocatePage<void*>();
+    this->native_stack_contents = (void**)XAllocPageManager::g_page_manager.allocatePage();
     xmem_zerofillpage(this->native_stack_contents);
 
     //this code should load from the asm stack pointers and copy the native stack into the roots memory
@@ -68,4 +67,5 @@ void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
 void BSQMemoryTheadLocalInfo::unloadNativeRootSet() noexcept
 {
     XAllocPageManager::g_page_manager.freePage(this->native_stack_contents);
+    this->native_stack_contents = nullptr;
 }

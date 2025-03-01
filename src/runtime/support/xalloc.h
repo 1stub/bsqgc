@@ -14,7 +14,7 @@ struct XAllocPage {
 };
 
 //This class is responsible for managing the allocation of pages for support data structures (NOT GC pages)
-//All threads will share this pool of pages for their operations
+//All threads will share this pool of pages for their operations (locked by a global mutex ALLOC_LOCK_X operations)
 class XAllocPageManager
 {
 private:

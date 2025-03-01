@@ -30,24 +30,70 @@ private:
     ArrayListSegment<T>* head_segment;
     ArrayListSegment<T>* tail_segment;   
     
-    void push_front_slow(T*)
+    void push_front_slow(T v) noexcept
     {
+        DSA_INVARIANT_CHECK(this->head == this->head_min);
 
+        ArrayListSegment<T>* xseg = (ArrayListSegment<T>*)XAllocPageManager::g_page_manager.allocatePage();
+        xseg->data = (T*)((uint8_t*)xseg + sizeof(ArrayListSegment<T>));
+        xseg->next = this->head_segment;
+        xseg->prev = nullptr;
+
+        this->head_segment->prev = xseg;
+        this->head_segment = xseg;
+        this->head_min = xseg->data;
+        this->head_max = (T*)((uint8_t*)xseg + BSQ_BLOCK_ALLOCATION_SIZE);
+        this->head = this->head_max;
+
+        *(--this->head) = v;
     }
 
-    void push_back_slow(T*)
+    void push_back_slow(T v) noexcept
     {
-        
+        DSA_INVARIANT_CHECK(this->tail == this->tail_max);
+
+        ArrayListSegment<T>* xseg = (ArrayListSegment<T>*)XAllocPageManager::g_page_manager.allocatePage();
+        xseg->data = (T*)((uint8_t*)xseg + sizeof(ArrayListSegment<T>));
+        xseg->next = nullptr;
+        xseg->prev = this->tail_segment;
+
+        this->tail_segment->next = xseg;
+        this->tail_segment = xseg;
+        this->tail_min = xseg->data;
+        this->tail_max = (T*)((uint8_t*)xseg + BSQ_BLOCK_ALLOCATION_SIZE);
+        this->tail = xseg->data;
+
+        *(this->tail++) = v;
     }
 
-    T* pop_front_slow()
+    void shift_front_slow() noexcept
     {
-        
+        DSA_INVARIANT_CHECK(this->head == this->head_max);
+
+        ArrayListSegment<T>* xseg = this->head_segment;
+        this->head_segment = this->head_segment->next;
+        this->head_segment->prev = nullptr;
+
+        this->head_min = this->head_segment->data;
+        this->head_max = (T*)((uint8_t*)this->head_segment + BSQ_BLOCK_ALLOCATION_SIZE);
+        this->head = this->head_min;
+
+        XAllocPageManager::g_page_manager.freePage(xseg);
     }
 
-    T* pop_back_slow()
+    void shift_back_slow() noexcept
     {
-        
+        DSA_INVARIANT_CHECK(this->tail == this->tail_min);
+
+        ArrayListSegment<T>* xseg = this->tail_segment;
+        this->tail_segment = this->tail_segment->prev;
+        this->tail_segment->next = nullptr;
+
+        this->tail_min = this->tail_segment->data;
+        this->tail_max = (T*)((uint8_t*)this->tail_segment + BSQ_BLOCK_ALLOCATION_SIZE);
+        this->tail = this->tail_max;
+
+        XAllocPageManager::g_page_manager.freePage(xseg);
     }
 
 public:
@@ -140,53 +186,53 @@ public:
         return this->head == this->tail;
     }
 
-    void push_front(T*)
+    inline void push_front(T v) noexcept
     {
         DSA_INVARIANT_CHECK(this->invariant());
 
-        if(this->head_min < this->head) [[likely]] {
-            *(--this->head) = obj;
+        if(this->head != this->head_min) [[likely]] {
+            *(--this->head) = v;
         }
         else [[unlikely]] {
-            this->push_front_slow(obj);
+            this->push_front_slow(v);
         }
     }
 
-    void push_back_slow(T*)
+    inline void push_back(T v) noexcept
     {
         DSA_INVARIANT_CHECK(this->invariant());
 
-        if(this->tail < this->tail_max) [[likely]] {
-            *(this->tail++) = obj;
+        if(this->tail != this->tail_max) [[likely]] {
+            *(this->tail++) = v;
         }
         else [[unlikely]] {
-            this->push_back_slow(obj);
+            this->push_back_slow(v);
         }
     }
 
-    T* pop_front_slow()
+    inline T pop_front() noexcept
     {
         DSA_INVARIANT_CHECK(this->head != this->tail);
         DSA_INVARIANT_CHECK(this->invariant());
 
-        if(this->head < this->head_max) [[likely]] {
-            return *(this->head++);
+        T res = *(this->head++);
+
+        if(this->head == this->head_max) [[unlikely]] {
+            this->shift_front_slow();
         }
-        else [[unlikely]] {
-            this->pop_front_slow();
-        }
+
+        return res;
     }
 
-    T* pop_back_slow()
+    inline T* pop_back() noexcept
     {
         DSA_INVARIANT_CHECK(this->head != this->tail);
         DSA_INVARIANT_CHECK(this->invariant());
+
+        if(this->tail == this->tail_min) [[unlikely]] {
+            this->shift_back_slow();
+        }
+
+        return *(--this->tail);
     }
 };
-
-#define arraylist_push_head(L, O) if((L).head && (L).head > GET_MIN_FOR_SEGMENT((L).head, AL_SEG_SIZE)) {*(--(L).head) = O; } else {arraylist_push_head_slow(&(L), O);}
-#define arraylist_push_tail(L, O) if((L).tail && (L).tail < GET_MAX_FOR_SEGMENT((L).tail, AL_SEG_SIZE)) { *(++(L).tail) = O; } else {arraylist_push_tail_slow(&(L), O);}
-
-#define arraylist_pop_head(T, L) ((T*)((L).head != GET_MAX_FOR_SEGMENT((L).head, AL_SEG_SIZE) ? *((L).head++) : arraylist_pop_head_slow(&(L))))
-#define arraylist_pop_tail(T, L) ((T*)((L).tail != GET_MIN_FOR_SEGMENT((L).tail, AL_SEG_SIZE) ? *((L).tail--) : arraylist_pop_tail_slow(&(L))))
-
