@@ -58,7 +58,7 @@ extern mtx_t g_alloclock;
 #define ALLOC_LOCK_ACQUIRE() assert(mtx_lock(&g_alloclock) == thrd_success)
 #define ALLOC_LOCK_RELEASE() assert(mtx_unlock(&g_alloclock) == thrd_success)
 
-//A global mutex lock that all threads will use when doing shared GC ops (e.g. when doing their inc/dec ref loops)
+//A global mutex lock that all threads will use when doing shared GC ops (e.g. getting pages, root resolution, or when doing their inc/dec ref loops)
 extern mtx_t g_gclock;
 
 #define GC_LOCK_INIT() assert(mtx_init(&g_gclock, mtx_plain) == thrd_success)
