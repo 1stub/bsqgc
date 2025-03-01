@@ -38,6 +38,7 @@ class PageInfo
 {
 private:
     FreeListEntry* freelist; //allocate from here until nullptr
+    uint8_t* p; //start of the data block
 
     uint16_t allocsize; //size of the alloc entries in this page (excluding metadata)
     uint16_t realsize; //size of the alloc entries in this page (including metadata and other stuff)
@@ -54,44 +55,43 @@ public:
         return (PageInfo*)((uintptr_t)(p) & PAGE_ADDR_MASK);
     }
 
-    static inline constexpr uint8_t* extractPageDataBase(void* p) noexcept {
-        return (uint8_t*)((uintptr_t)(p) & PAGE_ADDR_MASK) + sizeof(PageInfo);
-    }
-
     static inline constexpr size_t extractIndexForObjectInPage(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
         const uint8_t* base = extractPageDataBase(p);
 
-        return ((uint8_t*)p - base) / page->realsize;
+        return (size_t)((uint8_t*)p - base) / (size_t)page->realsize;
+    }
+
+    static inline constexpr MetaData* extractObjectMetadataAligned(void* p) noexcept {
+        const PageInfo* page = extractPageFromPointer(p);
+        const uint8_t* base = extractPageDataBase(p);
+
+        size_t idx = (size_t)((uint8_t*)p - base) / (size_t)page->realsize;
+#ifdef ALLOC_DEBUG_CANARY
+        return (MetaData*)(base + idx * page->realsize + ALLOC_DEBUG_CANARY_SIZE);
+#else
+        return (MetaData*)(base + idx * page->realsize);
+#endif
+    }
+
+    inline constexpr FreeListEntry* extractFreeListEntryAtIndex(size_t index) const noexcept {
+        const uint8_t* base = extractPageDataBase(p);
+
+        
+        return (FreeListEntry*)((uint8_t*)this + sizeof(PageInfo) + index * realsize);
     }
 };
 
-#ifdef ALLOC_DEBUG_CANARY
-#define PAGE_FIND_OBJ_BASE(O) (PAGE_MASK_EXTRACT_DATA(O) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + (PAGE_MASK_EXTRACT_INDEX(O) * REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize )))
-#define PAGE_IS_OBJ_ALIGNED(O) (((char*)O - (PAGE_MASK_EXTRACT_DATA(O) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData))) % REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize ) == 0)
-#else
-#define PAGE_FIND_OBJ_BASE(O) (PAGE_MASK_EXTRACT_DATA(O) + sizeof(MetaData) + (PAGE_MASK_EXTRACT_INDEX(O) * REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize) ))
-#define PAGE_IS_OBJ_ALIGNED(O) (((char*)O - (PAGE_MASK_EXTRACT_DATA(O) + sizeof(MetaData))) % REAL_ENTRY_SIZE( PAGE_MASK_EXTRACT_PINFO(O)->entrysize ) == 0)
-#endif
-
-
-#define GC_GET_META_DATA_ADDR(O) PAGE_IS_OBJ_ALIGNED(O) ? (MetaData*)((char*)O - sizeof(MetaData)) : (MetaData*)(PAGE_FIND_OBJ_BASE(O) - sizeof(MetaData))
+#define GC_GET_META_DATA_ADDR_STD(O) GC_GET_META_DATA_ADDR(O)
+#define GC_GET_META_DATA_ADDR_ROOTREF(R) PageInfo::extractObjectMetadataAligned(R)
 
 
 #define FREE_LIST_ENTRY_AT(page, index) ((FreeListEntry*)(PAGE_MASK_EXTRACT_DATA(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
 
 #ifdef ALLOC_DEBUG_CANARY
-//Gives us the beginning of block (just before canary in case of canaries enabled)
-#define BLOCK_START_FROM_PTR(obj) ((char*)obj - sizeof(MetaData) - ALLOC_DEBUG_CANARY_SIZE)
-
-//Start of our object from the begginning of block (address returned from allocate())
-#define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
 #define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)((char*)f_entry + ALLOC_DEBUG_CANARY_SIZE))
 #else
-#define BLOCK_START_FROM_PTR(obj) ((char*)obj - sizeof(MetaData))
-#define OBJ_START_FROM_BLOCK(obj) ((char*)obj + sizeof(MetaData))
 #define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)f_entry)
-
 #endif
 
 
