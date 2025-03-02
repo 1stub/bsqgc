@@ -38,7 +38,7 @@ class PageInfo
 {
 private:
     FreeListEntry* freelist; //allocate from here until nullptr
-    uint8_t* p; //start of the data block
+    uint8_t* data; //start of the data block
 
     uint16_t allocsize; //size of the alloc entries in this page (excluding metadata)
     uint16_t realsize; //size of the alloc entries in this page (including metadata and other stuff)
@@ -51,95 +51,93 @@ private:
     PageInfo* next;
 
 public:
+    static PageInfo* initialize(void* block, uint16_t allocsize) noexcept
+    {
+        PageInfo* pp = (PageInfo*)block;
+
+        pp->freelist = nullptr;
+        pp->data = ((uint8_t*)block + sizeof(PageInfo));
+        pp->allocsize = allocsize;
+        pp->realsize = REAL_ENTRY_SIZE(allocsize);
+        pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / pp->realsize;
+        pp->freecount = pp->entrycount;
+        pp->pagestate = PageStateInfo_GroundState;
+        pp->next = nullptr;
+    }
+
     static inline constexpr PageInfo* extractPageFromPointer(void* p) noexcept {
         return (PageInfo*)((uintptr_t)(p) & PAGE_ADDR_MASK);
     }
 
-    static inline constexpr size_t extractIndexForObjectInPage(void* p) noexcept {
+    static inline constexpr size_t getIndexForObjectInPage(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
-        const uint8_t* base = extractPageDataBase(p);
-
-        return (size_t)((uint8_t*)p - base) / (size_t)page->realsize;
+        
+        return (size_t)(page->data - (uint8_t*)p) / (size_t)page->realsize;
     }
 
-    static inline constexpr MetaData* extractObjectMetadataAligned(void* p) noexcept {
+    static inline constexpr MetaData* getObjectMetadataAligned(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
-        const uint8_t* base = extractPageDataBase(p);
+        size_t idx = (size_t)(page->data - (uint8_t*)p) / (size_t)page->realsize;
 
-        size_t idx = (size_t)((uint8_t*)p - base) / (size_t)page->realsize;
 #ifdef ALLOC_DEBUG_CANARY
-        return (MetaData*)(base + idx * page->realsize + ALLOC_DEBUG_CANARY_SIZE);
+        return (MetaData*)(page->data + idx * page->realsize + ALLOC_DEBUG_CANARY_SIZE);
 #else
-        return (MetaData*)(base + idx * page->realsize);
+        return (MetaData*)(page->data + idx * page->realsize);
 #endif
     }
 
-    inline constexpr FreeListEntry* extractFreeListEntryAtIndex(size_t index) const noexcept {
-        const uint8_t* base = extractPageDataBase(p);
-
-        
-        return (FreeListEntry*)((uint8_t*)this + sizeof(PageInfo) + index * realsize);
+    inline constexpr FreeListEntry* getFreeListEntryAtIndex(size_t index) const noexcept {
+        return (FreeListEntry*)(this->data + index * realsize);
     }
 };
 
 #define GC_GET_META_DATA_ADDR_STD(O) GC_GET_META_DATA_ADDR(O)
 #define GC_GET_META_DATA_ADDR_ROOTREF(R) PageInfo::extractObjectMetadataAligned(R)
 
+#define SETUP_META_FLAGS_FRESH_ALLOC(M, T) *(M) = { .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0, .type=(T) }
 
-#define FREE_LIST_ENTRY_AT(page, index) ((FreeListEntry*)(PAGE_MASK_EXTRACT_DATA(page) + (index) * REAL_ENTRY_SIZE((page)->entrysize)))
+class GlobalPageGCManager
+{
+private:
+    PageInfo* empty_pages; // Empty pages
+    PageInfo* all_pages; // Pages with no free space
 
-#ifdef ALLOC_DEBUG_CANARY
-#define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)((char*)f_entry + ALLOC_DEBUG_CANARY_SIZE))
-#else
-#define META_FROM_FREELIST_ENTRY(f_entry) ((MetaData*)f_entry)
-#endif
+public:
+    static GlobalPageGCManager g_gc_page_manager;
 
+    GlobalPageGCManager() noexcept : empty_pages(nullptr), all_pages(nullptr) { }
+};
 
-#define SETUP_META_FLAGS(M, T)          \
-do {                                    \
-    (M)->isalloc = true;                \
-    (M)->isyoung = true;                \
-    (M)->ismarked = false;              \
-    (M)->isroot = false;                \
-    (M)->forward_index = MAX_FWD_INDEX; \
-    (M)->ref_count = 0;                 \
-    (M)->type = T;                      \
-} while(0)
-
-typedef struct PageManager{
+template <size_t ALLOC_SIZE>
+class BinPageGCManager
+{
+private:
     PageInfo* low_utilization_pages; // Pages with 1-30% utilization (does not hold fully empty)
     PageInfo* mid_utilization_pages; // Pages with 31-85% utilization
     PageInfo* high_utilization_pages; // Pages with 86-100% utilization 
 
-    PageInfo* filled_pages; // Completly empty pages
-    PageInfo* empty_pages; // Completeyly full pages
-} PageManager;
+    PageInfo* filled_pages; // Completely full pages
+    //completely empty pages go back to the global pool
 
-typedef struct AllocatorBin
+public:
+    BinPageGCManager() noexcept : low_utilization_pages(nullptr), mid_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), empty_pages(nullptr) { }
+};
+
+template <size_t ALLOC_SIZE>
+class AllocatorBin
 {
+private:
     FreeListEntry* freelist;
     uint16_t entrysize;
 
-    //Proved to be difficult to work with sorting, using static arrays for now
-    void* roots[MAX_ROOTS];
-    void* old_roots[MAX_ROOTS];
-
-    size_t roots_count;
-    size_t old_roots_count;
-
-    struct WorkList pending_decs;
-
     PageInfo* alloc_page; // Page in which we are currently allocating from
     PageInfo* evac_page; // Page in which we are currently evacuating from
-    PageManager* page_manager;
-} AllocatorBin;
 
-//Since entry sizes varry, we can statically declare bins & page managers to avoid any mallocs
-extern AllocatorBin a_bin8;
-extern PageManager p_mgr8;
+    BinPageGCManager<ALLOC_SIZE> page_manager;
 
-extern AllocatorBin a_bin16;
-extern PageManager p_mgr16;
+public:
+    AllocatorBin() noexcept : freelist(nullptr), entrysize(ALLOC_SIZE), alloc_page(nullptr), evac_page(nullptr) { }
+};
 
 void getFreshPageForAllocator(AllocatorBin* alloc);
 void getFreshPageForEvacuation(AllocatorBin* alloc); 
@@ -148,7 +146,6 @@ PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize);
 
 AllocatorBin* getBinForSize(uint16_t entrytsize);
 
-PageManager* initializePageManager(uint16_t entry_size);
 PageInfo* allocateFreshPage(uint16_t entrysize);
 
 void verifyAllCanaries();

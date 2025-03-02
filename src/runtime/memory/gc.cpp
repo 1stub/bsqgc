@@ -4,9 +4,8 @@
 /* Used to determine if a pointer points into the data segment of an object */
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
-
 // After we evacuate an object we need to update the original metadata
-#define RESET_METADATA_FOR_OBJECT(meta) (meta) = {false, false, false, false, MAX_FWD_INDEX, 0}
+#define RESET_METADATA_FOR_OBJECT(meta) (meta) = { .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_indexMAX_FWD_INDEX, .ref_count=0, .type=nullptr }
 
 /*
 void* forward_table[MAX_ROOTS];

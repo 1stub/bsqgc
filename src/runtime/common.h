@@ -104,7 +104,7 @@ struct MetaData
     bool isroot;
     uint32_t forward_index;
     uint32_t ref_count;
-    struct TypeInfoBase* type;
+    TypeInfoBase* type;
 }; 
 #else
 typedef struct MetaData 
