@@ -1,5 +1,8 @@
 #include "threadinfo.h"
 
+thread_local void* roots[BSQ_MAX_ROOTS];
+thread_local void* oldroots[BSQ_MAX_ROOTS];
+
 thread_local BSQMemoryTheadLocalInfo gtl_info;
 
 #define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= V) && (V <= MAX_ALLOCATED_ADDRESS))
@@ -15,6 +18,14 @@ void BSQMemoryTheadLocalInfo::initialize(size_t tl_id, void** caller_rbp) noexce
 {
     this->tl_id = tl_id;
     this->native_stack_base = caller_rbp;
+
+    this->roots = roots;
+    this->roots_count = 0;
+    xmem_zerofill(roots, BSQ_MAX_ROOTS * sizeof(void*));
+
+    this->old_roots = oldroots;
+    this->old_roots_count = 0;
+    xmem_zerofill(oldroots, BSQ_MAX_ROOTS * sizeof(void*));
 }
 
 void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept

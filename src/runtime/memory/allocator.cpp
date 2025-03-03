@@ -1,89 +1,61 @@
-/*
 #include "allocator.h"
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 
-#define CANARY_DEBUG_CHECK
+PageInfo* PageInfo::initialize(void* block, uint16_t allocsize) noexcept
+{
+    PageInfo* pp = (PageInfo*)block;
 
-AllocatorBin a_bin8 = {.freelist = NULL, .entrysize = 8, .roots_count = 0, .old_roots_count = 0, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr8};
-AllocatorBin a_bin16 = {.freelist = NULL, .entrysize = 16, .roots_count = 0, .old_roots_count = 0, .alloc_page = NULL, .evac_page = NULL, .page_manager = &p_mgr16};
+    pp->freelist = nullptr;
+    pp->next = nullptr;
 
-PageManager p_mgr8 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};
-PageManager p_mgr16 = {.low_utilization_pages = NULL, .mid_utilization_pages = NULL, .high_utilization_pages = NULL, .filled_pages = NULL, .empty_pages = NULL};
+    pp->data = ((uint8_t*)block + sizeof(PageInfo));
+    pp->allocsize = allocsize;
+    pp->realsize = REAL_ENTRY_SIZE(allocsize);
+    pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / pp->realsize;
+    pp->freecount = pp->entrycount;
+    pp->pagestate = PageStateInfo_GroundState;
 
-static void setup_freelist(PageInfo* pinfo, uint16_t entrysize) {
-    FreeListEntry* current = pinfo->freelist;
+    FreeListEntry* current = pp->freelist;
 
-    for(int i = 0; i < pinfo->entrycount - 1; i++) {
-        current->next = (FreeListEntry*)((char*)current + REAL_ENTRY_SIZE(entrysize));
+    for(int i = 0; i < pp->entrycount - 1; i++) {
+        current->next = (FreeListEntry*)((char*)current + pp->realsize);
         current = current->next;
     }
-    current->next = NULL;
+    current->next = nullptr;
 }
 
-static PageInfo* initializePage(void* page, uint16_t entrysize)
+GlobalPageGCManager GlobalPageGCManager::g_gc_page_manager;
+
+PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize) noexcept
 {
-    debug_print("New page!\n");
+    GC_MEM_LOCK_ACQUIRE();
 
-    PageInfo* pinfo = (PageInfo*)page;
-    pinfo->freelist = (FreeListEntry*)((char*)page + sizeof(PageInfo));
-    pinfo->entrysize = entrysize;
-    pinfo->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - sizeof(PageInfo)) / REAL_ENTRY_SIZE(entrysize);
-    pinfo->freecount = pinfo->entrycount;
-    pinfo->pagestate = PageStateInfo_GroundState;
+    PageInfo* pp = nullptr;
+    if(this->empty_pages != nullptr) {
+        void* page = this->empty_pages;
+        this->empty_pages = this->empty_pages->next;
 
-    setup_freelist(pinfo, pinfo->entrysize);
-
-    return pinfo;
-}
-
-PageInfo* getPageFromManager(PageManager* pm, uint16_t entrysize) 
-{
-    PageInfo* page = NULL;
-
-    if(pm->empty_pages != NULL) {
-        page = pm->empty_pages;
-        pm->empty_pages = pm->empty_pages->next;
-    }
-    else if(pm->low_utilization_pages != NULL) {
-        page = pm->low_utilization_pages;
-        pm->low_utilization_pages = pm->low_utilization_pages->next;
-    }
-    else if(pm->mid_utilization_pages != NULL) {
-        page = pm->mid_utilization_pages;
-        pm->mid_utilization_pages = pm->mid_utilization_pages->next;
-    } 
-    else if(pm->high_utilization_pages != NULL) {
-        page = pm->high_utilization_pages;
-        pm->high_utilization_pages = pm->high_utilization_pages->next;
+        pp = PageInfo::initialize(page, entrysize);
     }
     else {
-        page = allocateFreshPage(entrysize);
-    }
-
-    return page;
-}
-
-PageInfo* allocateFreshPage(uint16_t entrysize)
-{
-#ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
-    static void* old_base = GC_ALLOC_BASE_ADDRESS;
-    void* page = mmap((void*)old_base, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-    old_base += BSQ_BLOCK_ALLOCATION_SIZE;
+#ifndef ALLOC_DEBUG_MEM_DETERMINISTIC
+        void* page = mmap(NULL, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
 #else
-    void* page = mmap(NULL, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+        ALLOC_LOCK_ACQUIRE();
+
+        void* page = (XAllocPage*)mmap(GlobalThreadAllocInfo::s_current_page_address, BSQ_BLOCK_ALLOCATION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, 0, 0);
+        GlobalThreadAllocInfo::s_current_page_address = (void*)((uint8_t*)GlobalThreadAllocInfo::s_current_page_address + BSQ_BLOCK_ALLOCATION_SIZE);
+
+        ALLOC_LOCK_RELEASE();    
 #endif
 
-    assert(page != MAP_FAILED);
+        assert(page != MAP_FAILED);
+        this->pagetable.pagetable_insert(page);
 
-    if(!pagetable_root) {
-        pagetable_init();
+        pp = PageInfo::initialize(page, entrysize);
     }
-    pagetable_insert(page);
 
-    return initializePage(page, entrysize);
+    GC_MEM_LOCK_RELEASE();
+    return pp;
 }
 
 void getFreshPageForAllocator(AllocatorBin* alloc)
@@ -104,21 +76,7 @@ void getFreshPageForEvacuation(AllocatorBin* alloc)
     //Need to update freelist?
 }
 
-AllocatorBin* getBinForSize(uint16_t entrytsize)
-{
-    switch(entrytsize){
-        case 8: {
-            return &a_bin8;
-        }
-        case 16: {
-            return &a_bin16;
-        }
-        default: return NULL;
-    }
-
-    return NULL;
-}
-
+/*
 //Following 3 methods verify integrity of canaries
 bool verifyCanariesInBlock(char* block, uint16_t entry_size)
 {

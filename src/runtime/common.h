@@ -29,6 +29,8 @@
 #define BSQ_MEM_ALIGNMENT 8
 #define BSQ_BLOCK_ALLOCATION_SIZE 4096ul
 
+#define BSQ_MAX_ROOTS 2048ul
+
 //mem is an 8byte alliged pointer and n is the number of 8byte words to clear
 inline void xmem_zerofill(void* mem, size_t n) noexcept
 {
@@ -59,11 +61,18 @@ extern mtx_t g_alloclock;
 #define ALLOC_LOCK_RELEASE() assert(mtx_unlock(&g_alloclock) == thrd_success)
 
 //A global mutex lock that all threads will use when doing shared GC ops (e.g. getting pages, root resolution, or when doing their inc/dec ref loops)
-extern mtx_t g_gclock;
+extern mtx_t g_gcmemlock;
 
-#define GC_LOCK_INIT() assert(mtx_init(&g_gclock, mtx_plain) == thrd_success)
-#define GC_LOCK_ACQUIRE() assert(mtx_lock(&g_gclock) == thrd_success)
-#define GC_LOCK_RELEASE() assert(mtx_unlock(&g_gclock) == thrd_success)
+#define GC_MEM_LOCK_INIT() assert(mtx_init(&g_gcmemlock, mtx_plain) == thrd_success)
+#define GC_MEM_LOCK_ACQUIRE() assert(mtx_lock(&g_gcmemlock) == thrd_success)
+#define GC_MEM_LOCK_RELEASE() assert(mtx_unlock(&g_gcmemlock) == thrd_success)
+
+//A global mutex lock that all threads will use when doing shared GC ops (e.g. getting pages, root resolution, or when doing their inc/dec ref loops)
+extern mtx_t g_gcrefctlock;
+
+#define GC_REFCT_LOCK_INIT() assert(mtx_init(&g_gcrefctlock, mtx_plain) == thrd_success)
+#define GC_REFCT_LOCK_ACQUIRE() assert(mtx_lock(&g_gcrefctlock) == thrd_success)
+#define GC_REFCT_LOCK_RELEASE() assert(mtx_unlock(&g_gcrefctlock) == thrd_success)
 
 // Track information that needs to be globally accessible for threads
 class GlobalThreadAllocInfo
