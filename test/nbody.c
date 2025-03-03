@@ -1,4 +1,5 @@
 #include "../src/runtime/memory/gc.h"
+#include <math.h>
 
 struct TypeInfoBase Empty = {
     .type_id = 0,
@@ -8,13 +9,12 @@ struct TypeInfoBase Empty = {
     .typekey = "Empty"
 };
 
-/* Need to make bin24? */
-struct TypeInfoBase Vec3 = {
+struct TypeInfoBase ListNode = {
     .type_id = 1,
-    .type_size = 24,
-    .slot_size = 3,
-    .ptr_mask = "000",
-    .typekey = "Vec3"
+    .type_size = 16,
+    .slot_size = 2,
+    .ptr_mask = "01",
+    .typekey = "ListNode"
 };
 
 typedef struct {
@@ -33,7 +33,7 @@ typedef struct {
     char* name;
     float mass;
     Position pos;
-    Position vel;
+    Velocity vel;
 } Body;
 
 #define GET_MASS(F) (F * SOLAR_MASS)
@@ -44,8 +44,7 @@ typedef struct {
 #define DAYS_PER_YEAR 365.24
 #define PAIRS (N*(N-1)/2)
 
-
-const Body jupiter = {
+Body jupiter = {
     .name = "jupiter", 
     .mass = GET_MASS(0.000954791938424326609f),
     .pos = {
@@ -60,7 +59,7 @@ const Body jupiter = {
     }
 };
 
-const Body saturn = {
+Body saturn = {
     .name = "saturn", 
     .mass = GET_MASS(0.000285885980666130812f),
     .pos = {
@@ -75,7 +74,7 @@ const Body saturn = {
     }
 };
 
-const Body uranus = {
+Body uranus = {
     .name = "uranus", 
     .mass = GET_MASS(0.0000436624404335156298f),
     .pos = {
@@ -90,7 +89,7 @@ const Body uranus = {
     }
 };
 
-const Body neptune = {
+Body neptune = {
     .name = "neptune", 
     .mass = GET_MASS(0.0000515138902046611451f),
     .pos = {
@@ -105,7 +104,7 @@ const Body neptune = {
     }
 };
 
-const Body sun = {
+Body sun = {
     .name = "sun", 
     .mass = SOLAR_MASS,
     .pos = {
@@ -120,22 +119,112 @@ const Body sun = {
     }
 };
 
-/* Body* ? */
 Body offsetMomemtum(Body b, float px, float py, float pz) 
 {
     Body body = {
-        b.name,
-        b.mass,
-        b.pos,
+        .name = b.name,
+        .mass = b.mass,
+        .pos = b.pos,
         .vel = {
-            -px,
-            -py,
-            -pz
+            -px / SOLAR_MASS,
+            -py / SOLAR_MASS,
+            -pz / SOLAR_MASS
         }
     }; 
     return body;   
 }
 
-int main() {
+float kineticEnergy(Body b) 
+{
+    return 0.5f * b.mass * (b.vel.vx * b.vel.vx + b.vel.vy * b.vel.vy + b.vel.vz * b.vel.vz);
+}
+/*
+float distance(Body b0, Body b1) 
+{
+    float dx = b0.pos.x - b1.pos.x;
+    float dy = b0.pos.y - b1.pos.y;
+    float dz = b0.pos.z - b1.pos.z;
+    return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+    */
+
+void** createNBodySystem() 
+{
+    void** all_bodies = (void**)allocate(&a_bin16, &ListNode);
+
+    /* Dynamically create constant bodies in our gc pages */
+    Body* gc_jupiter = (Body*)allocate(&a_bin8, &Empty);
+    gc_jupiter = &jupiter;
+
+    Body* gc_saturn = (Body*)allocate(&a_bin8, &Empty);
+    gc_saturn = &saturn;
+
+    Body* gc_uranus = (Body*)allocate(&a_bin8, &Empty);
+    gc_uranus = &uranus;
+
+    Body* gc_neptune = (Body*)allocate(&a_bin8, &Empty);
+    gc_neptune = &neptune;
+
+    Body* planets[4] = {gc_jupiter, gc_saturn, gc_uranus, gc_neptune};
+
+    // Compute momentum
+    float px = 0.0f, py = 0.0f, pz = 0.0f;
+
+    for (int i = 0; i < (N - 1); i++) {
+        px += planets[i]->vel.vx * planets[i]->mass;
+        py += planets[i]->vel.vy * planets[i]->mass;
+        pz += planets[i]->vel.vz * planets[i]->mass;
+    }
+
+    Body sun_offset = offsetMomemtum(sun, px, py, pz);
+    all_bodies[0] = (void*)&sun_offset;
+    all_bodies[1] = (void**)allocate(&a_bin16, &ListNode);
+
+    void** it = all_bodies[1];
+    it[0] = (void*)planets[0];
+    it[1] = (void**)allocate(&a_bin16, &ListNode);
+    it = it[1];
+
+    it[0] = (void*)planets[1];
+    it[1] = (void**)allocate(&a_bin16, &ListNode);
+    it = it[1];
+
+    it[0] = (void*)planets[2];
+    it[1] = allocate(&a_bin8, &Empty);
+    it = it[1];
+
+    it[0] = (void*)planets[3];
+
+    return all_bodies;
+}
+
+/* advance to next system */
+void advance(void** bodies, float dt) 
+{
+    void** it = bodies;
+    for(int i = 0; i < 4; i++) {
+        Body b = *((Body*)it[0]);
+        printf("%s\n", b.name);
+        it=it[1];
+    }
+
+    Body b = *(Body*)it[0];
+    printf("%s\n", b.name);
+}
+
+int main() 
+{
+    initializeStartup();
+
+    register void* rbp asm("rbp");
+    initializeThreadLocalInfo(rbp);
+
+    void** sys = createNBodySystem();
+    float step = 0.01;
+    
+    advance(sys, step);
+
+    loadNativeRootSet();
+    collect();
     return 0;
 }
