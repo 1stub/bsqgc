@@ -45,10 +45,13 @@ struct BSQMemoryTheadLocalInfo
     size_t old_roots_count;
     void** old_roots;
 
+    size_t forward_table_index = 0;
+    void** forward_table;
+
     ArrayList<void*> marking_stack; //the stack structured used to talk the heap in the mark phase
     ArrayList<void*> pending_decs; //the list of objects that need to be decremented 
 
-    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), marking_stack(), pending_decs() { }
+    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), marking_stack(), pending_decs() { }
 
     void initialize(size_t tl_id, void** caller_rbp) noexcept;
 

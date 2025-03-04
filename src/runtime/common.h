@@ -31,7 +31,14 @@
 
 #define BSQ_MAX_ROOTS 2048ul
 
-//mem is an 8byte alliged pointer and n is the number of 8byte words to clear
+//Number of allocation pages we fill up before we start collecting
+#define BSQ_COLLECTION_THRESHOLD 1024
+
+//Max number of decrement ops we do per collection -- 
+//    TODO:we may need to make this a bit dynamic 
+#define BSQ_MAX_DECREMENT_OPS (BSQ_COLLECTION_THRESHOLD * BSQ_BLOCK_ALLOCATION_SIZE) / (BSQ_MEM_ALIGNMENT * 3)
+
+//mem is an 8byte aligned pointer and n is the number of 8byte words to clear
 inline void xmem_zerofill(void* mem, size_t n) noexcept
 {
     void** obj = (void**)mem;
@@ -87,22 +94,7 @@ public:
 //A handy stack allocation macro
 #define BSQ_STACK_ALLOC(SIZE) ((SIZE) == 0 ? nullptr : alloca(SIZE))
 
-// Allows us to correctly determine pointer offsets
-#ifdef ALLOC_DEBUG_CANARY
-#define REAL_ENTRY_SIZE(ESIZE) (ALLOC_DEBUG_CANARY_SIZE + ESIZE + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
-#else
-#define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
-#endif
-
 #define MAX_FWD_INDEX UINT32_MAX
-
-/**
-* If we decide every 4mb we run a collection, we can just force the max number of roots to be capped
-* at 4mb. This even accounts for worst case where every single object is a root AND all new/old only
-*
-**/
-#define GC_COLLECTION_THRESHOLD 4000000 //4mb
-#define MAX_ROOTS GC_COLLECTION_THRESHOLD //maybe some other stuff
 
 #ifdef VERBOSE_HEADER
 struct MetaData 

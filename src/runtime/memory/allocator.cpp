@@ -1,6 +1,6 @@
 #include "allocator.h"
 
-PageInfo* PageInfo::initialize(void* block, uint16_t allocsize) noexcept
+PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept
 {
     PageInfo* pp = (PageInfo*)block;
 
@@ -9,15 +9,15 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize) noexcept
 
     pp->data = ((uint8_t*)block + sizeof(PageInfo));
     pp->allocsize = allocsize;
-    pp->realsize = REAL_ENTRY_SIZE(allocsize);
-    pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / pp->realsize;
+    pp->realsize = realsize;
+    pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / realsize;
     pp->freecount = pp->entrycount;
     pp->pagestate = PageStateInfo_GroundState;
 
     FreeListEntry* current = pp->freelist;
 
     for(int i = 0; i < pp->entrycount - 1; i++) {
-        current->next = (FreeListEntry*)((char*)current + pp->realsize);
+        current->next = (FreeListEntry*)((char*)current + realsize);
         current = current->next;
     }
     current->next = nullptr;
@@ -25,7 +25,7 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize) noexcept
 
 GlobalPageGCManager GlobalPageGCManager::g_gc_page_manager;
 
-PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize) noexcept
+PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t realsize) noexcept
 {
     GC_MEM_LOCK_ACQUIRE();
 
@@ -34,7 +34,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize) noexcept
         void* page = this->empty_pages;
         this->empty_pages = this->empty_pages->next;
 
-        pp = PageInfo::initialize(page, entrysize);
+        pp = PageInfo::initialize(page, entrysize, realsize);
     }
     else {
 #ifndef ALLOC_DEBUG_MEM_DETERMINISTIC
@@ -51,29 +51,11 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize) noexcept
         assert(page != MAP_FAILED);
         this->pagetable.pagetable_insert(page);
 
-        pp = PageInfo::initialize(page, entrysize);
+        pp = PageInfo::initialize(page, entrysize, realsize);
     }
 
     GC_MEM_LOCK_RELEASE();
     return pp;
-}
-
-void getFreshPageForAllocator(AllocatorBin* alloc)
-{   
-    PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
-    // Fetch a page from our manager and insert into alloc_page list
-    INSERT_PAGE_IN_LIST(alloc->alloc_page, page);
-
-    alloc->freelist = alloc->alloc_page->freelist;
-}
-
-void getFreshPageForEvacuation(AllocatorBin* alloc) 
-{
-    PageInfo* page = getPageFromManager(alloc->page_manager, alloc->entrysize);
-
-    INSERT_PAGE_IN_LIST(alloc->evac_page, page);
-
-    //Need to update freelist?
 }
 
 /*

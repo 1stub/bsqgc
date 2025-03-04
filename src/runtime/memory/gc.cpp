@@ -1,102 +1,75 @@
-#include "gc.h"
-#include "allocator.h"
 
-/* Used to determine if a pointer points into the data segment of an object */
+#include "allocator.h"
+#include "gc.h"
+
+//TODO: remove dependency on cstdlib -- use our own quicksort
+#include <cstdlib>
+
+// Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
 // After we evacuate an object we need to update the original metadata
 #define RESET_METADATA_FOR_OBJECT(meta) (meta) = { .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_indexMAX_FWD_INDEX, .ref_count=0, .type=nullptr }
 
-/*
-void* forward_table[MAX_ROOTS];
-size_t forward_table_index = 0;
-
-void update_references(AllocatorBin* bin);
-void rebuild_freelist(AllocatorBin* bin);
-void compare_roots_and_oldroots(AllocatorBin* bin);
-void process_decs(AllocatorBin* bin);
+#define INC_REF_COUNT(O) (GC_REF_COUNT(O)++)
+#define DEC_REF_COUNT(O) (GC_REF_COUNT(O)--)
 
 int compare(const void* a, const void* b) 
 {
     return ((char*)a - (char*)b);
 }
 
-void collect() 
-{   
-    //Before we mark and evac we populate old roots list, clearing roots list
-    for(int i = 0; i < NUM_BINS; i++) {
-        AllocatorBin* bin = getBinForSize(8 * (1 << i));
-
-        for(size_t i = 0; i < bin->roots_count; i++) {
-            //Reset marked bit for root to ensure discovery and promote to old space
-            GC_IS_MARKED(bin->roots[i]) = false;
-            GC_IS_YOUNG(bin->roots[i]) = false;
-
-            bin->old_roots[bin->old_roots_count++] = bin->roots[i];
-
-            debug_print("Insertion into old roots %p\n", bin->roots[i]);
-            bin->roots[i] = NULL;
-        }
-        bin->roots_count = 0;
-        qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
-    }
-    
-    mark_and_evacuate();
-
-    for(int i = 0; i < NUM_BINS; i++) {
-        AllocatorBin* bin = getBinForSize(8 * (1 << i));
-
-        compare_roots_and_oldroots(bin);
-        process_decs(bin);
-
-        update_references(bin);
-        rebuild_freelist(bin);        
-    }
-}
-
-void compare_roots_and_oldroots(AllocatorBin* bin) 
+void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //First we need to sort the roots we find
-    qsort(bin->roots, bin->roots_count, sizeof(void*), compare);
+    qsort(tinfo.roots, tinfo.roots_count, sizeof(void*), compare);
     
     size_t roots_idx = 0;
     size_t oldroots_idx = 0;
 
-    while(oldroots_idx < bin->old_roots_count) {
-        char* cur_oldroot = bin->old_roots[oldroots_idx];
-        char* cur_root = bin->roots[roots_idx];
-        if(cur_root == NULL) {
-            //No roots in roots->bin case
-            worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
+    while(oldroots_idx < tinfo.old_roots_count) {
+        void* cur_oldroot = tinfo.old_roots[oldroots_idx];
+        
+        if(roots_idx >= tinfo.roots_count) {
+            //was dropped from roots
+            tinfo.pending_decs.push_back(cur_oldroot);
             oldroots_idx++;
         }
-        else if(cur_root < cur_oldroot) {
-            roots_idx++;
-        } else if(cur_oldroot < cur_root) {
-            worklist_push(bin->pending_decs, bin->old_roots[oldroots_idx]);
-            debug_print("old root %p not in current roots (current at %p)\n", cur_oldroot, cur_root);
-            oldroots_idx++;
-        } else {
-            roots_idx++;
-            oldroots_idx++;
+        else {
+            void* cur_root = tinfo.roots[roots_idx];
+
+            if(cur_root < cur_oldroot) {
+                //new root in current
+                roots_idx++;
+            } else if(cur_oldroot < cur_root) {
+                //was dropped from roots
+                tinfo.pending_decs.push_back(cur_oldroot);
+                oldroots_idx++;
+            } else {
+                //in both lists
+                roots_idx++;
+                oldroots_idx++;
+            }
         }
     }
-    bin->old_roots_count = 0;
+
+    tinfo.old_roots_count = 0;
 }
 
-void process_decs(AllocatorBin* bin) 
+void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    while(!worklist_is_empty(&bin->pending_decs)) {
-        void* obj = worklist_pop(void, bin->pending_decs);
+    size_t deccount = 0;
+    while(!tinfo.pending_decs.isEmpty() && deccount < BSQ_MAX_DECREMENT_OPS) {
+        void* obj = tinfo.pending_decs.pop_front();
+        deccount++;
 
         // Skip if the object is already freed
         if (!GC_IS_ALLOCATED(obj)) {
-            debug_print("object a %p has already been freed\n", obj);
             continue;
         }
 
         // Decrement ref counts of objects this object points to
-        struct TypeInfoBase* type_info = GC_TYPE(obj);
+        const TypeInfoBase* type_info = GC_TYPE(obj);
 
         if(type_info->ptr_mask != LEAF_PTR_MASK) {
             for (size_t i = 0; i < type_info->slot_size; i++) {
@@ -105,11 +78,11 @@ void process_decs(AllocatorBin* bin)
                 if (mask == PTR_MASK_PTR) {
                     void* child = *(void**)((char*)obj + i * sizeof(void*));
                     if (child != NULL) {
-                        decrement_ref_count(child);
+                        DEC_REF_COUNT(child);
 
                         // If the child's ref count drops to zero, add it to the pending_decs list
                         if (GC_REF_COUNT(child) == 0) {
-                            worklist_push(bin->pending_decs, child);
+                            tinfo.pending_decs.push_back(child);
                         }
                     }
                 }
@@ -126,7 +99,6 @@ void process_decs(AllocatorBin* bin)
 
         // Mark the object as unallocated
         GC_IS_ALLOCATED(obj) = false;
-        debug_print("Freed object at %p\n", obj);
     }
 }
 
@@ -270,7 +242,7 @@ static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size)
 }
 
 
-/Move non root young objects to evacuation page then update roots
+//Move non root young objects to evacuation page then update roots
 void evacuate() 
 {
     //Freelist is big goofed
@@ -402,4 +374,37 @@ void mark_and_evacuate()
 
     evacuate();
 }
-*/
+
+
+void collect() noexcept
+{   
+    //Before we mark and evac we populate old roots list, clearing roots list
+    for(int i = 0; i < NUM_BINS; i++) {
+        AllocatorBin* bin = getBinForSize(8 * (1 << i));
+
+        for(size_t i = 0; i < bin->roots_count; i++) {
+            //Reset marked bit for root to ensure discovery and promote to old space
+            GC_IS_MARKED(bin->roots[i]) = false;
+            GC_IS_YOUNG(bin->roots[i]) = false;
+
+            bin->old_roots[bin->old_roots_count++] = bin->roots[i];
+
+            debug_print("Insertion into old roots %p\n", bin->roots[i]);
+            bin->roots[i] = NULL;
+        }
+        bin->roots_count = 0;
+        qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
+    }
+    
+    mark_and_evacuate();
+
+    for(int i = 0; i < NUM_BINS; i++) {
+        AllocatorBin* bin = getBinForSize(8 * (1 << i));
+
+        compare_roots_and_oldroots(bin);
+        process_decs(bin);
+
+        update_references(bin);
+        rebuild_freelist(bin);        
+    }
+}

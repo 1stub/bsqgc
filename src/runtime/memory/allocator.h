@@ -20,6 +20,13 @@
 #define MEM_STATS_ARG(X)
 #endif
 
+// Allows us to correctly determine pointer offsets
+#ifdef ALLOC_DEBUG_CANARY
+#define REAL_ENTRY_SIZE(ESIZE) (ALLOC_DEBUG_CANARY_SIZE + ESIZE + sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE)
+#else
+#define REAL_ENTRY_SIZE(ESIZE) (ESIZE + sizeof(MetaData))
+#endif
+
 ////////////////////////////////
 //Memory allocator
 
@@ -50,7 +57,7 @@ public:
 
     PageStateInfo pagestate;
 
-    static PageInfo* initialize(void* block, uint16_t allocsize) noexcept;
+    static PageInfo* initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept;
 
     static inline constexpr PageInfo* extractPageFromPointer(void* p) noexcept {
         return (PageInfo*)((uintptr_t)(p) & PAGE_ADDR_MASK);
@@ -81,8 +88,6 @@ public:
 #define GC_GET_META_DATA_ADDR_STD(O) GC_GET_META_DATA_ADDR(O)
 #define GC_GET_META_DATA_ADDR_ROOTREF(R) PageInfo::extractObjectMetadataAligned(R)
 
-#define SETUP_META_FLAGS_FRESH_ALLOC(M, T) *(M) = { .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0, .type=(T) }
-
 class GlobalPageGCManager
 {
 private:
@@ -94,10 +99,10 @@ public:
 
     GlobalPageGCManager() noexcept : empty_pages(nullptr) { }
 
-    PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize) noexcept;
+    PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t realsize) noexcept;
 };
 
-template <size_t ALLOC_SIZE>
+template <size_t ALLOC_SIZE, size_t REAL_SIZE>
 class BinPageGCManager
 {
 private:
@@ -150,53 +155,65 @@ public:
     }
 };
 
-//template <size_t ALLOC_SIZE>
+#ifndef ALLOC_DEBUG_CANARY
+#define SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC, T) (void*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))
+#else
+#define SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC, T) this->initializeWithDebugInfo(BASEALLOC, T)
+#endif
+
+#define SETUP_FRESH_ALLOC_META_FLAGS(BASEALLOC, T) *((MetaData*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))) = { .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0, .type=(T) }
+
+//template <size_t ALLOC_SIZE, size_t REAL_SIZE>
 class AllocatorBin
 {
 private:
     FreeListEntry* freelist;
-    uint16_t entrysize;
 
     PageInfo* alloc_page; // Page in which we are currently allocating from
     PageInfo* evac_page; // Page in which we are currently evacuating from
 
-    BinPageGCManager<ALLOC_SIZE> page_manager;
+    PageInfo* pendinggc_pages; // Pages that are pending GC
+    BinPageGCManager<ALLOC_SIZE, REAL_SIZE> page_manager;
 
-    void* setupSlowPath(FreeListEntry* ret)
+    void allocatorRefreshPage() noexcept
+    {
+        xxxx; //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+
+        //rotate collection pages
+
+        //check if we need to collect and do so
+        
+        //get the new page
+    }
+
+    void* initializeWithDebugInfo(FreeListEntry* ret, TypeInfoBase* type) noexcept
     {
         uint64_t* pre = (uint64_t*)ret;
         *pre = ALLOC_DEBUG_CANARY_VALUE;
 
-        uint64_t* post = (uint64_t*)((char*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + alloc->entrysize);
+        uint64_t* post = (uint64_t*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + REAL_SIZE);
         *post = ALLOC_DEBUG_CANARY_VALUE;
 
+        SETUP_FRESH_ALLOC_META_FLAGS((uint8_t*)(ret) + ALLOC_DEBUG_CANARY_SIZE, type);
         return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
     }
 
 public:
-    AllocatorBin() noexcept : freelist(nullptr), entrysize(ALLOC_SIZE), alloc_page(nullptr), evac_page(nullptr) { }
+    AllocatorBin() noexcept : freelist(nullptr), alloc_page(nullptr), evac_page(nullptr), pendinggc_pages(nullptr) { }
 
     inline void* allocate(TypeInfoBase* type)
     {
-        assert(alloc->entrysize == type->type_size);
+        assert(type->type_size == ALLOC_SIZE);
 
-        if(alloc->freelist == NULL) {
-            this->getFreshPageForAllocator();
+        if(this->freelist == nullptr) [[unlikely]] {
+            this->allocatorRefreshPage();
         }
 
-        FreeListEntry* ret = this->freelist;
+        FreeListEntry* entry = this->freelist;
         this->freelist = this->freelist->next;
         this->alloc_page->freecount--;
 
-#ifndef ALLOC_DEBUG_CANARY
-        void* obj = (void*)((uint8_t*)ret + sizeof(MetaData));
-#else
-        void* obj = this->setupSlowPath(ret);
-#endif
-
-        MetaData* mdata = (MetaData*)((char*)obj - sizeof(MetaData));
-        SETUP_META_FLAGS(mdata, type);
-
-        return (void*)obj;
+        SETUP_FRESH_ALLOC_META_FLAGS(entry, type);
+        return SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(entry, type);
     }
 };
