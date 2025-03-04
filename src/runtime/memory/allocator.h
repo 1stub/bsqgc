@@ -87,6 +87,15 @@ public:
     inline constexpr FreeListEntry* getFreeListEntryAtIndex(size_t index) const noexcept {
         return (FreeListEntry*)(this->data + index * realsize);
     }
+
+    static void initializeWithDebugInfo(void* mem, TypeInfoBase* type) noexcept
+    {
+        uint64_t* pre = (uint64_t*)mem;
+        *pre = ALLOC_DEBUG_CANARY_VALUE;
+
+        uint64_t* post = (uint64_t*)((uint8_t*)mem + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + type->type_size);
+        *post = ALLOC_DEBUG_CANARY_VALUE;
+    }
 };
 
 #define GC_GET_META_DATA_ADDR_STD(O) GC_GET_META_DATA_ADDR(O)
@@ -164,14 +173,21 @@ public:
 };
 
 #ifndef ALLOC_DEBUG_CANARY
-#define SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC, T) (void*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))
+#define SETUP_ALLOC_LAYOUT_GET_META_PTR(BASEALLOC) (MetaData*)((uint8_t*)(BASEALLOC))
+#define SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC) (void*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))
+
+#define SET_ALLOC_LAYOUT_HANDLE_CANARY(BASEALLOC, T)
 #else
-#define SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC, T) this->initializeWithDebugInfo(BASEALLOC, T)
+#define SETUP_ALLOC_LAYOUT_GET_META_PTR(BASEALLOC) (MetaData*)((uint8_t*)(BASEALLOC) + ALLOC_DEBUG_CANARY_SIZE)
+#define SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC) (void*)((uint8_t*)(BASEALLOC) + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData))
+
+#define SET_ALLOC_LAYOUT_HANDLE_CANARY(BASEALLOC, T) PageInfo::initializeWithDebugInfo(BASEALLOC, T)
 #endif
 
-#define SETUP_FRESH_ALLOC_META_FLAGS(BASEALLOC, T) *((MetaData*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))) = { .type=(T), .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
+#define SETUP_ALLOC_INITIALIZE_FRESH_META(META, T) *(META) = { .type=(T), .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
+#define SETUP_ALLOC_INITIALIZE_CONVERT_OLD_META(META, T) *(META) = { .type=(T), .isalloc=true, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 
-//template <size_t ALLOC_SIZE, size_t REAL_SIZE>
+template <size_t ALLOC_SIZE, size_t REAL_SIZE>
 class AllocatorBin
 {
 private:
@@ -185,25 +201,20 @@ private:
 
     void allocatorRefreshPage() noexcept
     {
-        xxxx; //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+        if(alloc_page == nullptr) {
+            this->alloc_page = this->page_manager.getFreshPageForAllocator();
+        }
+        else {
+            assert(false);
 
-        //rotate collection pages
+            //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
 
-        //check if we need to collect and do so
+            //rotate collection pages
+
+            //check if we need to collect and do so
         
-        //get the new page
-    }
-
-    void* initializeWithDebugInfo(FreeListEntry* ret, TypeInfoBase* type) noexcept
-    {
-        uint64_t* pre = (uint64_t*)ret;
-        *pre = ALLOC_DEBUG_CANARY_VALUE;
-
-        uint64_t* post = (uint64_t*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + REAL_SIZE);
-        *post = ALLOC_DEBUG_CANARY_VALUE;
-
-        SETUP_FRESH_ALLOC_META_FLAGS((uint8_t*)(ret) + ALLOC_DEBUG_CANARY_SIZE, type);
-        return (void*)((uint8_t*)ret + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData));
+            //get the new page
+        }
     }
 
 public:
@@ -217,11 +228,13 @@ public:
             this->allocatorRefreshPage();
         }
 
-        FreeListEntry* entry = this->freelist;
+        void* entry = this->freelist;
         this->freelist = this->freelist->next;
         this->alloc_page->freecount--;
 
-        SETUP_FRESH_ALLOC_META_FLAGS(entry, type);
-        return SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(entry, type);
+        SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
+        SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
+
+        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
 };

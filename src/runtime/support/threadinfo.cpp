@@ -3,6 +3,7 @@
 thread_local void* roots[BSQ_MAX_ROOTS];
 thread_local void* oldroots[BSQ_MAX_ROOTS];
 thread_local void* forward_table[BSQ_MAX_ROOTS];
+thread_local void* evac_page_table[BSQ_MAX_ALLOC_SLOTS];
 
 thread_local BSQMemoryTheadLocalInfo gtl_info;
 
@@ -22,15 +23,18 @@ void BSQMemoryTheadLocalInfo::initialize(size_t tl_id, void** caller_rbp) noexce
 
     this->roots = roots;
     this->roots_count = 0;
-    xmem_zerofill(roots, BSQ_MAX_ROOTS * sizeof(void*));
+    xmem_zerofill(roots, BSQ_MAX_ROOTS);
 
     this->old_roots = oldroots;
     this->old_roots_count = 0;
-    xmem_zerofill(oldroots, BSQ_MAX_ROOTS * sizeof(void*));
+    xmem_zerofill(oldroots, BSQ_MAX_ROOTS);
 
     this->forward_table = forward_table;
     this->forward_table_index = 0;
-    xmem_zerofill(forward_table, BSQ_MAX_ROOTS * sizeof(void*));
+    xmem_zerofill(forward_table, BSQ_MAX_ROOTS);
+
+    this->evac_page_table = evac_page_table;
+    xmem_zerofill(evac_page_table, BSQ_MAX_ALLOC_SLOTS);
 }
 
 void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept

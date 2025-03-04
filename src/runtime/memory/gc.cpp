@@ -122,21 +122,13 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
     //
 }
 
-//Starting from roots update pointers using forward table
-void update_references(BSQMemoryTheadLocalInfo& tinfo) noexcept
+//Update pointers using forward table
+void updatePointers(void** obj, const BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    struct WorkList worklist;
-    worklist_initialize(&worklist);
+    GC_INVARIANT_CHECK(!GC_IS_YOUNG(obj) && !GC_IS_MARKED(obj));
+    TypeInfoBase* type_info = GC_TYPE(obj);
 
-    for(size_t i = 0; i < bin->roots_count; i++) {
-        worklist_push(worklist, bin->roots[i]);
-    }
-
-    while(!worklist_is_empty(&worklist)) {
-        void* addr = worklist_pop(void, worklist);
-        struct TypeInfoBase* addr_type = GC_TYPE( addr );
-
-        if(addr_type->ptr_mask != LEAF_PTR_MASK) {
+    if(type_info->ptr_mask != LEAF_PTR_MASK) {
 
             for (size_t i = 0; i < addr_type->slot_size; i++) {
                 //This nesting is not ideal, but ok for now
@@ -159,39 +151,61 @@ void update_references(BSQMemoryTheadLocalInfo& tinfo) noexcept
                 }
             }
         }
-    }
 }
 
-//Move non root young objects to evacuation page and update roots
-void evacuate(BSQMemoryTheadLocalInfo& tinfo) noexcept 
+
+#ifndef ALLOC_DEBUG_CANARY
+#define COMPUTE_MEM_BASE_FOR_COPY(O) (O)
+#define COMPUTE_MEM_SIZE(T) ((T)->slot_size))
+#else
+#define COMPUTE_MEM_BASE_FOR_COPY(O) (void*)((uint8_t*)O - (sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE))
+#define COMPUTE_MEM_SIZE(T) ((ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + (T)->type_size + ALLOC_DEBUG_CANARY_SIZE) >> 3)
+#endif
+
+
+//Move non root young objects to evacuation page (as needed) then forward pointers and inc ref counts
+void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept 
 {
+    GC_REFCT_LOCK_ACQUIRE();
+
     while(!tinfo.pending_young.isEmpty()) {
         void* obj = tinfo.pending_young.pop_front();
-        PageInfo* page = PageInfo::extractPageFromPointer(obj);
-        
+        TypeInfoBase* type_info = GC_TYPE(obj);
         GC_INVARIANT_CHECK(GC_IS_YOUNG(obj) && GC_IS_MARKED(obj));
 
-            //Check if our evac page doesnt exist yet or freelist is exhausted
-            if (bin->evac_page == NULL || bin->evac_page->freelist == NULL) {
-                getFreshPageForEvacuation(bin);
+        if(GC_IS_ROOT(obj)) {
+            updatePointers((void**)obj, tinfo);
+        }
+        else {
+            //If we are not a root we want to evacuate
+            PageInfo* page = PageInfo::extractPageFromPointer(obj);
+            PageInfo* evac_page = (PageInfo*)tinfo.evac_page_table[page->allocsize >> 3]; // divide by 8 using shift
+            GC_INVARIANT_CHECK(evac_page != nullptr);
+        
+            //refresh freelist if needed
+            if(evac_page->freelist == nullptr) [[unlikely]] {
+                //
+                //TODO: fix this code back up
+                //
+                assert(false);
             } 
             
-            FreeListEntry* base = bin->evac_page->freelist;
-            bin->evac_page->freelist = base->next;
+            void* entry = evac_page->freelist;
+            evac_page->freelist = evac_page->freelist->next;
+            evac_page->freecount--;
 
-            set_canaries(base, bin->entrysize);
-        
-            void* new_addr = copy_object_data(old_addr, base, bin->entrysize);
-            GC_IS_YOUNG(new_addr) = false; // When an object is evacuated, it is now old (tenured)
-            bin->evac_page->freecount--;
+            SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type_info);
+            SETUP_ALLOC_INITIALIZE_CONVERT_OLD_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type_info);
+            void* newobj = SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
 
-            //Set objects old locations forward index to be found when updating references
-            GC_IS_ALLOCATED(old_addr) = false;
-            GC_FWD_INDEX(old_addr) = forward_table_index;
-            forward_table[forward_table_index++] = new_addr;
+            xmem_copy(COMPUTE_MEM_BASE_FOR_COPY(obj), COMPUTE_MEM_BASE_FOR_COPY(newobj), COMPUTE_MEM_SIZE(type_info));
+            updatePointers((void**)newobj, tinfo);
 
-            debug_print("Moved %p to %p\n", old_addr, new_addr);
+            tinfo.forward_table[tinfo.forward_table_index++] = newobj;
         }
+    }
+
+    GC_REFCT_LOCK_RELEASE();
 }
 
 void check_potential_ptr(void* addr, struct WorkList* worklist) 

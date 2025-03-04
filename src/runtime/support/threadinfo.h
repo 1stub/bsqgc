@@ -48,6 +48,8 @@ struct BSQMemoryTheadLocalInfo
     size_t forward_table_index = 0;
     void** forward_table;
 
+    void** evac_page_table;
+
     ArrayList<void*> marking_stack; //the stack structure used to walk the heap in the mark phase
     ArrayList<void*> pending_young; //the list of young objects that need to be processed
     ArrayList<void*> pending_decs; //the list of objects that need to be decremented 

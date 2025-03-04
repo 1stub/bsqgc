@@ -31,6 +31,7 @@
 #define BSQ_BLOCK_ALLOCATION_SIZE 4096ul
 
 #define BSQ_MAX_ROOTS 2048ul
+#define BSQ_MAX_ALLOC_SLOTS 64ul
 
 //Number of allocation pages we fill up before we start collecting
 #define BSQ_COLLECTION_THRESHOLD 1024
@@ -45,7 +46,7 @@ inline void xmem_zerofill(void* mem, size_t n) noexcept
     void** obj = (void**)mem;
     void** end = obj + n;
     while(obj < end) {
-        *obj = NULL;
+        *obj = nullptr;
         obj++;
     }
 }
@@ -56,8 +57,21 @@ inline void xmem_zerofillpage(void* mem) noexcept
     void** obj = (void**)mem;
     void** end = obj + (BSQ_BLOCK_ALLOCATION_SIZE / sizeof(void*));
     while(obj < end) {
-        *obj = NULL;
+        *obj = nullptr;
         obj++;
+    }
+}
+
+//mem is an 8byte aligned pointer and n is the number of 8byte words to clear
+inline void xmem_copy(void* memsrc, void* memtrgt, size_t n) noexcept
+{
+    void** objsrc = (void**)memsrc;
+    void** objend = objsrc + n;
+    void** objtrgt = (void**)memtrgt;
+    while(objsrc < objend) {
+        *objtrgt = *objsrc;
+        objsrc++;
+        objtrgt++;
     }
 }
 
