@@ -22,7 +22,7 @@ CC=gcc
 CSTDFLAGS=-Wall -Wextra -Wno-unused-parameter -Wuninitialized -Werror -std=gnu17
 
 CFLAGS_OPT.debug=-O0 -g -ggdb -fno-omit-frame-pointer
-CFLAGS_OPT.dev=-O0 -g -ggdb -fno-omit-frame-pointer
+CFLAGS_OPT.dev=-O0 -g -ggdb -fno-omit-frame-pointer -lm
 CFLAGS_OPT.release=-O3 -fno-omit-frame-pointer -march=x86-64-v3
 CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
 CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}

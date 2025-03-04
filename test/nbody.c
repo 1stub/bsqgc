@@ -30,6 +30,12 @@ typedef struct {
 } Velocity;
 
 typedef struct {
+    float fx;
+    float fy;
+    float fz;
+} Forces;
+
+typedef struct {
     char* name;
     float mass;
     Position pos;
@@ -138,7 +144,7 @@ float kineticEnergy(Body b)
 {
     return 0.5f * b.mass * (b.vel.vx * b.vel.vx + b.vel.vy * b.vel.vy + b.vel.vz * b.vel.vz);
 }
-/*
+
 float distance(Body b0, Body b1) 
 {
     float dx = b0.pos.x - b1.pos.x;
@@ -146,7 +152,6 @@ float distance(Body b0, Body b1)
     float dz = b0.pos.z - b1.pos.z;
     return sqrtf(dx * dx + dy * dy + dz * dz);
 }
-    */
 
 void** createNBodySystem() 
 {
@@ -167,7 +172,7 @@ void** createNBodySystem()
 
     Body* planets[4] = {gc_jupiter, gc_saturn, gc_uranus, gc_neptune};
 
-    // Compute momentum
+    /* This does not preserve functional nature, but should be okay. */
     float px = 0.0f, py = 0.0f, pz = 0.0f;
 
     for (int i = 0; i < (N - 1); i++) {
@@ -176,8 +181,11 @@ void** createNBodySystem()
         pz += planets[i]->vel.vz * planets[i]->mass;
     }
 
-    Body sun_offset = offsetMomemtum(sun, px, py, pz);
-    all_bodies[0] = (void*)&sun_offset;
+    Body new_sun = offsetMomemtum(sun, px, py, pz);
+    Body* gc_sun = (Body*)allocate(&a_bin8, &Empty);
+    gc_sun = &new_sun;
+
+    all_bodies[0] = gc_sun;
     all_bodies[1] = (void**)allocate(&a_bin16, &ListNode);
 
     void** it = all_bodies[1];
@@ -198,18 +206,84 @@ void** createNBodySystem()
     return all_bodies;
 }
 
-/* advance to next system */
-void advance(void** bodies, float dt) 
-{
-    void** it = bodies;
-    for(int i = 0; i < 4; i++) {
-        Body b = *((Body*)it[0]);
-        printf("%s\n", b.name);
-        it=it[1];
+static inline Forces getForces(void** bodies, Body* b0, float dt) {
+    void** it_1 = bodies;
+    Forces forces = {.fx = 0.0f, .fy = 0.0f, .fz = 0.0f};
+
+    for (int j = 0; j < N; j++) {
+        Body* b1 = (Body*)(it_1[0]); 
+
+        if (b0->name == b1->name) {
+            it_1 = it_1[1]; 
+            continue;
+        }
+
+        float dx = b1->pos.x - b0->pos.x;
+        float dy = b1->pos.y - b0->pos.y;
+        float dz = b1->pos.z - b0->pos.z;
+
+        float dist = distance(*b0, *b1);
+        float mag = dt / (dist * dist * dist);
+
+        forces.fx += dx * b1->mass * mag;
+        forces.fy += dy * b1->mass * mag;
+        forces.fz += dz * b1->mass * mag;
+
+        it_1 = it_1[1]; 
+
+        debug_print("%s, %s\n", b0->name, b1->name);
     }
 
-    Body b = *(Body*)it[0];
-    printf("%s\n", b.name);
+    return forces;
+}
+/* advance to next system */
+void** advance(void** bodies, float dt) 
+{
+    /* We are going to need to create a new all_bodies list from bodies arg */
+    void** new_bodies = (void**)allocate(&a_bin16, &ListNode);
+    void** new_bodies_it = new_bodies;
+
+    void** it_0 = bodies;
+    for(int i = 0; i < N; i++) {
+        Body* b0 = (Body*)(it_0[0]);
+        Forces forces = getForces(bodies, b0, dt);
+
+        float fx = b0->vel.vx + forces.fx;
+        float fy = b0->vel.vy + forces.fy;
+        float fz = b0->vel.vz + forces.fz;
+
+
+        Velocity nvel = {.vx = fx, .vy = fy, .vz = fz};
+        Position npos = {
+            .x = b0->pos.x + (fx * dt),
+            .y = b0->pos.y + (fy * dt),
+            .z = b0->pos.z + (fz * dt)  
+        };
+
+        Body new_body = {
+            .mass = b0->mass,
+            .name = b0->name,
+            .pos = npos,
+            .vel = nvel
+        };
+
+        Body* gc_new_body = (Body*)allocate(&a_bin8, &Empty);
+        gc_new_body = &new_body;
+
+        new_bodies_it[0] = gc_new_body;
+
+        /* Not end of list */
+        if(i < (N-1)) {
+            new_bodies_it[1] = (void**)allocate(&a_bin16, &ListNode);
+        } else {
+            new_bodies_it[1] = (void**)allocate(&a_bin8, &Empty);
+        }
+
+        new_bodies_it = new_bodies_it[1];
+        it_0 = it_0[1];
+    }
+
+    return new_bodies;
 }
 
 int main() 
@@ -222,7 +296,9 @@ int main()
     void** sys = createNBodySystem();
     float step = 0.01;
     
-    advance(sys, step);
+    sys = advance(sys, step);
+    sys = advance(sys, step);
+    sys = advance(sys, step);
 
     loadNativeRootSet();
     collect();
