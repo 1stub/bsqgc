@@ -2,6 +2,15 @@
 #include <math.h>
 #include <stdlib.h>
 
+/**
+ * This test does a good job at making a bunch of gc 
+ * objects and collecting them, but its energy output
+ * does not match what is expected. Likely just some 
+ * small errors that haven't been found...
+ * 
+ * So TODO: find energy calculation bug!
+**/
+
 struct TypeInfoBase Empty = {
     .type_id = 0,
     .type_size = 8,
@@ -212,7 +221,45 @@ void** createNBodySystem()
     return all_bodies;
 }
 
-static inline Forces getForces(void** bodies, Body* b0, float dt) {
+float potentialEnergyCompute(void** bodies) 
+{
+    float potential = 0.0f;
+    void** it_0 = bodies;
+
+    for (int i = 0; i < N; i++) {
+        Body* b0 = (Body*)(it_0[0]);
+        void** it_1 = it_0[1];
+
+        for (int j = i + 1; j < N; j++) {
+            Body* b1 = (Body*)(it_1[0]);
+            float dist = distance(*b0, *b1);
+
+            if (dist > 0.0f) { // Avoid division by zero
+                potential -= (b0->mass * b1->mass) / dist;
+            }
+            it_1 = it_1[1]; 
+        }
+        it_0 = it_0[1]; 
+    }
+
+    return potential;
+}
+float energy(void** bodies) 
+{
+    void** it = bodies;
+    float kinetic = 0.0f;
+    for(int i = 0; i < N; i++) {
+        Body* b = (Body*)(it[0]); 
+        kinetic += kineticEnergy(*b);
+    }
+
+    float potential = potentialEnergyCompute(bodies);
+    return (kinetic + potential);
+}
+
+
+static inline Forces getForces(void** bodies, Body* b0, float dt) 
+{
     void** it_1 = bodies;
     Forces forces = {.fx = 0.0f, .fy = 0.0f, .fz = 0.0f};
 
@@ -237,11 +284,12 @@ static inline Forces getForces(void** bodies, Body* b0, float dt) {
 
         it_1 = it_1[1]; 
 
-        debug_print("%s, %s\n", b0->name, b1->name);
+        //debug_print("%s, %s\n", b0->name, b1->name);
     }
 
     return forces;
 }
+
 /* advance to next system */
 void** advance(void** bodies, float dt) 
 {
@@ -273,6 +321,7 @@ void** advance(void** bodies, float dt)
             .vel = nvel
         };
 
+        /* Insert into static storage and new gc page list */
         static_bodies[static_bodies_index] = new_body;
 
         Body* gc_new_body = (Body*)allocate(&a_bin8, &Empty);
@@ -304,9 +353,13 @@ int main()
     void** sys = createNBodySystem();
     float step = 0.01;
     
+    debug_print("energy: %f\n", energy(sys));
+
     sys = advance(sys, step);
     sys = advance(sys, step);
     sys = advance(sys, step);
+
+    debug_print("energy: %f\n", energy(sys));
 
     loadNativeRootSet();
     collect();
