@@ -1,5 +1,6 @@
 #include "../src/runtime/memory/gc.h"
 #include <math.h>
+#include <stdlib.h>
 
 struct TypeInfoBase Empty = {
     .type_id = 0,
@@ -41,6 +42,10 @@ typedef struct {
     Position pos;
     Velocity vel;
 } Body;
+
+/* Since we dont want to use malloc, this keeps bodies alive */
+Body static_bodies[MAX_ROOTS];
+int static_bodies_index = 0;
 
 #define GET_MASS(F) (F * SOLAR_MASS)
 
@@ -125,8 +130,7 @@ Body sun = {
     }
 };
 
-Body offsetMomemtum(Body b, float px, float py, float pz) 
-{
+Body* offsetMomemtum(Body b, float px, float py, float pz) {
     Body body = {
         .name = b.name,
         .mass = b.mass,
@@ -136,8 +140,11 @@ Body offsetMomemtum(Body b, float px, float py, float pz)
             -py / SOLAR_MASS,
             -pz / SOLAR_MASS
         }
-    }; 
-    return body;   
+    };
+    static_bodies[static_bodies_index] = body;
+    Body* ret = &static_bodies[static_bodies_index++];
+
+    return ret;
 }
 
 float kineticEnergy(Body b) 
@@ -181,9 +188,8 @@ void** createNBodySystem()
         pz += planets[i]->vel.vz * planets[i]->mass;
     }
 
-    Body new_sun = offsetMomemtum(sun, px, py, pz);
     Body* gc_sun = (Body*)allocate(&a_bin8, &Empty);
-    gc_sun = &new_sun;
+    gc_sun = offsetMomemtum(sun, px, py, pz);
 
     all_bodies[0] = gc_sun;
     all_bodies[1] = (void**)allocate(&a_bin16, &ListNode);
@@ -267,8 +273,10 @@ void** advance(void** bodies, float dt)
             .vel = nvel
         };
 
+        static_bodies[static_bodies_index] = new_body;
+
         Body* gc_new_body = (Body*)allocate(&a_bin8, &Empty);
-        gc_new_body = &new_body;
+        gc_new_body = &static_bodies[static_bodies_index++];
 
         new_bodies_it[0] = gc_new_body;
 
