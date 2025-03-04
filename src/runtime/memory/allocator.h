@@ -4,6 +4,8 @@
 #include "../support/arraylist.h"
 #include "../support/pagetable.h"
 
+#include "gc.h"
+
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
 
@@ -59,6 +61,8 @@ public:
 
     static PageInfo* initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept;
 
+    void rebuild() noexcept;
+
     static inline constexpr PageInfo* extractPageFromPointer(void* p) noexcept {
         return (PageInfo*)((uintptr_t)(p) & PAGE_ADDR_MASK);
     }
@@ -106,6 +110,10 @@ template <size_t ALLOC_SIZE, size_t REAL_SIZE>
 class BinPageGCManager
 {
 private:
+    //
+    //TODO: we should make these heaps
+    //
+
     PageInfo* low_utilization_pages; // Pages with 1-30% utilization (does not hold fully empty)
     PageInfo* mid_utilization_pages; // Pages with 31-60% utilization
     PageInfo* high_utilization_pages; // Pages with 61-90% utilization 
@@ -161,7 +169,7 @@ public:
 #define SETUP_FRESH_ALLOC_LAYOUT_GET_OBJ_PTR(BASEALLOC, T) this->initializeWithDebugInfo(BASEALLOC, T)
 #endif
 
-#define SETUP_FRESH_ALLOC_META_FLAGS(BASEALLOC, T) *((MetaData*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))) = { .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0, .type=(T) }
+#define SETUP_FRESH_ALLOC_META_FLAGS(BASEALLOC, T) *((MetaData*)((uint8_t*)(BASEALLOC) + sizeof(MetaData))) = { .type=(T), .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 
 //template <size_t ALLOC_SIZE, size_t REAL_SIZE>
 class AllocatorBin

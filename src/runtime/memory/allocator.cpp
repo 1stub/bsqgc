@@ -23,6 +23,37 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     current->next = nullptr;
 }
 
+void PageInfo::rebuild() noexcept
+{
+    FreeListEntry* last_freelist_entry = nullptr;
+    bool first_nonalloc_block = true;
+    this->freecount = 0;
+    
+    for(size_t i = 0; i < this->entrycount; i++) {
+        FreeListEntry* new_freelist_entry = this->getFreeListEntryAtIndex(i);
+        void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
+    
+        //Add non allocated OR old non roots with a ref count of 0 ANT not marked, meaning unreachable
+        if(!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0) || !GC_IS_MARKED(obj)) {
+                if(first_nonalloc_block) {
+                    cur->freelist = new_freelist_entry;
+                    cur->freelist->next = NULL;
+                    last_freelist_entry = cur->freelist;
+                    first_nonalloc_block = false;
+                } else {
+                    last_freelist_entry->next = new_freelist_entry;
+                    new_freelist_entry->next = NULL; 
+                    last_freelist_entry = new_freelist_entry;
+                }
+                
+                cur->freecount++;
+            }
+        }
+
+    this->next = nullptr;
+    this->pagestate = PageStateInfo_GroundState;
+}
+
 GlobalPageGCManager GlobalPageGCManager::g_gc_page_manager;
 
 PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t realsize) noexcept

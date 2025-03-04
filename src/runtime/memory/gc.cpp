@@ -9,7 +9,7 @@
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
 // After we evacuate an object we need to update the original metadata
-#define RESET_METADATA_FOR_OBJECT(meta) (meta) = { .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_indexMAX_FWD_INDEX, .ref_count=0, .type=nullptr }
+#define RESET_METADATA_FOR_OBJECT(meta) (meta) = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_indexMAX_FWD_INDEX, .ref_count=0 }
 
 #define INC_REF_COUNT(O) (GC_REF_COUNT(O)++)
 #define DEC_REF_COUNT(O) (GC_REF_COUNT(O)--)
@@ -17,6 +17,15 @@
 int compare(const void* a, const void* b) 
 {
     return ((char*)a - (char*)b);
+}
+
+void reprocessPageInfo(PageInfo* page) noexcept
+{
+    //This should not be called on pages that are (1) active allocators or evacuators or (2) pending collection pages
+
+    //
+    //TODO: we need to reprocess the page info here and get it in the correct list of pages
+    //
 }
 
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
@@ -58,8 +67,10 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
+    GC_REFCT_LOCK_ACQUIRE();
+
     size_t deccount = 0;
-    while(!tinfo.pending_decs.isEmpty() && deccount < BSQ_MAX_DECREMENT_OPS) {
+    while(!tinfo.pending_decs.isEmpty() && deccount < tinfo.max_decrement_count) {
         void* obj = tinfo.pending_decs.pop_front();
         deccount++;
 
@@ -89,21 +100,30 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
             }
         }
 
-        // Put object onto its pages freelist by masking to the page itself then pusing to front of list 
-        PageInfo* objects_page = PAGE_MASK_EXTRACT_PINFO(obj);
-        FreeListEntry* entry = (FreeListEntry*)((char*)obj - sizeof(MetaData));
+        // Put object onto its pages freelist by masking to the page itself then pushing to front of list 
+        PageInfo* objects_page = PageInfo::extractPageFromPointer(obj);
+        FreeListEntry* entry = (FreeListEntry*)((uint8_t*)obj - sizeof(MetaData));
         entry->next = objects_page->freelist;
         objects_page->freelist = entry;
 
-        objects_page->freecount++;
-
         // Mark the object as unallocated
         GC_IS_ALLOCATED(obj) = false;
+
+        objects_page->freecount++;
+        //
+        //TODO: once we have heapified the lists we can compare the computed capcity with the capcity in the heap and (if we are over a threshold) and call reprocessPageInfo
+        //
     }
+
+    GC_REFCT_LOCK_RELEASE();
+
+    //
+    //TODO: we want to do a bit of PID controller here on the max decrement count to ensure that we eventually make it back to stable but keep pauses small
+    //
 }
 
 //Starting from roots update pointers using forward table
-void update_references(AllocatorBin* bin) 
+void update_references(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     struct WorkList worklist;
     worklist_initialize(&worklist);
@@ -142,116 +162,15 @@ void update_references(AllocatorBin* bin)
     }
 }
 
-void return_to_pmanagers(AllocatorBin* bin) 
+//Move non root young objects to evacuation page and update roots
+void evacuate(BSQMemoryTheadLocalInfo& tinfo) noexcept 
 {
-    PageInfo* page = bin->alloc_page;
-    float page_utilization = 1.0f - ((float)page->freecount / page->entrycount);
+    while(!tinfo.pending_young.isEmpty()) {
+        void* obj = tinfo.pending_young.pop_front();
+        PageInfo* page = PageInfo::extractPageFromPointer(obj);
+        
+        GC_INVARIANT_CHECK(GC_IS_YOUNG(obj) && GC_IS_MARKED(obj));
 
-    //TODO: make these page insertions nice macros
-    if(page_utilization < 0.01) {
-        INSERT_PAGE_IN_LIST(bin->page_manager->empty_pages, page);
-    } else if(page_utilization > 0.01 && page_utilization < 0.3) {
-        INSERT_PAGE_IN_LIST(bin->page_manager->low_utilization_pages, page);
-    } else if(page_utilization > 0.3 && page_utilization < 0.85) {
-        INSERT_PAGE_IN_LIST(bin->page_manager->mid_utilization_pages, page);
-    } else if(page_utilization > 0.85 && page_utilization < 1.0f) {
-        INSERT_PAGE_IN_LIST(bin->page_manager->high_utilization_pages, page);
-    } else {
-        INSERT_PAGE_IN_LIST(bin->page_manager->filled_pages, page);
-    }
-
-    //Need to update bins alloc page now, since it just got returned
-    bin->alloc_page = bin->alloc_page->next;
-    if(bin->alloc_page == NULL) {
-        bin->freelist = NULL;
-    } else {
-        bin->freelist = bin->alloc_page->freelist;
-    }
-}
-
-void rebuild_freelist(AllocatorBin* bin)
-{
-    PageInfo* cur = bin->alloc_page;
-
-    while(cur) {
-        FreeListEntry* last_freelist_entry = NULL;
-        bool first_nonalloc_block = true;
-        cur->freecount = 0;
-    
-        for (size_t i = 0; i < cur->entrycount; i++) {
-            FreeListEntry* new_freelist_entry = FREE_LIST_ENTRY_AT(cur, i);
-            void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
-    
-            //Add non allocated OR old non roots with a ref count of 0 OR not marked, meaning unreachable
-            if (!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0) || !GC_IS_MARKED(obj)) {
-                if(first_nonalloc_block) {
-                    cur->freelist = new_freelist_entry;
-                    cur->freelist->next = NULL;
-                    last_freelist_entry = cur->freelist;
-                    first_nonalloc_block = false;
-                } else {
-                    last_freelist_entry->next = new_freelist_entry;
-                    new_freelist_entry->next = NULL; 
-                    last_freelist_entry = new_freelist_entry;
-                }
-                
-                cur->freecount++;
-            }
-        }
-
-        debug_print("[DEBUG] Freelist %p rebuild. Page contains %i allocated blocks.\n", cur->freelist, cur->entrycount - cur->freecount);
-
-        //Not checking canaries currently, good to have though if weird bugs pop up
-        //verifyCanariesInPage(cur);
-
-        //return cur page to its bins page manager
-        return_to_pmanagers(bin);
-
-        cur = cur->next;
-    }
-}
-
-//Set pre and post canaries in evacuation page if enabled
-#ifdef ALLOC_DEBUG_CANARY
-static void set_canaries(void* base, size_t entry_size) 
-{
-    uint64_t* pre = (uint64_t*)base;
-    *pre = ALLOC_DEBUG_CANARY_VALUE;
-
-    uint64_t* post = (uint64_t*)((char*)base + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + entry_size);
-    *post = ALLOC_DEBUG_CANARY_VALUE;
-}
-#endif
-
-//Actual moving of pointers over to evacuation page
-static void* copy_object_data(void* old_addr, void* new_base, size_t entry_size) 
-{
-    void* new_addr;
-
-#ifdef ALLOC_DEBUG_CANARY
-    // If canaries are enabled, skip the pre-canary and copy the object data + metadata
-    new_addr = (char*)new_base + ALLOC_DEBUG_CANARY_SIZE;
-    memcpy(new_addr, (char*)old_addr - sizeof(MetaData), entry_size + sizeof(MetaData));
-#else
-    // If canaries are not enabled, copy the object data + metadata directly
-    new_addr = new_base;
-    memcpy(new_addr, (char*)old_addr - sizeof(MetaData), entry_size + sizeof(MetaData));
-#endif
-
-    return (void*)((char*)new_addr + sizeof(MetaData));
-}
-
-
-//Move non root young objects to evacuation page then update roots
-void evacuate() 
-{
-    //Freelist is big goofed
-    while(!stack_empty(marking_stack)) {
-        void* old_addr = stack_pop(void, marking_stack);
-        AllocatorBin* bin = getBinForSize( GC_TYPE(old_addr)->type_size );
-
-        //Need to evacuate young marked objects
-        if(GC_IS_YOUNG(old_addr) && GC_IS_MARKED(old_addr)) {
             //Check if our evac page doesnt exist yet or freelist is exhausted
             if (bin->evac_page == NULL || bin->evac_page->freelist == NULL) {
                 getFreshPageForEvacuation(bin);
@@ -273,7 +192,6 @@ void evacuate()
 
             debug_print("Moved %p to %p\n", old_addr, new_addr);
         }
-    }
 }
 
 void check_potential_ptr(void* addr, struct WorkList* worklist) 

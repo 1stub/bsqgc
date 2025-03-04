@@ -48,10 +48,13 @@ struct BSQMemoryTheadLocalInfo
     size_t forward_table_index = 0;
     void** forward_table;
 
-    ArrayList<void*> marking_stack; //the stack structured used to talk the heap in the mark phase
+    ArrayList<void*> marking_stack; //the stack structure used to walk the heap in the mark phase
+    ArrayList<void*> pending_young; //the list of young objects that need to be processed
     ArrayList<void*> pending_decs; //the list of objects that need to be decremented 
 
-    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), marking_stack(), pending_decs() { }
+    size_t max_decrement_count;
+
+    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), marking_stack(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
 
     void initialize(size_t tl_id, void** caller_rbp) noexcept;
 

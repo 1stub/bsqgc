@@ -14,6 +14,7 @@
 #define ALLOC_DEBUG_MEM_DETERMINISTIC
 #define ALLOC_DEBUG_CANARY
 #define DSA_INVARIANTS
+#define GC_INVARIANTS
 #endif
 
 #ifdef ALLOC_DEBUG_MEM_DETERMINISTIC
@@ -36,7 +37,7 @@
 
 //Max number of decrement ops we do per collection -- 
 //    TODO:we may need to make this a bit dynamic 
-#define BSQ_MAX_DECREMENT_OPS (BSQ_COLLECTION_THRESHOLD * BSQ_BLOCK_ALLOCATION_SIZE) / (BSQ_MEM_ALIGNMENT * 3)
+#define BSQ_INITIAL_MAX_DECREMENT_COUNT (BSQ_COLLECTION_THRESHOLD * BSQ_BLOCK_ALLOCATION_SIZE) / (BSQ_MEM_ALIGNMENT * 32)
 
 //mem is an 8byte aligned pointer and n is the number of 8byte words to clear
 inline void xmem_zerofill(void* mem, size_t n) noexcept
@@ -99,17 +100,19 @@ public:
 #ifdef VERBOSE_HEADER
 struct MetaData 
 {
+    //!!!! alloc info is valid even when this is in a free-list so we need to make sure it does not collide with the free-list data !!!!
+    TypeInfoBase* type;
     bool isalloc;
     bool isyoung;
     bool ismarked;
     bool isroot;
     uint32_t forward_index;
     uint32_t ref_count;
-    TypeInfoBase* type;
 }; 
 #else
 typedef struct MetaData 
 {
+    //!!!! alloc info is valid even when this is in a free-list so we need to make sure it is a 0 bit in the pointer value (low 3) !!!!
     uint64_t meta; //8 byte bit vector
 } MetaData;
 static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
