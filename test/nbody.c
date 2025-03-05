@@ -2,15 +2,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-/**
- * This test does a good job at making a bunch of gc 
- * objects and collecting them, but its energy output
- * does not match what is expected. Likely just some 
- * small errors that haven't been found...
- * 
- * So TODO: find energy calculation bug!
-**/
-
 struct TypeInfoBase Empty = {
     .type_id = 0,
     .type_size = 8,
@@ -28,32 +19,42 @@ struct TypeInfoBase ListNode = {
 };
 
 typedef struct {
-    float x;
-    float y;
-    float z;
+    double x;
+    double y;
+    double z;
 } Position;
 
 typedef struct {
-    float vx;
-    float vy;
-    float vz;
+    double vx;
+    double vy;
+    double vz;
 } Velocity;
 
 typedef struct {
-    float fx;
-    float fy;
-    float fz;
+    double fx;
+    double fy;
+    double fz;
 } Forces;
 
 typedef struct {
     char* name;
-    float mass;
+    double mass;
     Position pos;
     Velocity vel;
 } Body;
 
-/* Since we dont want to use malloc, this keeps bodies alive */
-Body static_bodies[MAX_ROOTS];
+#define CHECK_ARRAY_BOUNDS(A) \
+do { \
+    /*
+    if(static_bodies_index == mut_max_static_bodies - 1) {\
+        mut_max_static_bodies += STATIC_BODIES_STEP;\
+        A = realloc(A, mut_max_static_bodies * sizeof(Body));\
+    } \
+    */ \
+} while(0)
+
+#define MAX_BODIES 2048
+Body static_bodies[MAX_BODIES];
 int static_bodies_index = 0;
 
 #define GET_MASS(F) (F * SOLAR_MASS)
@@ -139,7 +140,7 @@ Body sun = {
     }
 };
 
-Body* offsetMomemtum(Body b, float px, float py, float pz) {
+Body* offsetMomemtum(Body b, double px, double py, double pz) {
     Body body = {
         .name = b.name,
         .mass = b.mass,
@@ -150,46 +151,50 @@ Body* offsetMomemtum(Body b, float px, float py, float pz) {
             -pz / SOLAR_MASS
         }
     };
+
+    CHECK_ARRAY_BOUNDS(static_bodies);
+
     static_bodies[static_bodies_index] = body;
     Body* ret = &static_bodies[static_bodies_index++];
 
     return ret;
 }
 
-float kineticEnergy(Body b) 
+double kineticEnergy(Body b) 
 {
     return 0.5f * b.mass * (b.vel.vx * b.vel.vx + b.vel.vy * b.vel.vy + b.vel.vz * b.vel.vz);
 }
 
-float distance(Body b0, Body b1) 
+double distance(Body b0, Body b1) 
 {
-    float dx = b0.pos.x - b1.pos.x;
-    float dy = b0.pos.y - b1.pos.y;
-    float dz = b0.pos.z - b1.pos.z;
+    double dx = b0.pos.x - b1.pos.x;
+    double dy = b0.pos.y - b1.pos.y;
+    double dz = b0.pos.z - b1.pos.z;
     return sqrtf(dx * dx + dy * dy + dz * dz);
 }
 
 void** createNBodySystem() 
 {
-    void** all_bodies = (void**)allocate(&a_bin16, &ListNode);
+    //static_bodies = malloc(STATIC_BODIES_STEP * sizeof(Body));
+    void** all_bodies = allocate(&a_bin16, &ListNode);
 
     /* Dynamically create constant bodies in our gc pages */
-    Body* gc_jupiter = (Body*)allocate(&a_bin8, &Empty);
+    Body* gc_jupiter = allocate(&a_bin8, &Empty);
     gc_jupiter = &jupiter;
 
-    Body* gc_saturn = (Body*)allocate(&a_bin8, &Empty);
+    Body* gc_saturn = allocate(&a_bin8, &Empty);
     gc_saturn = &saturn;
 
-    Body* gc_uranus = (Body*)allocate(&a_bin8, &Empty);
+    Body* gc_uranus = allocate(&a_bin8, &Empty);
     gc_uranus = &uranus;
 
-    Body* gc_neptune = (Body*)allocate(&a_bin8, &Empty);
+    Body* gc_neptune = allocate(&a_bin8, &Empty);
     gc_neptune = &neptune;
 
     Body* planets[4] = {gc_jupiter, gc_saturn, gc_uranus, gc_neptune};
 
     /* This does not preserve functional nature, but should be okay. */
-    float px = 0.0f, py = 0.0f, pz = 0.0f;
+    double px = 0.0f, py = 0.0f, pz = 0.0f;
 
     for (int i = 0; i < (N - 1); i++) {
         px += planets[i]->vel.vx * planets[i]->mass;
@@ -197,33 +202,33 @@ void** createNBodySystem()
         pz += planets[i]->vel.vz * planets[i]->mass;
     }
 
-    Body* gc_sun = (Body*)allocate(&a_bin8, &Empty);
+    Body* gc_sun = allocate(&a_bin8, &Empty);
     gc_sun = offsetMomemtum(sun, px, py, pz);
 
     all_bodies[0] = gc_sun;
-    all_bodies[1] = (void**)allocate(&a_bin16, &ListNode);
+    all_bodies[1] = allocate(&a_bin16, &ListNode);
 
     void** it = all_bodies[1];
-    it[0] = (void*)planets[0];
-    it[1] = (void**)allocate(&a_bin16, &ListNode);
+    it[0] = planets[0];
+    it[1] = allocate(&a_bin16, &ListNode);
     it = it[1];
 
-    it[0] = (void*)planets[1];
-    it[1] = (void**)allocate(&a_bin16, &ListNode);
+    it[0] = planets[1];
+    it[1] = allocate(&a_bin16, &ListNode);
     it = it[1];
 
     it[0] = (void*)planets[2];
     it[1] = allocate(&a_bin8, &Empty);
     it = it[1];
 
-    it[0] = (void*)planets[3];
+    it[0] = planets[3];
 
     return all_bodies;
 }
 
-float potentialEnergyCompute(void** bodies) 
+double potentialEnergyCompute(void** bodies) 
 {
-    float potential = 0.0f;
+    double potential = 0.0f;
     void** it_0 = bodies;
 
     for (int i = 0; i < N; i++) {
@@ -232,7 +237,7 @@ float potentialEnergyCompute(void** bodies)
 
         for (int j = i + 1; j < N; j++) {
             Body* b1 = (Body*)(it_1[0]);
-            float dist = distance(*b0, *b1);
+            double dist = distance(*b0, *b1);
 
             if (dist > 0.0f) { // Avoid division by zero
                 potential -= (b0->mass * b1->mass) / dist;
@@ -244,21 +249,21 @@ float potentialEnergyCompute(void** bodies)
 
     return potential;
 }
-float energy(void** bodies) 
+double energy(void** bodies) 
 {
     void** it = bodies;
-    float kinetic = 0.0f;
+    double kinetic = 0.0f;
     for(int i = 0; i < N; i++) {
         Body* b = (Body*)(it[0]); 
         kinetic += kineticEnergy(*b);
     }
 
-    float potential = potentialEnergyCompute(bodies);
-    return (kinetic + potential);
+    double potential = potentialEnergyCompute(bodies);
+    return (kinetic - potential);
 }
 
 
-static inline Forces getForces(void** bodies, Body* b0, float dt) 
+static inline Forces getForces(void** bodies, Body* b0, double dt) 
 {
     void** it_1 = bodies;
     Forces forces = {.fx = 0.0f, .fy = 0.0f, .fz = 0.0f};
@@ -271,12 +276,12 @@ static inline Forces getForces(void** bodies, Body* b0, float dt)
             continue;
         }
 
-        float dx = b1->pos.x - b0->pos.x;
-        float dy = b1->pos.y - b0->pos.y;
-        float dz = b1->pos.z - b0->pos.z;
+        double dx = b1->pos.x - b0->pos.x;
+        double dy = b1->pos.y - b0->pos.y;
+        double dz = b1->pos.z - b0->pos.z;
 
-        float dist = distance(*b0, *b1);
-        float mag = dt / (dist * dist * dist);
+        double dist = distance(*b0, *b1);
+        double mag = dt / (dist * dist * dist);
 
         forces.fx += dx * b1->mass * mag;
         forces.fy += dy * b1->mass * mag;
@@ -291,10 +296,10 @@ static inline Forces getForces(void** bodies, Body* b0, float dt)
 }
 
 /* advance to next system */
-void** advance(void** bodies, float dt) 
+void** advance(void** bodies, double dt) 
 {
     /* We are going to need to create a new all_bodies list from bodies arg */
-    void** new_bodies = (void**)allocate(&a_bin16, &ListNode);
+    void** new_bodies = allocate(&a_bin16, &ListNode);
     void** new_bodies_it = new_bodies;
 
     void** it_0 = bodies;
@@ -302,9 +307,9 @@ void** advance(void** bodies, float dt)
         Body* b0 = (Body*)(it_0[0]);
         Forces forces = getForces(bodies, b0, dt);
 
-        float fx = b0->vel.vx + forces.fx;
-        float fy = b0->vel.vy + forces.fy;
-        float fz = b0->vel.vz + forces.fz;
+        double fx = b0->vel.vx + forces.fx;
+        double fy = b0->vel.vy + forces.fy;
+        double fz = b0->vel.vz + forces.fz;
 
 
         Velocity nvel = {.vx = fx, .vy = fy, .vz = fz};
@@ -321,19 +326,21 @@ void** advance(void** bodies, float dt)
             .vel = nvel
         };
 
+        CHECK_ARRAY_BOUNDS(static_bodies);
+
         /* Insert into static storage and new gc page list */
         static_bodies[static_bodies_index] = new_body;
 
-        Body* gc_new_body = (Body*)allocate(&a_bin8, &Empty);
+        Body* gc_new_body = allocate(&a_bin8, &Empty);
         gc_new_body = &static_bodies[static_bodies_index++];
 
         new_bodies_it[0] = gc_new_body;
 
         /* Not end of list */
         if(i < (N-1)) {
-            new_bodies_it[1] = (void**)allocate(&a_bin16, &ListNode);
+            new_bodies_it[1] = allocate(&a_bin16, &ListNode);
         } else {
-            new_bodies_it[1] = (void**)allocate(&a_bin8, &Empty);
+            new_bodies_it[1] = allocate(&a_bin8, &Empty);
         }
 
         new_bodies_it = new_bodies_it[1];
@@ -343,25 +350,33 @@ void** advance(void** bodies, float dt)
     return new_bodies;
 }
 
-int main() 
+int main(int argc, char** argv) 
 {
     initializeStartup();
 
     register void* rbp asm("rbp");
     initializeThreadLocalInfo(rbp);
 
+    int n = 3;
     void** sys = createNBodySystem();
-    float step = 0.01;
+    double step = 0.01;
     
-    debug_print("energy: %f\n", energy(sys));
+    debug_print("energy: %g\n", energy(sys));
 
-    sys = advance(sys, step);
-    sys = advance(sys, step);
-    sys = advance(sys, step);
-
-    debug_print("energy: %f\n", energy(sys));
+    /* Currently does not work for large n, fails after about 20 advances */
+    for(int i = 0; i < n; i++) {
+        if(i % 10 == 0) {
+            loadNativeRootSet();
+            collect();
+            static_bodies_index = 0;
+        }
+        sys = advance(sys, step);
+    }
 
     loadNativeRootSet();
     collect();
+
+    debug_print("energy: %g\n", energy(sys));
+
     return 0;
 }
