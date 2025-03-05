@@ -28,25 +28,7 @@ private:
     T* tail_max; //one past the last valid data element in tail_segment
 
     ArrayListSegment<T>* head_segment;
-    ArrayListSegment<T>* tail_segment;   
-    
-    void push_front_slow(T v) noexcept
-    {
-        DSA_INVARIANT_CHECK(this->head == this->head_min);
-
-        ArrayListSegment<T>* xseg = (ArrayListSegment<T>*)XAllocPageManager::g_page_manager.allocatePage();
-        xseg->data = (T*)((uint8_t*)xseg + sizeof(ArrayListSegment<T>));
-        xseg->next = this->head_segment;
-        xseg->prev = nullptr;
-
-        this->head_segment->prev = xseg;
-        this->head_segment = xseg;
-        this->head_min = xseg->data;
-        this->head_max = (T*)((uint8_t*)xseg + BSQ_BLOCK_ALLOCATION_SIZE);
-        this->head = this->head_max;
-
-        *(--this->head) = v;
-    }
+    ArrayListSegment<T>* tail_segment;
 
     void push_back_slow(T v) noexcept
     {
@@ -186,18 +168,6 @@ public:
         return this->head == this->tail;
     }
 
-    inline void push_front(T v) noexcept
-    {
-        DSA_INVARIANT_CHECK(this->invariant());
-
-        if(this->head != this->head_min) [[likely]] {
-            *(--this->head) = v;
-        }
-        else [[unlikely]] {
-            this->push_front_slow(v);
-        }
-    }
-
     inline void push_back(T v) noexcept
     {
         DSA_INVARIANT_CHECK(this->invariant());
@@ -224,7 +194,7 @@ public:
         return res;
     }
 
-    inline T* pop_back() noexcept
+    inline T pop_back() noexcept
     {
         DSA_INVARIANT_CHECK(this->head != this->tail);
         DSA_INVARIANT_CHECK(this->invariant());

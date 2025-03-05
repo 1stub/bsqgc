@@ -249,4 +249,6 @@ public:
 
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
+
+    void processCollectorPages() noexcept;
 };

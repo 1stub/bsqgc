@@ -5,6 +5,15 @@
 
 #define InitBSQMemoryTheadLocalInfo { ALLOC_LOCK_ACQUIRE(); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, __builtin_frame_address(0)) ALLOC_LOCK_RELEASE(); }
 
+#define MARK_STACK_NODE_COLOR_GREY "GREY"
+#define MARK_STACK_NODE_COLOR_BLACK "BLACK"
+
+struct MarkStackEntry
+{
+    void* obj;
+    const char* color;
+};
+
 struct RegisterContents
 {
     //Should never have pointers of interest in these
@@ -50,13 +59,15 @@ struct BSQMemoryTheadLocalInfo
     size_t forward_table_index = 0;
     void** forward_table;
 
-    ArrayList<void*> pending_visit; //the worklist structure used to walk the heap in the mark phase
+    ArrayList<void*> pending_roots; //the worklist of roots that we need to do visits from
+    ArrayList<MarkStackEntry> visit_stack; //stack for doing a depth first visit (and topo organization) of the object graph
+
     ArrayList<void*> pending_young; //the list of young objects that need to be processed
     ArrayList<void*> pending_decs; //the list of objects that need to be decremented 
 
     size_t max_decrement_count;
 
-    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_count(0), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), pending_visit(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
+    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_count(0), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), pending_roots(), visit_stack(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
 
     void initialize(size_t tl_id, void** caller_rbp) noexcept;
 

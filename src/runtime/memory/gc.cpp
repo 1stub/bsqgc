@@ -94,8 +94,11 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
             while(*ptr_mask != '\0') {
                 char mask = *(ptr_mask++);
 
-                if (mask == PTR_MASK_PTR) {    
-                    if(DEC_REF_COUNT(*slots) == 0) {
+                if((mask != PTR_MASK_NOP) & (*slots != nullptr)) {
+                    if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0) {
+                        tinfo.pending_decs.push_back(*slots);
+                    }
+                    if(PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots) && DEC_REF_COUNT(*slots) == 0) {
                         tinfo.pending_decs.push_back(*slots);
                     }
                 }
@@ -139,13 +142,14 @@ void updatePointers(void** obj, const BSQMemoryTheadLocalInfo& tinfo) noexcept
         while(*ptr_mask != '\0') {
             char mask = *(ptr_mask++);
 
-            if (mask == PTR_MASK_PTR) {
-                uint32_t fwd_index = GC_FWD_INDEX(*slots);
-                if(fwd_index != MAX_FWD_INDEX) {
-                    *slots = tinfo.forward_table[fwd_index]; 
+            if((mask != PTR_MASK_NOP) & (*slots != nullptr)) {
+                if((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
+                    uint32_t fwd_index = GC_FWD_INDEX(*slots);
+                    if(fwd_index != MAX_FWD_INDEX) {
+                        *slots = tinfo.forward_table[fwd_index]; 
+                    }
+                    INC_REF_COUNT(*slots);
                 }
-
-                INC_REF_COUNT(*slots);
             }
 
             slots++;
@@ -194,7 +198,7 @@ void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 
             tinfo.roots[tinfo.roots_count++] = addr;
             if(GC_IS_YOUNG(addr)) {
-                tinfo.pending_visit.push_back(addr);
+                tinfo.pending_roots.push_back(addr);
             }
         }
     }
@@ -226,76 +230,89 @@ void walkStack(BSQMemoryTheadLocalInfo& tinfo) noexcept
     tinfo.unloadNativeRootSet();
 }
 
-void markAndEvacuate(BSQMemoryTheadLocalInfo& tinfo) noexcept
+void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    walkStack(tinfo);
+    while(!tinfo.visit_stack.isEmpty()) {
+        MarkStackEntry entry = tinfo.visit_stack.pop_back();
+        TypeInfoBase* obj_type = GC_TYPE(entry.obj);
 
-    //Process the walk stack
-    while(!tinfo.marking_stack.isEmpty()) {
-        void* obj = tinfo.marking_stack.pop_back();
+        if((obj_type->ptr_mask == LEAF_PTR_MASK) | (entry.color == MARK_STACK_NODE_COLOR_BLACK)) {
+            //no children so do by definition
+            tinfo.pending_young.push_back(entry.obj);
+        }
+        else {
+            tinfo.visit_stack.push_back({entry.obj, MARK_STACK_NODE_COLOR_BLACK});
 
-        TypeInfoBase* obj_type = GC_TYPE(obj);
-        if(obj_type->ptr_mask != LEAF_PTR_MASK) {
             const char* ptr_mask = obj_type->ptr_mask;
-            void** slots = (void**)obj;
+            void** slots = (void**)entry.obj;
 
             while(*ptr_mask != '\0') {
                 char mask = *(ptr_mask++);
 
-                if (mask == PTR_MASK_PTR) {
+                if ((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
                     MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
                     if(GC_SHOULD_VISIT(meta)) {
                         GC_MARK_AS_MARKED(meta);
-                        tinfo.marking_stack.push_back(*slots);
+                        tinfo.visit_stack.push_back({*slots, MARK_STACK_NODE_COLOR_GREY});
                     }
                 }
+
+                slots++;
             }
-
-            slots++;
         }
-
-        tinfo.pending_young.push_back(obj);
     }
-
-    processMarkedYoungObjects(tinfo);
 }
 
+void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
+{
+    walkStack(tinfo);
+
+    //Process the walk stack
+    while(!tinfo.pending_roots.isEmpty()) {
+        void* obj = tinfo.pending_roots.pop_front();
+        MetaData* meta = GC_GET_META_DATA_ADDR(obj);
+        if(GC_SHOULD_VISIT(meta)) {
+            GC_MARK_AS_MARKED(meta);
+
+            tinfo.visit_stack.push_back({obj, MARK_STACK_NODE_COLOR_GREY});
+            walkSingleRoot(obj, tinfo);
+        }
+    }
+}
 
 void initializeGC(GCAllocator* allocs...) noexcept
 {
     xxxx;
-    //set gc allocs array and collect fp
+    //set gc allocs array
 }
 
 void collect() noexcept
 {   
-    //Before we mark and evac we populate old roots list, clearing roots list
-    for(int i = 0; i < NUM_BINS; i++) {
-        AllocatorBin* bin = getBinForSize(8 * (1 << i));
+    walkStack(gtl_info);
 
-        for(size_t i = 0; i < bin->roots_count; i++) {
-            //Reset marked bit for root to ensure discovery and promote to old space
-            GC_IS_MARKED(bin->roots[i]) = false;
-            GC_IS_YOUNG(bin->roots[i]) = false;
+    markingWalk(gtl_info);
+    processMarkedYoungObjects(gtl_info);
 
-            bin->old_roots[bin->old_roots_count++] = bin->roots[i];
+    xmem_zerofill(gtl_info.forward_table, gtl_info.forward_table_index);
+    gtl_info.forward_table_index = 0;
 
-            debug_print("Insertion into old roots %p\n", bin->roots[i]);
-            bin->roots[i] = NULL;
-        }
-        bin->roots_count = 0;
-        qsort(bin->old_roots, bin->old_roots_count, sizeof(void*), compare);
+    computeDeadRootsForDecrement(gtl_info);
+    processDecrements(gtl_info);
+
+    for(size_t i = 0; i < BSQ_MAX_ALLOC_SLOTS; i++) {
+        GCAllocator* alloc = g_gcallocs[i];
+        alloc->processCollectorPages();
     }
-    
-    mark_and_evacuate();
 
-    for(int i = 0; i < NUM_BINS; i++) {
-        AllocatorBin* bin = getBinForSize(8 * (1 << i));
+    xmem_zerofill(gtl_info.old_roots, gtl_info.old_roots_count);
+    gtl_info.old_roots_count = 0;
 
-        compare_roots_and_oldroots(bin);
-        process_decs(bin);
+    for(size_t i = 0; i < gtl_info.roots_count; i++) {
+        GC_CLEAR_ROOT_MARK(GC_GET_META_DATA_ADDR(gtl_info.roots[i]));
 
-        update_references(bin);
-        rebuild_freelist(bin);        
+        gtl_info.old_roots[gtl_info.old_roots_count++] = gtl_info.roots[i];
     }
+
+    xmem_zerofill(gtl_info.roots, gtl_info.roots_count);
+    gtl_info.roots_count = 0;
 }

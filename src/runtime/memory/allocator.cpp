@@ -12,7 +12,6 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     pp->realsize = realsize;
     pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / realsize;
     pp->freecount = pp->entrycount;
-    pp->pagestate = PageStateInfo_GroundState;
 
     FreeListEntry* current = pp->freelist;
 
@@ -51,7 +50,6 @@ void PageInfo::rebuild() noexcept
         }
 
     this->next = nullptr;
-    this->pagestate = PageStateInfo_GroundState;
 }
 
 GlobalPageGCManager GlobalPageGCManager::g_gc_page_manager;
@@ -87,6 +85,11 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
 
     GC_MEM_LOCK_RELEASE();
     return pp;
+}
+
+void GCAllocator::processCollectorPages() noexcept
+{
+    xxxx;
 }
 
 /*
