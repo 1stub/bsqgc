@@ -5,18 +5,24 @@
 //TODO: remove dependency on cstdlib -- use our own quicksort
 #include <cstdlib>
 
+thread_local GCAllocator* g_gcallocs[BSQ_MAX_ALLOC_SLOTS];
+
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
 // After we evacuate an object we need to update the original metadata
 #define RESET_METADATA_FOR_OBJECT(meta) (meta) = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_indexMAX_FWD_INDEX, .ref_count=0 }
 
-#define INC_REF_COUNT(O) (GC_REF_COUNT(O)++)
-#define DEC_REF_COUNT(O) (GC_REF_COUNT(O)--)
+#define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
+#define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
 
 int compare(const void* a, const void* b) 
 {
     return ((char*)a - (char*)b);
+}
+
+GCAllocator* getAllocatorForPageSize(PageInfo* page) noexcept {
+    return g_gcallocs[page->allocsize >> 3];
 }
 
 void reprocessPageInfo(PageInfo* page) noexcept
@@ -71,7 +77,7 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
     size_t deccount = 0;
     while(!tinfo.pending_decs.isEmpty() && deccount < tinfo.max_decrement_count) {
-        void* obj = tinfo.pending_decs.pop_front();
+        void* obj = (void**)tinfo.pending_decs.pop_front();
         deccount++;
 
         // Skip if the object is already freed
@@ -83,20 +89,18 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         const TypeInfoBase* type_info = GC_TYPE(obj);
 
         if(type_info->ptr_mask != LEAF_PTR_MASK) {
-            for (size_t i = 0; i < type_info->slot_size; i++) {
-                char mask = *((type_info->ptr_mask) + i);
+            const char* ptr_mask = type_info->ptr_mask;
+            void** slots = (void**)obj;
+            while(*ptr_mask != '\0') {
+                char mask = *(ptr_mask++);
 
-                if (mask == PTR_MASK_PTR) {
-                    void* child = *(void**)((char*)obj + i * sizeof(void*));
-                    if (child != NULL) {
-                        DEC_REF_COUNT(child);
-
-                        // If the child's ref count drops to zero, add it to the pending_decs list
-                        if (GC_REF_COUNT(child) == 0) {
-                            tinfo.pending_decs.push_back(child);
-                        }
+                if (mask == PTR_MASK_PTR) {    
+                    if(DEC_REF_COUNT(*slots) == 0) {
+                        tinfo.pending_decs.push_back(*slots);
                     }
                 }
+
+                slots++;
             }
         }
 
@@ -129,39 +133,25 @@ void updatePointers(void** obj, const BSQMemoryTheadLocalInfo& tinfo) noexcept
     TypeInfoBase* type_info = GC_TYPE(obj);
 
     if(type_info->ptr_mask != LEAF_PTR_MASK) {
+        const char* ptr_mask = type_info->ptr_mask;
+        void** slots = (void**)obj;
 
-            for (size_t i = 0; i < addr_type->slot_size; i++) {
-                //This nesting is not ideal, but ok for now
-                char mask = *((addr_type->ptr_mask) + i);
+        while(*ptr_mask != '\0') {
+            char mask = *(ptr_mask++);
 
-                if (mask == PTR_MASK_PTR) {
-                    void* ref = *(void**)((char*)addr + i * sizeof(void*)); //hmmm...
-
-                    //If forward index is set, set old location to be non alloc and query forward table
-                    uint32_t fwd_index = GC_FWD_INDEX(ref);
-                    if(fwd_index != MAX_FWD_INDEX) {
-                        GC_IS_ALLOCATED(ref) = false;
-                        ((void**)addr)[i] = forward_table[fwd_index]; 
-
-                        debug_print("update reference from %p to %p\n", ref, ((void**)addr)[i]);
-
-                        //We need to explore these new evacuated pointers
-                        worklist_push(worklist, ((void**)addr)[i]);
-                    }
+            if (mask == PTR_MASK_PTR) {
+                uint32_t fwd_index = GC_FWD_INDEX(*slots);
+                if(fwd_index != MAX_FWD_INDEX) {
+                    *slots = tinfo.forward_table[fwd_index]; 
                 }
+
+                INC_REF_COUNT(*slots);
             }
+
+            slots++;
         }
+    }
 }
-
-
-#ifndef ALLOC_DEBUG_CANARY
-#define COMPUTE_MEM_BASE_FOR_COPY(O) (O)
-#define COMPUTE_MEM_SIZE(T) ((T)->slot_size))
-#else
-#define COMPUTE_MEM_BASE_FOR_COPY(O) (void*)((uint8_t*)O - (sizeof(MetaData) + ALLOC_DEBUG_CANARY_SIZE))
-#define COMPUTE_MEM_SIZE(T) ((ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + (T)->type_size + ALLOC_DEBUG_CANARY_SIZE) >> 3)
-#endif
-
 
 //Move non root young objects to evacuation page (as needed) then forward pointers and inc ref counts
 void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept 
@@ -175,30 +165,15 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
         if(GC_IS_ROOT(obj)) {
             updatePointers((void**)obj, tinfo);
+            GC_CLEAR_YOUNG_MARK(GC_GET_META_DATA_ADDR(obj));
         }
         else {
             //If we are not a root we want to evacuate
-            PageInfo* page = PageInfo::extractPageFromPointer(obj);
-            PageInfo* evac_page = (PageInfo*)tinfo.evac_page_table[page->allocsize >> 3]; // divide by 8 using shift
-            GC_INVARIANT_CHECK(evac_page != nullptr);
+            GCAllocator* gcalloc = getAllocatorForPageSize(PageInfo::extractPageFromPointer(obj));
+            GC_INVARIANT_CHECK(gcalloc != nullptr);
         
-            //refresh freelist if needed
-            if(evac_page->freelist == nullptr) [[unlikely]] {
-                //
-                //TODO: fix this code back up
-                //
-                assert(false);
-            } 
-            
-            void* entry = evac_page->freelist;
-            evac_page->freelist = evac_page->freelist->next;
-            evac_page->freecount--;
-
-            SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type_info);
-            SETUP_ALLOC_INITIALIZE_CONVERT_OLD_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type_info);
-            void* newobj = SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
-
-            xmem_copy(COMPUTE_MEM_BASE_FOR_COPY(obj), COMPUTE_MEM_BASE_FOR_COPY(newobj), COMPUTE_MEM_SIZE(type_info));
+            void* newobj = gcalloc->allocateEvacuation(type_info);
+            xmem_copy(obj, newobj, type_info->slot_size);
             updatePointers((void**)newobj, tinfo);
 
             tinfo.forward_table[tinfo.forward_table_index++] = newobj;
@@ -208,105 +183,89 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
     GC_REFCT_LOCK_RELEASE();
 }
 
-void check_potential_ptr(void* addr, struct WorkList* worklist) 
+void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    bool canupdate = true;
-    if(pagetable_query(addr)) {
-        if (!(PAGE_IS_OBJ_ALIGNED(addr))) {
-            if(POINTS_TO_DATA_SEG(addr)){
-                debug_print("address %p was not aligned but pointed into data seg\n", addr);
-                addr = PAGE_FIND_OBJ_BASE(addr);
-                canupdate = true;
-            } else {
-                debug_print("found pointer into alloc page that did not point into data seg at %p\n", addr);
-                canupdate = false;
-            }
-        }
-
-        //Need to verify our object is allocated and not already marked
-        if(GC_IS_ALLOCATED(addr) && !GC_IS_MARKED(addr) && canupdate) {
-            GC_IS_MARKED(addr) = true;
-
-            AllocatorBin* bin = getBinForSize( GC_TYPE(addr)->type_size );
-            bin->roots[bin->roots_count++] = addr;
-
-            //If it is not a leaf we will need to add to worklist
-            if((GC_TYPE(addr)->ptr_mask != LEAF_PTR_MASK) && GC_IS_YOUNG(addr)) {
-                worklist_push(*worklist, addr);
-            }
-
-            debug_print("Found a root at %p storing 0x%x\n", addr, *(int*)addr);
-        }
-    }
-}
-
-void walk_stack(struct WorkList* worklist) 
-{
-    void** cur_stack = native_stack_contents;
-    int i = 0;
-
-    void* addr;
-    while((addr = cur_stack[i])) {
-        //debug_print("Checking stack pointer %p\n", addr);
-        check_potential_ptr(addr, worklist);
-        i++;
-    }
-
-    #if 0
-
-    //Funny pointer stuff to iterate through this struct, works since all elements are void*
-    for (void** ptr = (void**)&native_register_contents; 
-         ptr < (void**)((char*)&native_register_contents + sizeof(native_register_contents)); 
-         ptr++) {
-        void* register_contents = *ptr;
-        debug_print("Checking register %p storing 0x%lx\n", ptr, (uintptr_t)register_contents);
-
-        check_potential_ptr(register_contents, worklist);
-    }
-    
-    #endif
-    
-    unloadNativeRootSet();
-}
-
-//Algorithm 2.2 from The Gargage Collection Handbook
-void mark_and_evacuate()
-{
-    struct WorkList worklist;
-    worklist_initialize(&worklist);
-
-    walk_stack(&worklist);
-
-    //Process the worklist in a BFS manner
-    while (!worklist_is_empty(&worklist)) {
-        void* parent_ptr = worklist_pop(void, worklist);
-        struct TypeInfoBase* parent_type = GC_TYPE( parent_ptr );
-        debug_print("parent pointer at %p\n", parent_ptr);
+    if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)) {
+        MetaData* meta = PageInfo::getObjectMetadataAligned(addr);
         
-        if(parent_type->ptr_mask != LEAF_PTR_MASK) {
-            for (size_t i = 0; i < parent_type->slot_size; i++) {
-                //This nesting is not ideal, but ok for now
-                char mask = *((parent_type->ptr_mask) + i);
+        //Need to verify our object is allocated and not already marked
+        if(GC_SHOULD_PROCESS_AS_ROOT(meta)) {
+            GC_MARK_AS_ROOT(meta);
+
+            tinfo.roots[tinfo.roots_count++] = addr;
+            if(GC_IS_YOUNG(addr)) {
+                tinfo.pending_visit.push_back(addr);
+            }
+        }
+    }
+}
+
+void walkStack(BSQMemoryTheadLocalInfo& tinfo) noexcept 
+{
+    tinfo.loadNativeRootSet();
+
+    for(size_t i = 0; i < tinfo.native_stack_count; i++) {
+        checkPotentialPtr(tinfo.native_stack_contents[i], tinfo);
+    }
+
+    checkPotentialPtr(tinfo.native_register_contents.rax, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.rbx, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.rcx, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.rdx, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.rsi, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.rdi, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r8, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r9, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r10, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r11, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r12, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r13, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r14, tinfo);
+    checkPotentialPtr(tinfo.native_register_contents.r15, tinfo);
+
+    tinfo.unloadNativeRootSet();
+}
+
+void markAndEvacuate(BSQMemoryTheadLocalInfo& tinfo) noexcept
+{
+    walkStack(tinfo);
+
+    //Process the walk stack
+    while(!tinfo.marking_stack.isEmpty()) {
+        void* obj = tinfo.marking_stack.pop_back();
+
+        TypeInfoBase* obj_type = GC_TYPE(obj);
+        if(obj_type->ptr_mask != LEAF_PTR_MASK) {
+            const char* ptr_mask = obj_type->ptr_mask;
+            void** slots = (void**)obj;
+
+            while(*ptr_mask != '\0') {
+                char mask = *(ptr_mask++);
 
                 if (mask == PTR_MASK_PTR) {
-                    void* child = *(void**)((char*)parent_ptr + i * sizeof(void*)); //hmmm...
-                    debug_print("pointer slot points to %p\n", child);
-
-                    //Valid child pointer, so mark and increment ref count then push to mark stack. Explore its pointers
-                    if(!GC_IS_MARKED(child)) {
-                        increment_ref_count(child);
-                        GC_IS_MARKED(child) = true;
-                        worklist_push(worklist, child);
-                        stack_push(void, marking_stack, child);
+                    MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
+                    if(GC_SHOULD_VISIT(meta)) {
+                        GC_MARK_AS_MARKED(meta);
+                        tinfo.marking_stack.push_back(*slots);
                     }
                 }
             }
+
+            slots++;
         }
+
+        tinfo.pending_young.push_back(obj);
     }
 
-    evacuate();
+    processMarkedYoungObjects(tinfo);
 }
 
+
+void initializeGC(GCAllocator* allocs...) noexcept
+{
+    xxxx;
+    //set gc allocs array and collect fp
+}
 
 void collect() noexcept
 {   

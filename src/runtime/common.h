@@ -120,6 +120,7 @@ struct MetaData
     bool isyoung;
     bool ismarked;
     bool isroot;
+    //TODO -- also a parent thread root bit (that we don't clear but we treat as a root for the purposes of marking etc.)
     uint32_t forward_index;
     uint32_t ref_count;
 }; 
@@ -141,3 +142,12 @@ static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #define GC_FWD_INDEX(O) (GC_GET_META_DATA_ADDR(O))->forward_index
 #define GC_REF_COUNT(O) (GC_GET_META_DATA_ADDR(O))->ref_count
 #define GC_TYPE(O) (GC_GET_META_DATA_ADDR(O))->type
+
+#define GC_SHOULD_VISIT(META) ((META)->isyoung && !(META)->ismarked)
+
+#define GC_SHOULD_PROCESS_AS_ROOT(META) ((META)->isalloc && !(META)->ismarked)
+#define GC_MARK_AS_ROOT(META) { (META)->isroot = true; (META)->ismarked = true; }
+#define GC_MARK_AS_MARKED(META) { (META)->ismarked = true; }
+
+#define GC_CLEAR_YOUNG_MARK(META) { (META)->isyoung = false; }
+#define GC_CLEAR_ROOT_MARK(META) { (META)->ismarked = false; (META)->isroot = false; }

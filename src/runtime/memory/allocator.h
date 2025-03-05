@@ -4,8 +4,6 @@
 #include "../support/arraylist.h"
 #include "../support/pagetable.h"
 
-#include "gc.h"
-
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
 
@@ -38,11 +36,6 @@ struct FreeListEntry
 };
 static_assert(sizeof(FreeListEntry) <= sizeof(MetaData), "BlockHeader size is not 8 bytes");
 
-typedef uint16_t PageStateInfo;
-#define PageStateInfo_GroundState 0x0
-#define AllocPageInfo_ActiveAllocation 0x1
-#define AllocPageInfo_ActiveEvacuation 0x2
-
 class PageInfo
 {
 public:
@@ -56,8 +49,6 @@ public:
     
     uint16_t entrycount; //max number of objects that can be allocated from this Page
     uint16_t freecount;
-
-    PageStateInfo pagestate;
 
     static PageInfo* initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept;
 
@@ -98,9 +89,6 @@ public:
     }
 };
 
-#define GC_GET_META_DATA_ADDR_STD(O) GC_GET_META_DATA_ADDR(O)
-#define GC_GET_META_DATA_ADDR_ROOTREF(R) PageInfo::extractObjectMetadataAligned(R)
-
 class GlobalPageGCManager
 {
 private:
@@ -113,62 +101,10 @@ public:
     GlobalPageGCManager() noexcept : empty_pages(nullptr) { }
 
     PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t realsize) noexcept;
-};
 
-template <size_t ALLOC_SIZE, size_t REAL_SIZE>
-class BinPageGCManager
-{
-private:
-    //
-    //TODO: we should make these heaps
-    //
-
-    PageInfo* low_utilization_pages; // Pages with 1-30% utilization (does not hold fully empty)
-    PageInfo* mid_utilization_pages; // Pages with 31-60% utilization
-    PageInfo* high_utilization_pages; // Pages with 61-90% utilization 
-
-    PageInfo* filled_pages; // Pages with over 90% utilization
-    //completely empty pages go back to the global pool
-
-public:
-    BinPageGCManager() noexcept : low_utilization_pages(nullptr), mid_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr) { }
-
-    PageInfo* getFreshPageForAllocator() noexcept
+    bool pagetable_query(void* addr) const noexcept
     {
-        PageInfo* page = nullptr;
-
-        if(this->low_utilization_pages != nullptr) {
-            page = this->low_utilization_pages;
-            this->low_utilization_pages = this->low_utilization_pages->next;
-        }
-        else if(this->mid_utilization_pages != nullptr) {
-            page = this->mid_utilization_pages;
-            this->mid_utilization_pages = this->mid_utilization_pages->next;
-        } 
-        else {
-            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(ALLOC_SIZE);
-        }
-
-        return page;
-    }
-
-    PageInfo* getFreshPageForEvacuation() noexcept
-    {
-        PageInfo* page = nullptr;
-
-        if(this->high_utilization_pages != nullptr) {
-            page = this->high_utilization_pages;
-            this->high_utilization_pages = this->high_utilization_pages->next;
-        }
-        else if(this->mid_utilization_pages != nullptr) {
-            page = this->mid_utilization_pages;
-            this->mid_utilization_pages = this->mid_utilization_pages->next;
-        }
-        else {
-            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(ALLOC_SIZE);
-        }
-
-        return page;
+        return this->pagetable.pagetable_query(addr);
     }
 };
 
@@ -187,22 +123,72 @@ public:
 #define SETUP_ALLOC_INITIALIZE_FRESH_META(META, T) *(META) = { .type=(T), .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 #define SETUP_ALLOC_INITIALIZE_CONVERT_OLD_META(META, T) *(META) = { .type=(T), .isalloc=true, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 
-template <size_t ALLOC_SIZE, size_t REAL_SIZE>
-class AllocatorBin
+class GCAllocator
 {
 private:
     FreeListEntry* freelist;
+    FreeListEntry* evacfreelist;
 
     PageInfo* alloc_page; // Page in which we are currently allocating from
     PageInfo* evac_page; // Page in which we are currently evacuating from
 
+    //should match sizes in the page infos
+    uint16_t allocsize; //size of the alloc entries in this page (excluding metadata)
+    uint16_t realsize; //size of the alloc entries in this page (including metadata and other stuff)
+
     PageInfo* pendinggc_pages; // Pages that are pending GC
-    BinPageGCManager<ALLOC_SIZE, REAL_SIZE> page_manager;
+    
+    //
+    //TODO: we should make these heaps (or binary trees for min/max/average lookups) we should experiment with different strategies
+    //
+
+    PageInfo* low_utilization_pages; // Pages with 1-60% utilization (does not hold fully empty)
+    PageInfo* high_utilization_pages; // Pages with 61-90% utilization 
+
+    PageInfo* filled_pages; // Pages with over 90% utilization
+    //completely empty pages go back to the global pool
+
+    void (*collectfp)() noexcept;
+    GCAllocator* next; //we have lists of allocator bins as a thread local variable (in addition to declaring them each individually)
+
+    PageInfo* getFreshPageForAllocator() noexcept
+    {
+        PageInfo* page = nullptr;
+
+        if(this->low_utilization_pages != nullptr) {
+            page = this->low_utilization_pages;
+            this->low_utilization_pages = this->low_utilization_pages->next;
+        }
+        else {
+            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
+        }
+
+        return page;
+    }
+
+    PageInfo* getFreshPageForEvacuation() noexcept
+    {
+        PageInfo* page = nullptr;
+
+        if(this->high_utilization_pages != nullptr) {
+            page = this->high_utilization_pages;
+            this->high_utilization_pages = this->high_utilization_pages->next;
+        }
+        else if(this->low_utilization_pages != nullptr) {
+            page = this->low_utilization_pages;
+            this->low_utilization_pages = this->low_utilization_pages->next;
+        }
+        else {
+            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
+        }
+
+        return page;
+    }
 
     void allocatorRefreshPage() noexcept
     {
-        if(alloc_page == nullptr) {
-            this->alloc_page = this->page_manager.getFreshPageForAllocator();
+        if(this->alloc_page == nullptr) {
+            this->alloc_page = this->getFreshPageForAllocator();
         }
         else {
             assert(false);
@@ -215,14 +201,22 @@ private:
         
             //get the new page
         }
+
+        this->freelist = this->alloc_page->freelist;
+    }
+
+    void allocatorRefreshEvacuationPage() noexcept
+    {
+        this->evac_page = this->getFreshPageForEvacuation();
+        this->evacfreelist = this->evac_page->freelist;
     }
 
 public:
-    AllocatorBin() noexcept : freelist(nullptr), alloc_page(nullptr), evac_page(nullptr), pendinggc_pages(nullptr) { }
+    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)() noexcept) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect), next(nullptr) { }
 
     inline void* allocate(TypeInfoBase* type)
     {
-        assert(type->type_size == ALLOC_SIZE);
+        assert(type->type_size == this->allocsize);
 
         if(this->freelist == nullptr) [[unlikely]] {
             this->allocatorRefreshPage();
@@ -234,6 +228,24 @@ public:
 
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
         SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
+
+        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
+    }
+
+    inline void* allocateEvacuation(TypeInfoBase* type)
+    {
+        assert(type->type_size == this->allocsize);
+
+        if(this->evacfreelist == nullptr) [[unlikely]] {
+            this->allocatorRefreshEvacuationPage();
+        }
+
+        void* entry = this->evacfreelist;
+        this->evacfreelist = this->evacfreelist->next;
+        this->evac_page->freecount--;
+
+        SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
+        SETUP_ALLOC_INITIALIZE_CONVERT_OLD_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
 
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }

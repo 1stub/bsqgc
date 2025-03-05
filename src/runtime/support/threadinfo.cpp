@@ -3,7 +3,6 @@
 thread_local void* roots[BSQ_MAX_ROOTS];
 thread_local void* oldroots[BSQ_MAX_ROOTS];
 thread_local void* forward_table[BSQ_MAX_ROOTS];
-thread_local void* evac_page_table[BSQ_MAX_ALLOC_SLOTS];
 
 thread_local BSQMemoryTheadLocalInfo gtl_info;
 
@@ -32,13 +31,12 @@ void BSQMemoryTheadLocalInfo::initialize(size_t tl_id, void** caller_rbp) noexce
     this->forward_table = forward_table;
     this->forward_table_index = 0;
     xmem_zerofill(forward_table, BSQ_MAX_ROOTS);
-
-    this->evac_page_table = evac_page_table;
-    xmem_zerofill(evac_page_table, BSQ_MAX_ALLOC_SLOTS);
 }
 
 void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
 {
+    this->native_stack_count = 0;
+
     this->native_stack_contents = (void**)XAllocPageManager::g_page_manager.allocatePage();
     xmem_zerofillpage(this->native_stack_contents);
 
@@ -46,17 +44,16 @@ void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
     #ifdef __x86_64__
         register void** rbp asm("rbp");
         void** current_frame = rbp;
-        int i = 0;
         
         /* Walk the stack */
         while (current_frame <= native_stack_base) {
-            assert( IS_ALIGNED(current_frame) );
+            assert(IS_ALIGNED(current_frame));
             
             /* Walk entire frame looking for valid pointers */
             void** it = current_frame;
             void* potential_ptr = *it;
             if (PTR_IN_RANGE(potential_ptr) && PTR_NOT_IN_STACK(native_stack_base, current_frame, potential_ptr)) {
-                this->native_stack_contents[i++] = potential_ptr;
+                this->native_stack_contents[this->native_stack_count++] = potential_ptr;
             }
             it--;
             
@@ -86,6 +83,8 @@ void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
 
 void BSQMemoryTheadLocalInfo::unloadNativeRootSet() noexcept
 {
+    this->native_stack_count = 0;
+
     XAllocPageManager::g_page_manager.freePage(this->native_stack_contents);
     this->native_stack_contents = nullptr;
 }
