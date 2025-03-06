@@ -126,7 +126,6 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
 //Update pointers using forward table
 void updatePointers(void** obj, const BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    GC_INVARIANT_CHECK(!GC_IS_YOUNG(obj) && !GC_IS_MARKED(obj));
     TypeInfoBase* type_info = GC_TYPE(obj);
 
     if(type_info->ptr_mask != LEAF_PTR_MASK) {
@@ -187,14 +186,15 @@ void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)) {
         MetaData* meta = PageInfo::getObjectMetadataAligned(addr);
+        void* obj = (void*)((uint8_t*)meta + sizeof(MetaData));
         
         //Need to verify our object is allocated and not already marked
         if(GC_SHOULD_PROCESS_AS_ROOT(meta)) {
             GC_MARK_AS_ROOT(meta);
 
-            tinfo.roots[tinfo.roots_count++] = addr;
-            if(GC_IS_YOUNG(addr)) {
-                tinfo.pending_roots.push_back(addr);
+            tinfo.roots[tinfo.roots_count++] = obj;
+            if(GC_SHOULD_PROCESS_AS_YOUNG(meta)) {
+                tinfo.pending_roots.push_back(obj);
             }
         }
     }
@@ -261,6 +261,9 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
+    gtl_info.pending_roots.initialize();
+    gtl_info.visit_stack.initialize();
+
     walkStack(tinfo);
 
     //Process the walk stack
@@ -274,24 +277,31 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
             walkSingleRoot(obj, tinfo);
         }
     }
+
+    gtl_info.visit_stack.clear();
+    gtl_info.pending_roots.clear();
 }
 
 void collect() noexcept
 {   
-    walkStack(gtl_info);
-
+    gtl_info.pending_young.initialize();
     markingWalk(gtl_info);
     processMarkedYoungObjects(gtl_info);
+    gtl_info.pending_young.clear();
 
     xmem_zerofill(gtl_info.forward_table, gtl_info.forward_table_index);
     gtl_info.forward_table_index = 0;
 
+    gtl_info.pending_decs.initialize();
     computeDeadRootsForDecrement(gtl_info);
     processDecrements(gtl_info);
+    gtl_info.pending_decs.clear();
 
     for(size_t i = 0; i < BSQ_MAX_ALLOC_SLOTS; i++) {
         GCAllocator* alloc = gtl_info.g_gcallocs[i];
-        alloc->processCollectorPages();
+        if(alloc != nullptr) {
+            alloc->processCollectorPages();
+        }
     }
 
     xmem_zerofill(gtl_info.old_roots, gtl_info.old_roots_count);
