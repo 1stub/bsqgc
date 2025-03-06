@@ -88,7 +88,7 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
             while(*ptr_mask != '\0') {
                 char mask = *(ptr_mask++);
 
-                if((mask != PTR_MASK_NOP) & (*slots != nullptr)) {
+                if(*slots != nullptr) {
                     if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0) {
                         tinfo.pending_decs.push_back(*slots);
                     }
@@ -135,7 +135,7 @@ void updatePointers(void** obj, const BSQMemoryTheadLocalInfo& tinfo) noexcept
         while(*ptr_mask != '\0') {
             char mask = *(ptr_mask++);
 
-            if((mask != PTR_MASK_NOP) & (*slots != nullptr)) {
+            if(*slots != nullptr) {
                 if((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
                     uint32_t fwd_index = GC_FWD_INDEX(*slots);
                     if(fwd_index != MAX_FWD_INDEX) {
@@ -245,11 +245,13 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
             while(*ptr_mask != '\0') {
                 char mask = *(ptr_mask++);
 
-                if ((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
-                    MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
-                    if(GC_SHOULD_VISIT(meta)) {
-                        GC_MARK_AS_MARKED(meta);
-                        tinfo.visit_stack.push_back({*slots, MARK_STACK_NODE_COLOR_GREY});
+                if(*slots != nullptr) {
+                    if ((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
+                        MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
+                        if(GC_SHOULD_VISIT(meta)) {
+                            GC_MARK_AS_MARKED(meta);
+                            tinfo.visit_stack.push_back({*slots, MARK_STACK_NODE_COLOR_GREY});
+                        }
                     }
                 }
 
