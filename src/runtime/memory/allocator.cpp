@@ -13,13 +13,11 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / realsize;
     pp->freecount = pp->entrycount;
 
-    FreeListEntry* current = pp->freelist;
-
-    for(int i = 0; i < pp->entrycount - 1; i++) {
-        current->next = (FreeListEntry*)((char*)current + realsize);
-        current = current->next;
+    for(int64_t i = pp->entrycount - 1; i >= 0; i--) {
+        FreeListEntry* entry = pp->getFreelistEntryAtIndex(i);
+        entry->next = pp->freelist;
+        pp->freelist = entry;
     }
-    current->next = nullptr;
 
     return pp;
 }
@@ -29,7 +27,7 @@ void PageInfo::rebuild() noexcept
     this->freelist = nullptr;
     this->freecount = 0;
     
-    for(size_t i = 0; i < this->entrycount; i++) {
+    for(int64_t i = this->entrycount - 1; i >= 0; i--) {
         MetaData* meta = this->getMetaEntryAtIndex(i);
         
         if(GC_SHOULD_FREE_LIST_ADD(meta)) {

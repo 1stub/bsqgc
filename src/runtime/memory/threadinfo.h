@@ -79,8 +79,6 @@ struct BSQMemoryTheadLocalInfo
     template <size_t NUM>
     void initializeGC(GCAllocator* allocs[NUM]) noexcept
     {
-        xmem_zerofill(this->g_gcallocs, BSQ_MAX_ALLOC_SLOTS);
-
         for(size_t i = 0; i < NUM; i++) {
             GCAllocator* alloc = allocs[i];
             this->g_gcallocs[alloc->getAllocSize() >> 3] = alloc;

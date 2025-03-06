@@ -1,10 +1,10 @@
 #include "threadinfo.h"
 
-thread_local void* roots[BSQ_MAX_ROOTS];
-thread_local void* oldroots[BSQ_MAX_ROOTS];
-thread_local void* forward_table[BSQ_MAX_ROOTS];
+thread_local void* roots_array[BSQ_MAX_ROOTS];
+thread_local void* old_roots_array[BSQ_MAX_ROOTS];
+thread_local void* forward_table_array[BSQ_MAX_ROOTS];
 
-thread_local GCAllocator* g_gcallocs[BSQ_MAX_ALLOC_SLOTS];
+thread_local GCAllocator* g_gcallocs_array[BSQ_MAX_ALLOC_SLOTS];
 
 thread_local BSQMemoryTheadLocalInfo gtl_info;
 
@@ -22,17 +22,20 @@ void BSQMemoryTheadLocalInfo::initialize(size_t tl_id, void** caller_rbp) noexce
     this->tl_id = tl_id;
     this->native_stack_base = caller_rbp;
 
-    this->roots = roots;
+    this->roots = roots_array;
     this->roots_count = 0;
-    xmem_zerofill(roots, BSQ_MAX_ROOTS);
+    xmem_zerofill(this->roots, BSQ_MAX_ROOTS);
 
-    this->old_roots = oldroots;
+    this->old_roots = old_roots_array;
     this->old_roots_count = 0;
-    xmem_zerofill(oldroots, BSQ_MAX_ROOTS);
+    xmem_zerofill(this->old_roots, BSQ_MAX_ROOTS);
 
-    this->forward_table = forward_table;
+    this->forward_table = forward_table_array;
     this->forward_table_index = 0;
-    xmem_zerofill(forward_table, BSQ_MAX_ROOTS);
+    xmem_zerofill(this->forward_table, BSQ_MAX_ROOTS);
+
+    this->g_gcallocs = g_gcallocs_array;
+    xmem_zerofill(this->g_gcallocs, BSQ_MAX_ALLOC_SLOTS);
 }
 
 void BSQMemoryTheadLocalInfo::loadNativeRootSet() noexcept
