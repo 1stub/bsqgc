@@ -156,7 +156,7 @@ private:
     PageInfo* filled_pages; // Pages with over 90% utilization
     //completely empty pages go back to the global pool
 
-    void (*collectfp)() noexcept;
+    void (*collectfp)();
     GCAllocator* next; //we have lists of allocator bins as a thread local variable (in addition to declaring them each individually)
 
     PageInfo* getFreshPageForAllocator() noexcept
@@ -220,7 +220,7 @@ private:
     }
 
 public:
-    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)() noexcept) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect), next(nullptr) { }
+    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)()) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect), next(nullptr) { }
 
     inline size_t getAllocSize() const noexcept
     {

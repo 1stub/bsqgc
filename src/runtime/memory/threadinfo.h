@@ -2,7 +2,7 @@
 
 #include "allocator.h"
 
-#define InitBSQMemoryTheadLocalInfo { ALLOC_LOCK_ACQUIRE(); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, __builtin_frame_address(0)) ALLOC_LOCK_RELEASE(); }
+#define InitBSQMemoryTheadLocalInfo() { ALLOC_LOCK_ACQUIRE(); register void** rbp asm("rbp"); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, rbp); ALLOC_LOCK_RELEASE(); }
 
 #define MARK_STACK_NODE_COLOR_GREY 0
 #define MARK_STACK_NODE_COLOR_BLACK 1
