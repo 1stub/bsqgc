@@ -1,6 +1,6 @@
 #pragma once
 
-#include "threadinfo.h"
+#include "../support/threadinfo.h"
 #include "allocator.h"
 
 #ifdef GC_INVARIANTS

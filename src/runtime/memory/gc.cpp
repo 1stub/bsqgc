@@ -2,6 +2,8 @@
 #include "allocator.h"
 #include "gc.h"
 
+#include <cstdarg>
+
 //TODO: remove dependency on cstdlib -- use our own quicksort
 #include <cstdlib>
 
@@ -11,7 +13,7 @@ thread_local GCAllocator* g_gcallocs[BSQ_MAX_ALLOC_SLOTS];
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
 // After we evacuate an object we need to update the original metadata
-#define RESET_METADATA_FOR_OBJECT(meta) (meta) = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_indexMAX_FWD_INDEX, .ref_count=0 }
+#define RESET_METADATA_FOR_OBJECT(M) *M = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
@@ -181,6 +183,8 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
             updatePointers((void**)newobj, tinfo);
 
             tinfo.forward_table[tinfo.forward_table_index++] = newobj;
+
+            RESET_METADATA_FOR_OBJECT(GC_GET_META_DATA_ADDR(obj));
         }
     }
 
@@ -282,8 +286,17 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void initializeGC(GCAllocator* allocs...) noexcept
 {
-    xxxx;
-    //set gc allocs array
+    xmem_zerofill(g_gcallocs, BSQ_MAX_ALLOC_SLOTS);
+
+    va_list args;
+    va_start(args, allocs);
+ 
+    while (allocs != nullptr) {
+        GCAllocator* alloc = va_arg(args, GCAllocator*);
+        g_gcallocs[alloc->getAllocSize() >> 3] = alloc;
+    }
+
+    va_end(args);
 }
 
 void collect() noexcept

@@ -20,34 +20,25 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
         current = current->next;
     }
     current->next = nullptr;
+
+    return pp;
 }
 
 void PageInfo::rebuild() noexcept
 {
-    FreeListEntry* last_freelist_entry = nullptr;
-    bool first_nonalloc_block = true;
+    this->freelist = nullptr;
     this->freecount = 0;
     
     for(size_t i = 0; i < this->entrycount; i++) {
-        FreeListEntry* new_freelist_entry = this->getFreeListEntryAtIndex(i);
-        void* obj = OBJ_START_FROM_BLOCK(new_freelist_entry); 
-    
-        //Add non allocated OR old non roots with a ref count of 0 ANT not marked, meaning unreachable
-        if(!GC_IS_ALLOCATED(obj) || (!GC_IS_YOUNG(obj) && GC_REF_COUNT(obj) == 0) || !GC_IS_MARKED(obj)) {
-                if(first_nonalloc_block) {
-                    cur->freelist = new_freelist_entry;
-                    cur->freelist->next = NULL;
-                    last_freelist_entry = cur->freelist;
-                    first_nonalloc_block = false;
-                } else {
-                    last_freelist_entry->next = new_freelist_entry;
-                    new_freelist_entry->next = NULL; 
-                    last_freelist_entry = new_freelist_entry;
-                }
-                
-                cur->freecount++;
-            }
+        MetaData* meta = this->getMetaEntryAtIndex(i);
+        
+        if(GC_SHOULD_FREE_LIST_ADD(meta)) {
+            FreeListEntry* entry = this->getFreelistEntryAtIndex(i);
+            entry->next = this->freelist;
+            this->freelist = entry;
+            this->freecount++;
         }
+    }
 
     this->next = nullptr;
 }
@@ -87,9 +78,40 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
     return pp;
 }
 
+void GCAllocator::processPage(PageInfo* p) noexcept
+{
+    //
+    //TODO: we need to move the pages around here...
+    //
+}
+
 void GCAllocator::processCollectorPages() noexcept
 {
-    xxxx;
+    if(this->alloc_page != nullptr) {
+        this->alloc_page->rebuild();
+        this->processPage(this->alloc_page);
+
+        this->alloc_page = nullptr;
+        this->freelist = nullptr;
+    }
+    
+    if(this->evac_page != nullptr) {
+        this->processPage(this->evac_page);
+
+        this->evac_page = nullptr;
+        this->evacfreelist = nullptr;
+    }
+
+    PageInfo* cur = this->pendinggc_pages;
+    while(cur != nullptr) {
+        PageInfo* next = cur->next;
+
+        cur->rebuild();
+        this->processPage(cur);
+
+        cur = next;
+    }
+    this->pendinggc_pages = nullptr;
 }
 
 /*

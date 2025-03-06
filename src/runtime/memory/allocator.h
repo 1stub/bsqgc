@@ -54,17 +54,17 @@ public:
 
     void rebuild() noexcept;
 
-    static inline constexpr PageInfo* extractPageFromPointer(void* p) noexcept {
+    static inline PageInfo* extractPageFromPointer(void* p) noexcept {
         return (PageInfo*)((uintptr_t)(p) & PAGE_ADDR_MASK);
     }
 
-    static inline constexpr size_t getIndexForObjectInPage(void* p) noexcept {
+    static inline size_t getIndexForObjectInPage(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
         
         return (size_t)(page->data - (uint8_t*)p) / (size_t)page->realsize;
     }
 
-    static inline constexpr MetaData* getObjectMetadataAligned(void* p) noexcept {
+    static inline MetaData* getObjectMetadataAligned(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
         size_t idx = (size_t)(page->data - (uint8_t*)p) / (size_t)page->realsize;
 
@@ -75,8 +75,16 @@ public:
 #endif
     }
 
-    inline constexpr FreeListEntry* getFreeListEntryAtIndex(size_t index) const noexcept {
-        return (FreeListEntry*)(this->data + index * realsize);
+    inline MetaData* getMetaEntryAtIndex(size_t idx) const noexcept {
+#ifdef ALLOC_DEBUG_CANARY
+        return (MetaData*)(this->data + idx * this->realsize + ALLOC_DEBUG_CANARY_SIZE);
+#else
+        return (MetaData*)(this->data + idx * this->realsize);
+#endif
+    }
+
+    inline FreeListEntry* getFreelistEntryAtIndex(size_t idx) const noexcept {
+        return (FreeListEntry*)(this->data + idx * this->realsize);
     }
 
     static void initializeWithDebugInfo(void* mem, TypeInfoBase* type) noexcept
@@ -100,7 +108,7 @@ public:
 
     GlobalPageGCManager() noexcept : empty_pages(nullptr) { }
 
-    PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t realsize) noexcept;
+    PageInfo* allocateFreshPage(uint16_t entrysize, uint16_t realsize) noexcept;
 
     bool pagetable_query(void* addr) const noexcept
     {
@@ -214,6 +222,11 @@ private:
 public:
     GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)() noexcept) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect), next(nullptr) { }
 
+    inline size_t getAllocSize() const noexcept
+    {
+        return this->allocsize;
+    }
+
     inline void* allocate(TypeInfoBase* type)
     {
         assert(type->type_size == this->allocsize);
@@ -250,5 +263,9 @@ public:
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
 
+    //Take a page (that may be in of the page sets -- or may not -- if it is a alloc or evac page) and move it to the appropriate page set
+    void processPage(PageInfo* p) noexcept;
+
+    //process all the pending gc pages, the current alloc page, and evac page -- reset for next round
     void processCollectorPages() noexcept;
 };

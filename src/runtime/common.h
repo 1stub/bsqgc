@@ -133,7 +133,7 @@ typedef struct MetaData
 static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #endif
 
-#define GC_GET_META_DATA_ADDR(O) ((MetaData*)((char*)O - sizeof(MetaData)))
+#define GC_GET_META_DATA_ADDR(O) ((MetaData*)((uint8_t*)O - sizeof(MetaData)))
 
 #define GC_IS_MARKED(O) (GC_GET_META_DATA_ADDR(O))->ismarked
 #define GC_IS_YOUNG(O) (GC_GET_META_DATA_ADDR(O))->isyoung
@@ -151,3 +151,5 @@ static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 
 #define GC_CLEAR_YOUNG_MARK(META) { (META)->isyoung = false; }
 #define GC_CLEAR_ROOT_MARK(META) { (META)->ismarked = false; (META)->isroot = false; }
+
+#define GC_SHOULD_FREE_LIST_ADD(META) (!(META)->isalloc)
