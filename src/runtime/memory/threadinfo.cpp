@@ -4,6 +4,8 @@ thread_local void* roots[BSQ_MAX_ROOTS];
 thread_local void* oldroots[BSQ_MAX_ROOTS];
 thread_local void* forward_table[BSQ_MAX_ROOTS];
 
+thread_local GCAllocator* g_gcallocs[BSQ_MAX_ALLOC_SLOTS];
+
 thread_local BSQMemoryTheadLocalInfo gtl_info;
 
 #define PTR_IN_RANGE(V) ((MIN_ALLOCATED_ADDRESS <= V) && (V <= MAX_ALLOCATED_ADDRESS))

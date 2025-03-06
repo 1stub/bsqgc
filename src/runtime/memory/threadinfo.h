@@ -1,17 +1,16 @@
 #pragma once 
 
-#include "xalloc.h"
-#include "arraylist.h"
+#include "allocator.h"
 
 #define InitBSQMemoryTheadLocalInfo { ALLOC_LOCK_ACQUIRE(); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, __builtin_frame_address(0)) ALLOC_LOCK_RELEASE(); }
 
-#define MARK_STACK_NODE_COLOR_GREY "GREY"
-#define MARK_STACK_NODE_COLOR_BLACK "BLACK"
+#define MARK_STACK_NODE_COLOR_GREY 0
+#define MARK_STACK_NODE_COLOR_BLACK 1
 
 struct MarkStackEntry
 {
     void* obj;
-    const char* color;
+    uintptr_t color;
 };
 
 struct RegisterContents
@@ -41,6 +40,8 @@ struct BSQMemoryTheadLocalInfo
 {
     size_t tl_id; //ID of the thread
 
+    GCAllocator** g_gcallocs;
+
     ////
     //Mark Phase information
     void** native_stack_base; //the base of the native stack
@@ -67,9 +68,24 @@ struct BSQMemoryTheadLocalInfo
 
     size_t max_decrement_count;
 
-    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), native_stack_base(nullptr), native_stack_count(0), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), pending_roots(), visit_stack(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
+    BSQMemoryTheadLocalInfo() noexcept : tl_id(0), g_gcallocs(nullptr), native_stack_base(nullptr), native_stack_count(0), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), pending_roots(), visit_stack(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
+
+    inline GCAllocator* getAllocatorForPageSize(PageInfo* page) noexcept {
+        return this->g_gcallocs[page->allocsize >> 3];
+    }
 
     void initialize(size_t tl_id, void** caller_rbp) noexcept;
+
+    template <size_t NUM>
+    void initializeGC(GCAllocator* allocs[NUM]) noexcept
+    {
+        xmem_zerofill(this->g_gcallocs, BSQ_MAX_ALLOC_SLOTS);
+
+        for(size_t i = 0; i < NUM; i++) {
+            GCAllocator* alloc = allocs[i];
+            this->g_gcallocs[alloc->getAllocSize() >> 3] = alloc;
+        }
+    }
 
     void loadNativeRootSet() noexcept;
     void unloadNativeRootSet() noexcept;

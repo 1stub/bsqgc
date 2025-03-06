@@ -2,12 +2,8 @@
 #include "allocator.h"
 #include "gc.h"
 
-#include <cstdarg>
-
 //TODO: remove dependency on cstdlib -- use our own quicksort
 #include <cstdlib>
-
-thread_local GCAllocator* g_gcallocs[BSQ_MAX_ALLOC_SLOTS];
 
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
@@ -21,10 +17,6 @@ thread_local GCAllocator* g_gcallocs[BSQ_MAX_ALLOC_SLOTS];
 int compare(const void* a, const void* b) 
 {
     return ((char*)a - (char*)b);
-}
-
-GCAllocator* getAllocatorForPageSize(PageInfo* page) noexcept {
-    return g_gcallocs[page->allocsize >> 3];
 }
 
 void reprocessPageInfo(PageInfo* page) noexcept
@@ -175,7 +167,7 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
         }
         else {
             //If we are not a root we want to evacuate
-            GCAllocator* gcalloc = getAllocatorForPageSize(PageInfo::extractPageFromPointer(obj));
+            GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(PageInfo::extractPageFromPointer(obj));
             GC_INVARIANT_CHECK(gcalloc != nullptr);
         
             void* newobj = gcalloc->allocateEvacuation(type_info);
@@ -284,21 +276,6 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
     }
 }
 
-void initializeGC(GCAllocator* allocs...) noexcept
-{
-    xmem_zerofill(g_gcallocs, BSQ_MAX_ALLOC_SLOTS);
-
-    va_list args;
-    va_start(args, allocs);
- 
-    while (allocs != nullptr) {
-        GCAllocator* alloc = va_arg(args, GCAllocator*);
-        g_gcallocs[alloc->getAllocSize() >> 3] = alloc;
-    }
-
-    va_end(args);
-}
-
 void collect() noexcept
 {   
     walkStack(gtl_info);
@@ -313,7 +290,7 @@ void collect() noexcept
     processDecrements(gtl_info);
 
     for(size_t i = 0; i < BSQ_MAX_ALLOC_SLOTS; i++) {
-        GCAllocator* alloc = g_gcallocs[i];
+        GCAllocator* alloc = gtl_info.g_gcallocs[i];
         alloc->processCollectorPages();
     }
 
