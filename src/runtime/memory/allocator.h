@@ -38,17 +38,17 @@
 class GlobalDataStorage
 {
 public:
-    void* native_global_storage;
-    void* native_global_storage_end;
+    void** native_global_storage;
+    void** native_global_storage_end;
 
     GlobalDataStorage() noexcept : native_global_storage(nullptr), native_global_storage_end(nullptr) { }
 
     static GlobalDataStorage g_global_data;
 
-    void initialize(size_t numbytes, void* data) noexcept
+    void initialize(size_t numbytes, void** data) noexcept
     {
         this->native_global_storage = data;
-        this->native_global_storage_end = (void*)((uint8_t*)data + numbytes);
+        this->native_global_storage_end = (void**)((uint8_t*)data + numbytes);
     }
 };
 

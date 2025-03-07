@@ -203,9 +203,10 @@ void walkStack(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //Process global data (TODO -- later have flag to disable this after it is fixed as immortal)
     if(GlobalDataStorage::g_global_data.native_global_storage != nullptr) {
-        void* curr = GlobalDataStorage::g_global_data.native_global_storage;
+        void** curr = GlobalDataStorage::g_global_data.native_global_storage;
         while(curr < GlobalDataStorage::g_global_data.native_global_storage_end) {
-            checkPotentialPtr(*(void**)curr, tinfo);
+            checkPotentialPtr(*curr, tinfo);
+            curr++;
         }
     }
 
