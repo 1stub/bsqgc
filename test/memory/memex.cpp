@@ -37,7 +37,7 @@ std::string printlist(ListNodeValue* ll) {
 
     std::string rr = "";
     while(cur != nullptr) {
-        std::string addr = std::format("{:x}", (uintptr_t)cur);
+        std::string addr = "xx"; //std::format("{:x}", (uintptr_t)cur);
         rr = rr + "[" + addr + ", " + std::to_string(cur->val) + "] -> ";
         cur = cur->next;
     }
@@ -52,14 +52,26 @@ int main(int argc, char** argv) {
     gtl_info.initializeGC<1>(allocs);
 
     ListNodeValue* l1 = makeList(2, 5); //stays live
-    makeList(1, 0); //dies
-
-//    auto p1 = printlist(l1);
+    makeList(3, 0); //dies
+    auto p1start = printlist(l1);
 
     collect();
+    ListNodeValue* l2 = makeList(3, 10); //stays live
+    auto p2start = printlist(l2);
+    collect();
 
-//    auto p2 = printlist(l1);
-    assert(*((int64_t*)l1 + 1) != 0);
+    makeList(3, 0); //dies
+    
+    auto p1end = printlist(l1);
+    assert(p1start == p1end);
+
+    auto p2end = printlist(l2);
+    assert(p2start == p2end);
+
+    l1 = nullptr;
+    l2 = nullptr;
+
+    collect();
 
     return 0;
 }

@@ -9,7 +9,7 @@
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
 // After we evacuate an object we need to update the original metadata
-#define RESET_METADATA_FOR_OBJECT(M) *M = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
+#define RESET_METADATA_FOR_OBJECT(M, FP) *M = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=(FP), .ref_count=0 }
 
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
@@ -173,9 +173,8 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
             xmem_copy(obj, newobj, type_info->slot_size);
             updatePointers((void**)newobj, tinfo);
 
+            RESET_METADATA_FOR_OBJECT(GC_GET_META_DATA_ADDR(obj), (uint32_t)tinfo.forward_table_index);
             tinfo.forward_table[tinfo.forward_table_index++] = newobj;
-
-            RESET_METADATA_FOR_OBJECT(GC_GET_META_DATA_ADDR(obj));
         }
     }
 
