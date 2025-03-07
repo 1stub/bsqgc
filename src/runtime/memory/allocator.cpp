@@ -10,7 +10,7 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     pp->data = ((uint8_t*)block + sizeof(PageInfo));
     pp->allocsize = allocsize;
     pp->realsize = realsize;
-    pp->approx_utilization = 0.0f;
+    pp->approx_utilization = 100.0f; //approx util has not been calculated
     pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / realsize;
     pp->freecount = pp->entrycount;
 
@@ -82,8 +82,33 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     //
     //TODO: we need to move the pages around here...
     //Here we will do the actual "approx_utilization" calculations for a given page
-    //and insert into the proper bst we have created
+    //and insert into the proper bst we have created. this effectively
+    //classifies our page on utilizationa nd removes it from GCAllocator to be
+    //stored in a bst
     //
+    
+    float old_approx_utilization = p->approx_utilization;
+
+    if(p->entrycount == p->freecount) {
+        //insert into global empty pages
+    } 
+    else if(old_approx_utilization > 1.0f) { //hasnt been calculated yet
+        p->approx_utilization = CALC_APPROX_UTILIZATION(p);
+
+        //Insert into appropriate bucket
+    } 
+    else if(old_approx_utilization >= 0.1f && old_approx_utilization <= 0.9f) {
+        p->approx_utilization = CALC_APPROX_UTILIZATION(p);
+
+        //remove old entry from bucket
+
+        //reinsert into appropriate location with new utilization
+    } 
+    else {
+        //full page so insert into filled pages
+        p->next = this->filled_pages;
+        this->filled_pages = p;
+    }
 }
 
 void GCAllocator::processCollectorPages() noexcept

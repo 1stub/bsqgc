@@ -135,6 +135,8 @@ public:
 
 #define AllocType(T, A, L) (T*)(A.allocate(L))
 
+#define CALC_APPROX_UTILIZATION(P) 1.0f - ((float)P->freecount / (float)P->entrycount)
+
 //
 //I wonder if there is anyway to not need to define this BST struct for walking buckets...
 //
