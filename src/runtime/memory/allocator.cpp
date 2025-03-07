@@ -1,6 +1,6 @@
 #include "allocator.h"
 
-GlobalDataStorage g_global_data;
+GlobalDataStorage GlobalDataStorage::g_global_data;
 
 PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept
 {
