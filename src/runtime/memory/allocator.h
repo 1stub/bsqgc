@@ -61,12 +61,12 @@ public:
     static inline size_t getIndexForObjectInPage(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
         
-        return (size_t)(page->data - (uint8_t*)p) / (size_t)page->realsize;
+        return (size_t)((uint8_t*)p - page->data) / (size_t)page->realsize;
     }
 
     static inline MetaData* getObjectMetadataAligned(void* p) noexcept {
         const PageInfo* page = extractPageFromPointer(p);
-        size_t idx = (size_t)(page->data - (uint8_t*)p) / (size_t)page->realsize;
+        size_t idx = (size_t)((uint8_t*)p - page->data) / (size_t)page->realsize;
 
 #ifdef ALLOC_DEBUG_CANARY
         return (MetaData*)(page->data + idx * page->realsize + ALLOC_DEBUG_CANARY_SIZE);
@@ -131,6 +131,8 @@ public:
 #define SETUP_ALLOC_INITIALIZE_FRESH_META(META, T) *(META) = { .type=(T), .isalloc=true, .isyoung=true, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 #define SETUP_ALLOC_INITIALIZE_CONVERT_OLD_META(META, T) *(META) = { .type=(T), .isalloc=true, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=MAX_FWD_INDEX, .ref_count=0 }
 
+#define AllocType(T, A, L) (T*)(A.allocate(L))
+
 class GCAllocator
 {
 private:
@@ -157,7 +159,6 @@ private:
     //completely empty pages go back to the global pool
 
     void (*collectfp)();
-    GCAllocator* next; //we have lists of allocator bins as a thread local variable (in addition to declaring them each individually)
 
     PageInfo* getFreshPageForAllocator() noexcept
     {
@@ -201,9 +202,9 @@ private:
         else {
             assert(false);
 
-            //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
-
             //rotate collection pages
+
+            //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
 
             //check if we need to collect and do so
         
@@ -220,7 +221,7 @@ private:
     }
 
 public:
-    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)()) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect), next(nullptr) { }
+    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)()) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect) { }
 
     inline size_t getAllocSize() const noexcept
     {

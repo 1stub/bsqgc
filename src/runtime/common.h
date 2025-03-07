@@ -82,14 +82,14 @@ extern mtx_t g_alloclock;
 #define ALLOC_LOCK_ACQUIRE() assert(mtx_lock(&g_alloclock) == thrd_success)
 #define ALLOC_LOCK_RELEASE() assert(mtx_unlock(&g_alloclock) == thrd_success)
 
-//A global mutex lock that all threads will use when doing shared GC ops (e.g. getting pages, root resolution, or when doing their inc/dec ref loops)
+//A global mutex lock that all threads will use when doing shared GC ops (e.g. getting pages or root resolution)
 extern mtx_t g_gcmemlock;
 
 #define GC_MEM_LOCK_INIT() assert(mtx_init(&g_gcmemlock, mtx_plain) == thrd_success)
 #define GC_MEM_LOCK_ACQUIRE() assert(mtx_lock(&g_gcmemlock) == thrd_success)
 #define GC_MEM_LOCK_RELEASE() assert(mtx_unlock(&g_gcmemlock) == thrd_success)
 
-//A global mutex lock that all threads will use when doing shared GC ops (e.g. getting pages, root resolution, or when doing their inc/dec ref loops)
+//A global mutex lock that all threads will use when doing shared GC ops (e.g. when doing their inc/dec ref loops)
 extern mtx_t g_gcrefctlock;
 
 #define GC_REFCT_LOCK_INIT() assert(mtx_init(&g_gcrefctlock, mtx_plain) == thrd_success)
@@ -146,6 +146,8 @@ static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #define GC_SHOULD_VISIT(META) ((META)->isyoung && !(META)->ismarked)
 
 #define GC_SHOULD_PROCESS_AS_ROOT(META) ((META)->isalloc && !(META)->isroot)
+#define GC_SHOULD_PROCESS_AS_YOUNG(META) ((META)->isyoung)
+
 #define GC_MARK_AS_ROOT(META) { (META)->isroot = true; }
 #define GC_MARK_AS_MARKED(META) { (META)->ismarked = true; }
 
