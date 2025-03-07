@@ -50,6 +50,8 @@ public:
     uint16_t entrycount; //max number of objects that can be allocated from this Page
     uint16_t freecount;
 
+    float approx_utilization;
+
     static PageInfo* initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept;
 
     void rebuild() noexcept;
@@ -133,6 +135,33 @@ public:
 
 #define AllocType(T, A, L) (T*)(A.allocate(L))
 
+//
+//I wonder if there is anyway to not need to define this BST struct for walking buckets...
+//
+#define NUM_LOW_UTIL_BUCKETS 12
+#define NUM_HIGH_UTIL_BUCKETS 6
+
+#define WALK_BUCKETS(N, L, P)               \
+do {                                        \
+    for(int i = 0; i < N; i++) {            \
+        if(L[i] != nullptr) {               \
+            BST* root = L[i];               \
+            while(root->left != nullptr) {  \
+                root = root->left;          \
+            }                               \
+            P = root->page;                 \
+            root = nullptr;                 \
+            break;                          \
+        }                                   \
+    }                                       \
+} while(0)
+
+typedef struct BST{
+    PageInfo* page;
+    BST* left;
+    BST* right;
+} BST;
+
 class GCAllocator
 {
 private:
@@ -149,13 +178,14 @@ private:
     PageInfo* pendinggc_pages; // Pages that are pending GC
     
     //
-    //TODO: we should make these heaps (or binary trees for min/max/average lookups) we should experiment with different strategies
+    //IN PROGRESS: we should make these heaps (or binary trees for min/max/average lookups) we should experiment with different strategies
     //
 
-    PageInfo* low_utilization_pages; // Pages with 1-60% utilization (does not hold fully empty)
-    PageInfo* high_utilization_pages; // Pages with 61-90% utilization 
+    // Each "bucket" is a binary tree storing 5% of variance in approx_utiliation
+    BST* low_utilization_buckets[NUM_LOW_UTIL_BUCKETS]; // Pages with 1-60% utilization (does not hold fully empty)
+    BST* high_utilization_buckets[NUM_HIGH_UTIL_BUCKETS]; // Pages with 61-90% utilization 
 
-    PageInfo* filled_pages; // Pages with over 90% utilization
+    PageInfo* filled_pages; // Pages with over 90% utilization (no need for buckets here)
     //completely empty pages go back to the global pool
 
     void (*collectfp)();
@@ -164,11 +194,9 @@ private:
     {
         PageInfo* page = nullptr;
 
-        if(this->low_utilization_pages != nullptr) {
-            page = this->low_utilization_pages;
-            this->low_utilization_pages = this->low_utilization_pages->next;
-        }
-        else {
+        //find lowest util bucket with stuff, get lowest util page from bucket
+        WALK_BUCKETS(NUM_LOW_UTIL_BUCKETS, low_utilization_buckets, page);
+        if(page == nullptr) {
             page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
         }
 
@@ -179,15 +207,12 @@ private:
     {
         PageInfo* page = nullptr;
 
-        if(this->high_utilization_pages != nullptr) {
-            page = this->high_utilization_pages;
-            this->high_utilization_pages = this->high_utilization_pages->next;
+        //Try to grab high util, if fails go to low, fall thoguh making fresh page
+        WALK_BUCKETS(NUM_HIGH_UTIL_BUCKETS, high_utilization_buckets, page);
+        if(page == nullptr) {
+            WALK_BUCKETS(NUM_LOW_UTIL_BUCKETS, low_utilization_buckets, page);
         }
-        else if(this->low_utilization_pages != nullptr) {
-            page = this->low_utilization_pages;
-            this->low_utilization_pages = this->low_utilization_pages->next;
-        }
-        else {
+        if(page == nullptr) {
             page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
         }
 
@@ -221,7 +246,7 @@ private:
     }
 
 public:
-    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)()) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_pages(nullptr), high_utilization_pages(nullptr), filled_pages(nullptr), collectfp(collect) { }
+    GCAllocator(uint16_t allocsize, uint16_t realsize, void (*collect)()) noexcept : freelist(nullptr), evacfreelist(nullptr), alloc_page(nullptr), evac_page(nullptr), allocsize(allocsize), realsize(realsize), pendinggc_pages(nullptr), low_utilization_buckets{}, high_utilization_buckets{}, filled_pages(nullptr), collectfp(collect) { }
 
     inline size_t getAllocSize() const noexcept
     {
