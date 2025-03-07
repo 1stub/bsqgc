@@ -45,13 +45,53 @@ std::string printlist(ListNodeValue* ll) {
     return rr + "null";
 }
 
+// int main(int argc, char** argv) {
+//     INIT_LOCKS();
+//     GlobalDataStorage::g_global_data.initialize(0, nullptr);
+//
+//     InitBSQMemoryTheadLocalInfo();
+//
+//     GCAllocator* allocs[1] = { &alloc2 };
+//     gtl_info.initializeGC<1>(allocs);
+//
+//     ListNodeValue* l1 = makeList(2, 5); //stays live
+//     makeList(3, 0); //dies
+//     auto p1start = printlist(l1);
+//
+//     collect();
+//     ListNodeValue* l2 = makeList(3, 10); //stays live
+//     auto p2start = printlist(l2);
+//     collect();
+//
+//     makeList(3, 0); //dies
+//    
+//     auto p1end = printlist(l1);
+//     assert(p1start == p1end);
+//
+//     auto p2end = printlist(l2);
+//     assert(p2start == p2end);
+//
+//     l1 = nullptr;
+//     l2 = nullptr;
+//
+//     collect();
+//
+//     return 0;
+// }
+
+void* garray[3] = {nullptr, nullptr, nullptr};
+
 int main(int argc, char** argv) {
+    INIT_LOCKS();
+    GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
+
     InitBSQMemoryTheadLocalInfo();
 
     GCAllocator* allocs[1] = { &alloc2 };
     gtl_info.initializeGC<1>(allocs);
 
     ListNodeValue* l1 = makeList(2, 5); //stays live
+    garray[0] = l1;
     makeList(3, 0); //dies
     auto p1start = printlist(l1);
 
@@ -61,17 +101,17 @@ int main(int argc, char** argv) {
     collect();
 
     makeList(3, 0); //dies
-    
+   
     auto p1end = printlist(l1);
     assert(p1start == p1end);
 
     auto p2end = printlist(l2);
     assert(p2start == p2end);
 
-    l1 = nullptr;
-    l2 = nullptr;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     collect();
 
     return 0;
 }
+

@@ -96,6 +96,8 @@ extern mtx_t g_gcrefctlock;
 #define GC_REFCT_LOCK_ACQUIRE() assert(mtx_lock(&g_gcrefctlock) == thrd_success)
 #define GC_REFCT_LOCK_RELEASE() assert(mtx_unlock(&g_gcrefctlock) == thrd_success)
 
+#define INIT_LOCKS() { ALLOC_LOCK_INIT(); GC_MEM_LOCK_INIT(); GC_REFCT_LOCK_INIT(); }
+
 // Track information that needs to be globally accessible for threads
 class GlobalThreadAllocInfo
 {
