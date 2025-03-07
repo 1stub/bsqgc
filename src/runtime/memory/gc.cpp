@@ -201,6 +201,20 @@ void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void walkStack(BSQMemoryTheadLocalInfo& tinfo) noexcept 
 {
+    //Process global data (TODO -- later have flag to disable this after it is fixed as immortal)
+    if(GlobalDataStorage::g_global_data.native_global_storage != nullptr) {
+        void* curr = GlobalDataStorage::g_global_data.native_global_storage;
+        while(curr < GlobalDataStorage::g_global_data.native_global_storage_end) {
+            checkPotentialPtr(*(void**)curr, tinfo);
+        }
+    }
+
+#ifdef BSQ_GC_CHECK_ENABLED
+    if(tinfo.disable_stack_refs_for_tests) {
+        return;
+    }
+#endif
+    
     tinfo.loadNativeRootSet();
 
     for(size_t i = 0; i < tinfo.native_stack_count; i++) {

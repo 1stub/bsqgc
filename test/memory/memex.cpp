@@ -46,6 +46,9 @@ std::string printlist(ListNodeValue* ll) {
 }
 
 int main(int argc, char** argv) {
+    INIT_LOCKS();
+    GlobalDataStorage::g_global_data.initialize(0, nullptr);
+
     InitBSQMemoryTheadLocalInfo();
 
     GCAllocator* allocs[1] = { &alloc2 };

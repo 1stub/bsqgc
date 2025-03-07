@@ -30,6 +30,28 @@
 ////////////////////////////////
 //Memory allocator
 
+//global storage for constant data (and testing support)
+//  -- Only a single thread may run while initializing the global roots as they are visible to all threads
+//  -- After initialization a GC must be run to promote all values to old ref-count space
+//  -- TODO: when we add multi-threading we need to use the special root-ref tag for these roots as well -- then we can skip re-scanning these after the promotion collection
+
+class GlobalDataStorage
+{
+public:
+    void* native_global_storage;
+    void* native_global_storage_end;
+
+    GlobalDataStorage() noexcept : native_global_storage(nullptr), native_global_storage_end(nullptr) { }
+
+    static GlobalDataStorage g_global_data;
+
+    void initialize(size_t numbytes, void* data) noexcept
+    {
+        this->native_global_storage = data;
+        this->native_global_storage_end = (void*)((uint8_t*)data + numbytes);
+    }
+};
+
 struct FreeListEntry
 {
    FreeListEntry* next;

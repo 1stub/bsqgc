@@ -68,6 +68,10 @@ struct BSQMemoryTheadLocalInfo
 
     size_t max_decrement_count;
 
+#ifdef BSQ_GC_CHECK_ENABLED
+    bool disable_stack_refs_for_tests = false;
+#endif
+
     BSQMemoryTheadLocalInfo() noexcept : tl_id(0), g_gcallocs(nullptr), native_stack_base(nullptr), native_stack_count(0), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), pending_roots(), visit_stack(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
 
     inline GCAllocator* getAllocatorForPageSize(PageInfo* page) noexcept {

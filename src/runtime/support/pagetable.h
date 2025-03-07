@@ -55,6 +55,10 @@ public:
     }
 
     bool pagetable_query(void* addr) const noexcept {
+        if(this->pagetable_root == nullptr) {
+            return false;
+        }
+        
         uintptr_t address = (uintptr_t)addr;
         uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK;  // Bits 47-36
         uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK;  // Bits 35-24
