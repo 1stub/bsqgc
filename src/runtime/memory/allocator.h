@@ -107,6 +107,7 @@ public:
             bucket[num_bucket] = this;
             this->left = nullptr;
             this->right = nullptr;
+
             return;
         }
     

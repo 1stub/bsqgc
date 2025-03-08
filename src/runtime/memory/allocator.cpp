@@ -87,6 +87,13 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     //bst to find its old location, delete that entry,
     //reinsert into proper bst with new utilization
     //
+
+    float old_util = p->approx_utilization;
+
+    if(old_util > 1.0f) {
+        p->insertPageInBucket(this->low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
+        p->approx_utilization = CALC_APPROX_UTILIZATION(p);
+    }
 }
 
 void GCAllocator::processCollectorPages() noexcept
