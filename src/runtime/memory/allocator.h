@@ -41,6 +41,8 @@ class PageInfo
 public:
     FreeListEntry* freelist; //allocate from here until nullptr
     PageInfo* next;
+    PageInfo* left; //left pointer in bst
+    PageInfo* right; //right pointer in bst
 
     uint8_t* data; //start of the data block
 
@@ -97,6 +99,69 @@ public:
         uint64_t* post = (uint64_t*)((uint8_t*)mem + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + type->type_size);
         *post = ALLOC_DEBUG_CANARY_VALUE;
     }
+
+    inline void insertPageInBucket(PageInfo** bucket, int num_bucket) 
+    {
+        PageInfo* root = bucket[num_bucket];                                           
+        if(root == nullptr) {
+            bucket[num_bucket] = this;
+            this->left = nullptr;
+            this->right = nullptr;
+            return;
+        }
+    
+        PageInfo* current = root;
+        while (true) {
+            if (this->approx_utilization < current->approx_utilization) {
+                if (current->left == nullptr) {
+                    //Insert as the left child
+                    current->left = this;
+                    this->left = nullptr;
+                    this->right = nullptr;
+                    break;
+                } else {
+                    current = current->left;
+                }
+            } else {
+                if (current->right == nullptr) {
+                    //Insert as the right child
+                    current->right = this;
+                    this->left = nullptr;
+                    this->right = nullptr;
+                    break;
+                } else {
+                    current = current->right;
+                }
+            }
+        }
+    }
+
+    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* new_page, int num_bucket, float old_util) 
+    {
+        PageInfo* cur = bucket[num_bucket];
+        if(cur == nullptr) { //should never occur
+            return;
+        }
+
+        while(true) {
+            if(cur == new_page) {
+                //we have found the page we are looking for
+                if(cur->left == nullptr && cur->right == nullptr) {
+                    cur = nullptr;
+                    return;
+                }
+
+                //other stuff idk
+
+            }
+            if(old_util < cur->left->approx_utilization) {
+                cur = cur->left;
+            }
+            if(old_util > cur->left->approx_utilization) {
+                cur = cur->right;
+            }
+        }
+    }
 };
 
 class GlobalPageGCManager
@@ -137,32 +202,8 @@ public:
 
 #define CALC_APPROX_UTILIZATION(P) 1.0f - ((float)P->freecount / (float)P->entrycount)
 
-//
-//I wonder if there is anyway to not need to define this BST struct for walking buckets...
-//
 #define NUM_LOW_UTIL_BUCKETS 12
 #define NUM_HIGH_UTIL_BUCKETS 6
-
-#define WALK_BUCKETS(N, L, P)               \
-do {                                        \
-    for(int i = 0; i < N; i++) {            \
-        if(L[i] != nullptr) {               \
-            BST* root = L[i];               \
-            while(root->left != nullptr) {  \
-                root = root->left;          \
-            }                               \
-            P = root->page;                 \
-            root = nullptr;                 \
-            break;                          \
-        }                                   \
-    }                                       \
-} while(0)
-
-typedef struct BST{
-    PageInfo* page;
-    BST* left;
-    BST* right;
-} BST;
 
 class GCAllocator
 {
@@ -184,8 +225,8 @@ private:
     //
 
     // Each "bucket" is a binary tree storing 5% of variance in approx_utiliation
-    BST* low_utilization_buckets[NUM_LOW_UTIL_BUCKETS]; // Pages with 1-60% utilization (does not hold fully empty)
-    BST* high_utilization_buckets[NUM_HIGH_UTIL_BUCKETS]; // Pages with 61-90% utilization 
+    PageInfo* low_utilization_buckets[NUM_LOW_UTIL_BUCKETS]; // Pages with 1-60% utilization (does not hold fully empty)
+    PageInfo* high_utilization_buckets[NUM_HIGH_UTIL_BUCKETS]; // Pages with 61-90% utilization 
 
     PageInfo* filled_pages; // Pages with over 90% utilization (no need for buckets here)
     //completely empty pages go back to the global pool
@@ -194,10 +235,8 @@ private:
 
     PageInfo* getFreshPageForAllocator() noexcept
     {
-        PageInfo* page = nullptr;
-
         //find lowest util bucket with stuff, get lowest util page from bucket
-        WALK_BUCKETS(NUM_LOW_UTIL_BUCKETS, low_utilization_buckets, page);
+        PageInfo* page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
         if(page == nullptr) {
             page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
         }
@@ -207,12 +246,10 @@ private:
 
     PageInfo* getFreshPageForEvacuation() noexcept
     {
-        PageInfo* page = nullptr;
-
         //Try to grab high util, if fails go to low, fall thoguh making fresh page
-        WALK_BUCKETS(NUM_HIGH_UTIL_BUCKETS, high_utilization_buckets, page);
+        PageInfo* page = findLowestUtilPage(high_utilization_buckets, NUM_HIGH_UTIL_BUCKETS);
         if(page == nullptr) {
-            WALK_BUCKETS(NUM_LOW_UTIL_BUCKETS, low_utilization_buckets, page);
+            page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
         }
         if(page == nullptr) {
             page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
@@ -245,6 +282,22 @@ private:
     {
         this->evac_page = this->getFreshPageForEvacuation();
         this->evacfreelist = this->evac_page->freelist;
+    }
+
+    PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
+    {
+        PageInfo* p = nullptr;
+        for(int i = 0; i < n; i++) {
+            PageInfo* curr = buckets[i];
+            if(curr != nullptr) {
+                while(curr != nullptr) {
+                    curr = curr->left;
+                }
+                p = curr;
+                break;
+            }
+        }
+        return p;
     }
 
 public:
