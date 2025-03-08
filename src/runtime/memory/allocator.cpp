@@ -88,12 +88,24 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     //reinsert into proper bst with new utilization
     //
 
+    #if 0
     float old_util = p->approx_utilization;
 
     if(old_util > 1.0f) {
-        p->insertPageInBucket(this->low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
         p->approx_utilization = CALC_APPROX_UTILIZATION(p);
+        float util = p->approx_utilization;
+
+        float tmp_util = 0.0f;
+        if(util >= 0.01f && util <= 0.60f) {
+            for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
+                if(util > tmp_util && util <= (tmp_util += 0.05f)) {
+                    p->insertPageInBucket(this->low_utilization_buckets, i);
+                    break;
+                }
+            }
+        }
     }
+    #endif
 }
 
 void GCAllocator::processCollectorPages() noexcept

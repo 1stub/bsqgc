@@ -2,6 +2,7 @@
 
 #include <string>
 #include <format>
+#include <iostream>
 
 TypeInfoBase ListNodeType = {
     .type_id = 1,
@@ -63,6 +64,10 @@ int main(int argc, char** argv) {
     makeList(3, 0); //dies
     
     auto p1end = printlist(l1);
+
+    std::cout << p1start << std::endl;
+    std::cout << p1end << std::endl;
+
     assert(p1start == p1end);
 
     auto p2end = printlist(l2);

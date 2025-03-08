@@ -291,8 +291,13 @@ private:
         for(int i = 0; i < n; i++) {
             PageInfo* curr = buckets[i];
             if(curr != nullptr) {
-                while(curr != nullptr) {
-                    curr = curr->left;
+                while(curr->left != nullptr) {
+                    if(curr->right != nullptr) {
+                        curr = curr->right;
+                    } 
+                    else {
+                        curr = curr->left;
+                    }
                 }
                 p = curr;
                 break;
@@ -319,6 +324,9 @@ public:
 
         void* entry = this->freelist;
         this->freelist = this->freelist->next;
+            
+        //make sure to update the pages freelist aswell
+        this->alloc_page->freelist = this->alloc_page->freelist->next;
         this->alloc_page->freecount--;
 
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
@@ -337,6 +345,9 @@ public:
 
         void* entry = this->evacfreelist;
         this->evacfreelist = this->evacfreelist->next;
+
+        //make sure to update the pages freelist aswell
+        this->evac_page->freelist = this->evac_page->freelist->next;
         this->evac_page->freecount--;
 
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
