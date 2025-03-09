@@ -79,88 +79,66 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
     return pp;
 }
 
+#define IS_LOW_UTIL(U) (U >= 0.01f && U < 0.60f)
+#define IS_HIGH_UTIL(U) (U > 0.60f && U <= 0.90f)
+#define IS_FULL(U) (U > 0.90f)
+
+//Find proper bucket based on increments of 0.05f
+#define GET_BUCKET_INDEX(U, N, I) \
+do { \
+    float tmp_util = 0.0f; \
+    for (int i = 0; i < N; i++) { \
+        float new_tmp_util = tmp_util + 0.05f; \
+        if (U > tmp_util && U <= new_tmp_util) { \
+            I = i; \
+            break; \
+        } \
+        tmp_util = new_tmp_util; \
+    } \
+} while (0)
+
 void GCAllocator::processPage(PageInfo* p) noexcept
 {
-    //
-    //had to nuke all prior logic... got nasty
-    //we need to grab old utilization and index into
-    //bst to find its old location, delete that entry,
-    //reinsert into proper bst with new utilization
-    //
-
     float old_util = p->approx_utilization;
     float n_util = CALC_APPROX_UTILIZATION(p);
-    float tmp_util = 0.0f;
+    int bucket_index = 0;
 
+    //Try to delete old_util's page
+    if(IS_LOW_UTIL(old_util)) {
+        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+        this->deletePageFromBucket(this->low_utilization_buckets, p, bucket_index, old_util);
+    }
+    else if(IS_HIGH_UTIL(old_util)) {
+        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+        this->deletePageFromBucket(this->high_utilization_buckets, p, bucket_index, old_util);
+    }
+    else if(IS_FULL(old_util)) { //filled page
+        //Maybe trigger a collection? filled pages isnt bst
+    }
+
+    bucket_index = 0;
+
+    //Now we see if this page hasnt been inserted before, insert. Otherwise insert new util in right bucket
     if(old_util > 1.0f) {
-        if(n_util >= 0.01f && n_util <= 0.60f) {
-            for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
-                if(n_util > tmp_util && n_util <= (tmp_util += 0.05f)) {
-                    p->insertPageInBucket(this->low_utilization_buckets, n_util, i);
-                    break;
-                }
-            }
+        if(IS_LOW_UTIL(n_util)) {
+            GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+            this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);
+        }
+        else if(IS_HIGH_UTIL(n_util)) {
+            GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+            this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
         }
     }
-    else if (n_util >= 0.01f && n_util <= 0.60f) {
-        //find pages old location in bst and delete
-        if(old_util >= 0.01f && old_util <= 0.60f) {
-            for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
-                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
-                    p->deletePageFromBucket(this->low_utilization_buckets, p, i, old_util);
-                    break;
-                }
-            }
-        }
-        else {
-            for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++){
-                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
-                    p->deletePageFromBucket(this->high_utilization_buckets, p, i, old_util);
-                    break;
-                }
-            }
-        }
-
-        //insert new page
-        tmp_util = 0.0f;
-        for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
-            if(n_util > tmp_util && n_util <= (tmp_util += 0.05f)) {
-                p->insertPageInBucket(this->low_utilization_buckets, n_util, i);
-                break;
-            }
-        }
+    else if(IS_LOW_UTIL(n_util)) {
+        GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+        this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);    
     }
-    else if(n_util > 0.60f && n_util <= 0.90f) {
-        //find pages old location in bst and delete
-        if(old_util >= 0.01f && old_util <= 0.60f) {
-            for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
-                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
-                    p->deletePageFromBucket(this->low_utilization_buckets, p, i, old_util);
-                    break;
-                }
-            }
-        }
-        else {
-            for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++){
-                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
-                    p->deletePageFromBucket(this->high_utilization_buckets, p, i, old_util);
-                    break;
-                }
-            }
-        }
-
-        //insert new page
-        tmp_util = 0.0f;
-        for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++){
-            if(n_util > tmp_util && n_util <= (tmp_util += 0.05f)) {
-                p->insertPageInBucket(this->high_utilization_buckets, n_util, i);
-                break;
-            }
-        }
+    else if(IS_HIGH_UTIL(n_util)) {
+        GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+        this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
     }
-    else {
-        p->next = this->filled_pages;
-        this->filled_pages = p;
+    else if(IS_FULL(n_util)) { //filled page
+        //Maybe trigger a collection? filled pages isnt bst
     }
 
     p->approx_utilization = n_util;

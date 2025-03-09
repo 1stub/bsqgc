@@ -99,82 +99,6 @@ public:
         uint64_t* post = (uint64_t*)((uint8_t*)mem + ALLOC_DEBUG_CANARY_SIZE + sizeof(MetaData) + type->type_size);
         *post = ALLOC_DEBUG_CANARY_VALUE;
     }
-
-    //if page infos util is same (roughly) we can just make a linked list using pageinfos next pointer
-    //of pages with almost same utilization
-    inline void insertPageInBucket(PageInfo** bucket, float n_util, int num_bucket) 
-    {
-        PageInfo* root = bucket[num_bucket];                                           
-        if(root == nullptr) {
-            bucket[num_bucket] = this;
-            this->left = nullptr;
-            this->right = nullptr;
-
-            return ;
-        }
-    
-        PageInfo* current = root;
-        while (true) {
-            if (n_util < current->approx_utilization) {
-                if (current->left == nullptr) {
-                    //Insert as the left child
-                    current->left = this;
-                    this->left = nullptr;
-                    this->right = nullptr;
-                    break;
-                } else {
-                    current = current->left;
-                }
-            } else {
-                if (current->right == nullptr) {
-                    //Insert as the right child
-                    current->right = this;
-                    this->left = nullptr;
-                    this->right = nullptr;
-                    break;
-                } else {
-                    current = current->right;
-                }
-            }
-        }
-    }
-
-    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* new_page, int num_bucket, float old_util) 
-    {
-        PageInfo* root = bucket[num_bucket];
-        if(root == nullptr) { //shouldnt happen
-            return;
-        }
-
-        PageInfo* cur = root;
-        PageInfo* parent = nullptr;
-
-        //First find the node to delete and its parent
-        while(cur != nullptr && cur != new_page) {
-            if(cur->left != nullptr && old_util < cur->approx_utilization) {
-                parent = cur;
-                cur = cur->left;
-            } 
-            else if(cur->right != nullptr && old_util > cur->approx_utilization){
-                parent = cur;
-                cur = cur->right;
-            }
-        }
-        assert(cur != nullptr);
-
-        //Leaf case
-        if(cur->left == nullptr && cur->right == nullptr) {
-            if(parent == nullptr) {
-                bucket[num_bucket] = nullptr;
-            }
-            else if(parent->left == cur) {
-                parent->left = nullptr;
-            }
-            else {
-                parent->right = nullptr;
-            }
-        }
-    }
 };
 
 class GlobalPageGCManager
@@ -297,21 +221,109 @@ private:
         this->evacfreelist = this->evac_page->freelist;
     }
 
+    //if page infos util is same (roughly) we can just make a linked list using pageinfos next pointer
+    //of pages with almost same utilization
+    inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int num_bucket) 
+    {
+        PageInfo* root = bucket[num_bucket];                                           
+        if(root == nullptr) {
+            bucket[num_bucket] = new_page;
+            new_page->left = nullptr;
+            new_page->right = nullptr;
+
+            return ;
+        }
+    
+        PageInfo* current = root;
+        while (true) {
+            if (n_util < current->approx_utilization) {
+                if (current->left == nullptr) {
+                    //Insert as the left child
+                    current->left = new_page;
+                    new_page->left = nullptr;
+                    new_page->right = nullptr;
+                    break;
+                } else {
+                    current = current->left;
+                }
+            } else {
+                if (current->right == nullptr) {
+                    //Insert as the right child
+                    current->right = new_page;
+                    new_page->left = nullptr;
+                    new_page->right = nullptr;
+                    break;
+                } else {
+                    current = current->right;
+                }
+            }
+        }
+    }
+
+    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* new_page, int num_bucket, float old_util) 
+    {
+        PageInfo* root = bucket[num_bucket];
+        if(root == nullptr) { //This means our page was already grabbed for alloc/evac
+            return;
+        }
+
+        PageInfo* cur = root;
+        PageInfo* parent = nullptr;
+
+        //First find the node to delete and its parent
+        while(cur != nullptr && cur != new_page) {
+            if(cur->left != nullptr && old_util < cur->approx_utilization) {
+                parent = cur;
+                cur = cur->left;
+            } 
+            else if(cur->right != nullptr && old_util > cur->approx_utilization){
+                parent = cur;
+                cur = cur->right;
+            }
+        }
+        assert(cur != nullptr);
+
+        //Leaf case
+        if(cur->left == nullptr && cur->right == nullptr) {
+            if(parent == nullptr) {
+                bucket[num_bucket] = nullptr;
+            }
+            else if(parent->left == cur) {
+                parent->left = nullptr;
+            }
+            else {
+                parent->right = nullptr;
+            }
+        }
+
+        //need to handle other cases
+    }
+
     PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
     {
+        //it is crucial we remove the page we find here
         PageInfo* p = nullptr;
+        PageInfo* parent = nullptr;
         for(int i = 0; i < n; i++) {
-            PageInfo* curr = buckets[i];
-            if(curr != nullptr) {
-                while(curr->left != nullptr) {
-                    if(curr->right != nullptr) {
-                        curr = curr->right;
-                    } 
-                    else {
-                        curr = curr->left;
-                    }
-                }
-                p = curr;
+            PageInfo* cur = buckets[i];
+            if(cur == nullptr) {
+                continue;
+            }
+            while(cur->left != nullptr) {
+                parent = cur;
+                cur = cur->left;
+            }
+
+            p = cur;
+
+            //reset utilization so we dont try deleting a page that isnt in bst
+            p->approx_utilization = 100.0f;
+            if(parent != nullptr) {
+                parent->left = nullptr;
+                break;
+            }
+            else {
+                buckets[i] = nullptr;
                 break;
             }
         }
@@ -336,9 +348,8 @@ public:
 
         void* entry = this->freelist;
         this->freelist = this->freelist->next;
-            
-        //make sure to update the pages freelist aswell
         this->alloc_page->freelist = this->alloc_page->freelist->next;
+            
         this->alloc_page->freecount--;
 
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
@@ -357,9 +368,8 @@ public:
 
         void* entry = this->evacfreelist;
         this->evacfreelist = this->evacfreelist->next;
-
-        //make sure to update the pages freelist aswell
         this->evac_page->freelist = this->evac_page->freelist->next;
+
         this->evac_page->freecount--;
 
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
