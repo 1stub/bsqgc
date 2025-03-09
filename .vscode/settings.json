@@ -6,5 +6,6 @@
         "cmath": "cpp",
         "limits": "cpp",
         "new": "cpp"
-    }
+    },
+    "workbench.productIconTheme": "undoDebugger"
 }

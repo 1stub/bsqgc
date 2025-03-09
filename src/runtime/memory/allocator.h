@@ -100,7 +100,9 @@ public:
         *post = ALLOC_DEBUG_CANARY_VALUE;
     }
 
-    inline void insertPageInBucket(PageInfo** bucket, int num_bucket) 
+    //if page infos util is same (roughly) we can just make a linked list using pageinfos next pointer
+    //of pages with almost same utilization
+    inline void insertPageInBucket(PageInfo** bucket, float n_util, int num_bucket) 
     {
         PageInfo* root = bucket[num_bucket];                                           
         if(root == nullptr) {
@@ -108,12 +110,12 @@ public:
             this->left = nullptr;
             this->right = nullptr;
 
-            return;
+            return ;
         }
     
         PageInfo* current = root;
         while (true) {
-            if (this->approx_utilization < current->approx_utilization) {
+            if (n_util < current->approx_utilization) {
                 if (current->left == nullptr) {
                     //Insert as the left child
                     current->left = this;
@@ -139,27 +141,37 @@ public:
 
     inline void deletePageFromBucket(PageInfo** bucket, PageInfo* new_page, int num_bucket, float old_util) 
     {
-        PageInfo* cur = bucket[num_bucket];
-        if(cur == nullptr) { //should never occur
+        PageInfo* root = bucket[num_bucket];
+        if(root == nullptr) { //shouldnt happen
             return;
         }
 
-        while(true) {
-            if(cur == new_page) {
-                //we have found the page we are looking for
-                if(cur->left == nullptr && cur->right == nullptr) {
-                    cur = nullptr;
-                    return;
-                }
+        PageInfo* cur = root;
+        PageInfo* parent = nullptr;
 
-                //other stuff idk
-
-            }
-            if(old_util < cur->left->approx_utilization) {
+        //First find the node to delete and its parent
+        while(cur != nullptr && cur != new_page) {
+            if(cur->left != nullptr && old_util < cur->approx_utilization) {
+                parent = cur;
                 cur = cur->left;
-            }
-            if(old_util > cur->left->approx_utilization) {
+            } 
+            else if(cur->right != nullptr && old_util > cur->approx_utilization){
+                parent = cur;
                 cur = cur->right;
+            }
+        }
+        assert(cur != nullptr);
+
+        //Leaf case
+        if(cur->left == nullptr && cur->right == nullptr) {
+            if(parent == nullptr) {
+                bucket[num_bucket] = nullptr;
+            }
+            else if(parent->left == cur) {
+                parent->left = nullptr;
+            }
+            else {
+                parent->right = nullptr;
             }
         }
     }

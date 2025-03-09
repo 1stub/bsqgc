@@ -88,24 +88,82 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     //reinsert into proper bst with new utilization
     //
 
-    #if 0
     float old_util = p->approx_utilization;
+    float n_util = CALC_APPROX_UTILIZATION(p);
+    float tmp_util = 0.0f;
 
     if(old_util > 1.0f) {
-        p->approx_utilization = CALC_APPROX_UTILIZATION(p);
-        float util = p->approx_utilization;
-
-        float tmp_util = 0.0f;
-        if(util >= 0.01f && util <= 0.60f) {
+        if(n_util >= 0.01f && n_util <= 0.60f) {
             for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
-                if(util > tmp_util && util <= (tmp_util += 0.05f)) {
-                    p->insertPageInBucket(this->low_utilization_buckets, i);
+                if(n_util > tmp_util && n_util <= (tmp_util += 0.05f)) {
+                    p->insertPageInBucket(this->low_utilization_buckets, n_util, i);
                     break;
                 }
             }
         }
     }
-    #endif
+    else if (n_util >= 0.01f && n_util <= 0.60f) {
+        //find pages old location in bst and delete
+        if(old_util >= 0.01f && old_util <= 0.60f) {
+            for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
+                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
+                    p->deletePageFromBucket(this->low_utilization_buckets, p, i, old_util);
+                    break;
+                }
+            }
+        }
+        else {
+            for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++){
+                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
+                    p->deletePageFromBucket(this->high_utilization_buckets, p, i, old_util);
+                    break;
+                }
+            }
+        }
+
+        //insert new page
+        tmp_util = 0.0f;
+        for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
+            if(n_util > tmp_util && n_util <= (tmp_util += 0.05f)) {
+                p->insertPageInBucket(this->low_utilization_buckets, n_util, i);
+                break;
+            }
+        }
+    }
+    else if(n_util > 0.60f && n_util <= 0.90f) {
+        //find pages old location in bst and delete
+        if(old_util >= 0.01f && old_util <= 0.60f) {
+            for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++){
+                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
+                    p->deletePageFromBucket(this->low_utilization_buckets, p, i, old_util);
+                    break;
+                }
+            }
+        }
+        else {
+            for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++){
+                if(old_util > tmp_util && old_util <= (tmp_util += 0.05f)) {
+                    p->deletePageFromBucket(this->high_utilization_buckets, p, i, old_util);
+                    break;
+                }
+            }
+        }
+
+        //insert new page
+        tmp_util = 0.0f;
+        for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++){
+            if(n_util > tmp_util && n_util <= (tmp_util += 0.05f)) {
+                p->insertPageInBucket(this->high_utilization_buckets, n_util, i);
+                break;
+            }
+        }
+    }
+    else {
+        p->next = this->filled_pages;
+        this->filled_pages = p;
+    }
+
+    p->approx_utilization = n_util;
 }
 
 void GCAllocator::processCollectorPages() noexcept
