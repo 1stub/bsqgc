@@ -99,37 +99,12 @@ do { \
 
 void GCAllocator::processPage(PageInfo* p) noexcept
 {
-    float old_util = p->approx_utilization;
+    //float old_util = p->approx_utilization;
     float n_util = CALC_APPROX_UTILIZATION(p);
+    p->approx_utilization = n_util;
     int bucket_index = 0;
 
-    //Try to delete old_util's page
-    if(IS_LOW_UTIL(old_util)) {
-        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
-        this->deletePageFromBucket(this->low_utilization_buckets, p, bucket_index, old_util);
-    }
-    else if(IS_HIGH_UTIL(old_util)) {
-        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
-        this->deletePageFromBucket(this->high_utilization_buckets, p, bucket_index, old_util);
-    }
-    else if(IS_FULL(old_util)) { //filled page
-        //Maybe trigger a collection? filled pages isnt bst
-    }
-
-    bucket_index = 0;
-
-    //Now we see if this page hasnt been inserted before, insert. Otherwise insert new util in right bucket
-    if(old_util > 1.0f) {
-        if(IS_LOW_UTIL(n_util)) {
-            GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
-            this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);
-        }
-        else if(IS_HIGH_UTIL(n_util)) {
-            GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
-            this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
-        }
-    }
-    else if(IS_LOW_UTIL(n_util)) {
+    if(IS_LOW_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
         this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);    
     }
@@ -137,11 +112,10 @@ void GCAllocator::processPage(PageInfo* p) noexcept
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
         this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
     }
-    else if(IS_FULL(n_util)) { //filled page
-        //Maybe trigger a collection? filled pages isnt bst
+    else if(IS_FULL(n_util)) {
+        p->next = this->filled_pages;
+        filled_pages = p;
     }
-
-    p->approx_utilization = n_util;
 }
 
 void GCAllocator::processCollectorPages() noexcept

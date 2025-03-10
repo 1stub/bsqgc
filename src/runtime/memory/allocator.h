@@ -260,45 +260,6 @@ private:
         }
     }
 
-    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* new_page, int num_bucket, float old_util) 
-    {
-        PageInfo* root = bucket[num_bucket];
-        if(root == nullptr) { //This means our page was already grabbed for alloc/evac
-            return;
-        }
-
-        PageInfo* cur = root;
-        PageInfo* parent = nullptr;
-
-        //First find the node to delete and its parent
-        while(cur != nullptr && cur != new_page) {
-            if(cur->left != nullptr && old_util < cur->approx_utilization) {
-                parent = cur;
-                cur = cur->left;
-            } 
-            else if(cur->right != nullptr && old_util > cur->approx_utilization){
-                parent = cur;
-                cur = cur->right;
-            }
-        }
-        assert(cur != nullptr);
-
-        //Leaf case
-        if(cur->left == nullptr && cur->right == nullptr) {
-            if(parent == nullptr) {
-                bucket[num_bucket] = nullptr;
-            }
-            else if(parent->left == cur) {
-                parent->left = nullptr;
-            }
-            else {
-                parent->right = nullptr;
-            }
-        }
-
-        //need to handle other cases
-    }
-
     PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
     {
         //it is crucial we remove the page we find here
@@ -316,11 +277,12 @@ private:
 
             p = cur;
 
-            //reset utilization so we dont try deleting a page that isnt in bst
-            p->approx_utilization = 100.0f;
             if(parent != nullptr) {
                 parent->left = nullptr;
                 break;
+            }
+            else if(cur->right != nullptr) {
+                buckets[i] = cur->right;
             }
             else {
                 buckets[i] = nullptr;
