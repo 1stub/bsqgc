@@ -142,6 +142,24 @@ public:
 #define NUM_LOW_UTIL_BUCKETS 12
 #define NUM_HIGH_UTIL_BUCKETS 6
 
+#define IS_LOW_UTIL(U) (U >= 0.01f && U < 0.60f)
+#define IS_HIGH_UTIL(U) (U > 0.60f && U <= 0.90f)
+#define IS_FULL(U) (U > 0.90f)
+
+//Find proper bucket based on increments of 0.05f
+#define GET_BUCKET_INDEX(U, N, I)                   \
+do {                                                \
+    float tmp_util = 0.0f;                          \
+    for (int i = 0; i < N; i++) {                   \
+        float new_tmp_util = tmp_util + 0.05f;      \
+        if (U > tmp_util && U <= new_tmp_util) {    \
+            I = i;                                  \
+            break;                                  \
+        }                                           \
+        tmp_util = new_tmp_util;                    \
+    }                                               \
+} while (0)
+
 class GCAllocator
 {
 private:
@@ -221,8 +239,6 @@ private:
         this->evacfreelist = this->evac_page->freelist;
     }
 
-    //if page infos util is same (roughly) we can just make a linked list using pageinfos next pointer
-    //of pages with almost same utilization
     inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int num_bucket) 
     {
         PageInfo* root = bucket[num_bucket];                                           
@@ -276,6 +292,10 @@ private:
             }
 
             p = cur;
+
+            //just to be safe
+            cur->left = nullptr;
+            cur->right = nullptr;
 
             if(parent != nullptr) {
                 parent->left = nullptr;

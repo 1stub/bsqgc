@@ -79,24 +79,6 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
     return pp;
 }
 
-#define IS_LOW_UTIL(U) (U >= 0.01f && U < 0.60f)
-#define IS_HIGH_UTIL(U) (U > 0.60f && U <= 0.90f)
-#define IS_FULL(U) (U > 0.90f)
-
-//Find proper bucket based on increments of 0.05f
-#define GET_BUCKET_INDEX(U, N, I) \
-do { \
-    float tmp_util = 0.0f; \
-    for (int i = 0; i < N; i++) { \
-        float new_tmp_util = tmp_util + 0.05f; \
-        if (U > tmp_util && U <= new_tmp_util) { \
-            I = i; \
-            break; \
-        } \
-        tmp_util = new_tmp_util; \
-    } \
-} while (0)
-
 void GCAllocator::processPage(PageInfo* p) noexcept
 {
     //float old_util = p->approx_utilization;
