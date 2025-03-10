@@ -12,6 +12,9 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     pp->data = ((uint8_t*)block + sizeof(PageInfo));
     pp->allocsize = allocsize;
     pp->realsize = realsize;
+    pp->approx_utilization = 100.0f; //approx util has not been calculated
+    pp->left = nullptr;
+    pp->right = nullptr;
     pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / realsize;
     pp->freecount = pp->entrycount;
 
@@ -80,9 +83,23 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
 
 void GCAllocator::processPage(PageInfo* p) noexcept
 {
-    //
-    //TODO: we need to move the pages around here...
-    //
+    //float old_util = p->approx_utilization;
+    float n_util = CALC_APPROX_UTILIZATION(p);
+    p->approx_utilization = n_util;
+    int bucket_index = 0;
+
+    if(IS_LOW_UTIL(n_util)) {
+        GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+        this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);    
+    }
+    else if(IS_HIGH_UTIL(n_util)) {
+        GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+        this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
+    }
+    else if(IS_FULL(n_util)) {
+        p->next = this->filled_pages;
+        filled_pages = p;
+    }
 }
 
 void GCAllocator::processCollectorPages() noexcept
@@ -113,6 +130,8 @@ void GCAllocator::processCollectorPages() noexcept
     }
     this->pendinggc_pages = nullptr;
 }
+
+//TODO: Rework these very funky canary check functions !!!
 
 /*
 //Following 3 methods verify integrity of canaries

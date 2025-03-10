@@ -5,6 +5,8 @@
         "type_traits": "cpp",
         "cmath": "cpp",
         "limits": "cpp",
-        "new": "cpp"
-    }
+        "new": "cpp",
+        "*.ipp": "cpp"
+    },
+    "workbench.productIconTheme": "undoDebugger"
 }
