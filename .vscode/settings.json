@@ -6,7 +6,8 @@
         "cmath": "cpp",
         "limits": "cpp",
         "new": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "memory_resource": "cpp"
     },
     "workbench.productIconTheme": "undoDebugger"
 }

@@ -196,10 +196,6 @@ private:
     uint16_t realsize; //size of the alloc entries in this page (including metadata and other stuff)
 
     PageInfo* pendinggc_pages; // Pages that are pending GC
-    
-    //
-    //IN PROGRESS: we should make these heaps (or binary trees for min/max/average lookups) we should experiment with different strategies
-    //
 
     // Each "bucket" is a binary tree storing 5% of variance in approx_utiliation
     PageInfo* low_utilization_buckets[NUM_LOW_UTIL_BUCKETS]; // Pages with 1-60% utilization (does not hold fully empty)

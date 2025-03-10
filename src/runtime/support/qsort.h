@@ -31,11 +31,6 @@ int partition(void** arr, int low, int high)
 
 void qsort(void** arr, int low, int high, int size)
 {
-    for (int i = 0; i < size; i++) {
-        printf("%p\n", arr[i]); 
-    }
-    printf("\n");
-
     if(low < high) {
         int pi = partition(arr, low, high);
 

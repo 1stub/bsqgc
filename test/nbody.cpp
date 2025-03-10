@@ -1,4 +1,5 @@
 #include "../src/runtime/memory/gc.h"
+#include <iostream>
 #include <math.h>
 #include <stdlib.h>
 
@@ -6,6 +7,9 @@
 // Doesn't work with new cpp conversion, after some of the gc TODOs are
 // taken care of come back and run some tests here
 //
+
+GCAllocator alloc1(8, REAL_ENTRY_SIZE(8), collect);
+GCAllocator alloc2(16, REAL_ENTRY_SIZE(16), collect);
 
 struct TypeInfoBase Empty = {
     .type_id = 0,
@@ -42,7 +46,7 @@ typedef struct {
 } Forces;
 
 typedef struct {
-    char* name;
+    std::string name;
     double mass;
     Position pos;
     Velocity vel;
@@ -50,12 +54,11 @@ typedef struct {
 
 #define CHECK_ARRAY_BOUNDS(A) \
 do { \
-    /*
-    if(static_bodies_index == mut_max_static_bodies - 1) {\
+/*    if(static_bodies_index == mut_max_static_bodies - 1) {\
         mut_max_static_bodies += STATIC_BODIES_STEP;\
         A = realloc(A, mut_max_static_bodies * sizeof(Body));\
     } \
-    */ \
+  */  \
 } while(0)
 
 #define MAX_BODIES 2048
@@ -180,19 +183,19 @@ double distance(Body b0, Body b1)
 void** createNBodySystem() 
 {
     //static_bodies = malloc(STATIC_BODIES_STEP * sizeof(Body));
-    void** all_bodies = allocate(&a_bin16, &ListNode);
+    void** all_bodies = AllocType(void*, alloc2, &ListNode);
 
     /* Dynamically create constant bodies in our gc pages */
-    Body* gc_jupiter = allocate(&a_bin8, &Empty);
+    Body* gc_jupiter = AllocType(Body, alloc1, &Empty);
     gc_jupiter = &jupiter;
 
-    Body* gc_saturn = allocate(&a_bin8, &Empty);
+    Body* gc_saturn = AllocType(Body, alloc1, &Empty);
     gc_saturn = &saturn;
 
-    Body* gc_uranus = allocate(&a_bin8, &Empty);
+    Body* gc_uranus = AllocType(Body, alloc1, &Empty);
     gc_uranus = &uranus;
 
-    Body* gc_neptune = allocate(&a_bin8, &Empty);
+    Body* gc_neptune = AllocType(Body, alloc1, &Empty);
     gc_neptune = &neptune;
 
     Body* planets[4] = {gc_jupiter, gc_saturn, gc_uranus, gc_neptune};
@@ -206,24 +209,24 @@ void** createNBodySystem()
         pz += planets[i]->vel.vz * planets[i]->mass;
     }
 
-    Body* gc_sun = allocate(&a_bin8, &Empty);
+    Body* gc_sun = AllocType(Body, alloc1, &Empty);;
     gc_sun = offsetMomemtum(sun, px, py, pz);
 
     all_bodies[0] = gc_sun;
-    all_bodies[1] = allocate(&a_bin16, &ListNode);
+    all_bodies[1] = AllocType(void*, alloc2, &ListNode);
 
-    void** it = all_bodies[1];
+    void** it = (void**)all_bodies[1];
     it[0] = planets[0];
-    it[1] = allocate(&a_bin16, &ListNode);
-    it = it[1];
+    it[1] = AllocType(void*, alloc2, &ListNode);
+    it = (void**)it[1];
 
     it[0] = planets[1];
-    it[1] = allocate(&a_bin16, &ListNode);
-    it = it[1];
+    it[1] = AllocType(void*, alloc2, &ListNode);
+    it = (void**)it[1];
 
     it[0] = (void*)planets[2];
-    it[1] = allocate(&a_bin8, &Empty);
-    it = it[1];
+    it[1] = AllocType(Body, alloc1, &Empty);;
+    it = (void**)it[1];
 
     it[0] = planets[3];
 
@@ -237,15 +240,15 @@ double potentialEnergyCompute(void** bodies)
 
     for (int i = 0; i < N; i++) {
         Body* b0 = (Body*)(it_0[0]);
-        void** it_1 = it_0[1];
+        void** it_1 = (void**)it_0[1];
 
         for (int j = i + 1; j < N; j++) {
             Body* b1 = (Body*)(it_1[0]);
             
             potential += (b0->mass * b1->mass) / distance(*b0, *b1);
-            it_1 = it_1[1]; 
+            it_1 = (void**)it_1[1]; 
         }
-        it_0 = it_0[1]; 
+        it_0 = (void**)it_0[1]; 
     }
 
     return potential;
@@ -258,7 +261,7 @@ double energy(void** bodies)
     for(int i = 0; i < N; i++) {
         Body* b = (Body*)(it[0]); 
         kinetic += kineticEnergy(*b);
-        it = it[1];
+        it = (void**)it[1];
     }
 
     double potential = potentialEnergyCompute(bodies);
@@ -275,7 +278,7 @@ static inline Forces getForces(void** bodies, Body* b0, double dt)
         Body* b1 = (Body*)(it_1[0]); 
 
         if (b0->name == b1->name) {
-            it_1 = it_1[1]; 
+            it_1 = (void**)it_1[1]; 
             continue;
         }
 
@@ -290,7 +293,7 @@ static inline Forces getForces(void** bodies, Body* b0, double dt)
         forces_b1.fy += dy * b1->mass * mag;
         forces_b1.fz += dz * b1->mass * mag;
 
-        it_1 = it_1[1]; 
+        it_1 = (void**)it_1[1]; 
 
         //debug_print("%s, %s\n", b0->name, b1->name);
     }
@@ -307,7 +310,7 @@ static inline Forces getForces(void** bodies, Body* b0, double dt)
 void** advance(void** bodies, double dt) 
 {
     /* We are going to need to create a new all_bodies list from bodies arg */
-    void** new_bodies = allocate(&a_bin16, &ListNode);
+    void** new_bodies = AllocType(void*, alloc2, &ListNode);
     void** new_bodies_it = new_bodies;
 
     void** it_0 = bodies;
@@ -327,8 +330,8 @@ void** advance(void** bodies, double dt)
         };
 
         Body new_body = {
-            .mass = b0->mass,
             .name = b0->name,
+            .mass = b0->mass,
             .pos = npos,
             .vel = nvel
         };
@@ -338,52 +341,57 @@ void** advance(void** bodies, double dt)
         /* Insert into static storage and new gc page list */
         static_bodies[static_bodies_index] = new_body;
 
-        Body* gc_new_body = allocate(&a_bin8, &Empty);
+        Body* gc_new_body = AllocType(Body, alloc1, &Empty);;
         gc_new_body = &static_bodies[static_bodies_index++];
 
         new_bodies_it[0] = gc_new_body;
 
         /* Not end of list */
         if(i < (N-1)) {
-            new_bodies_it[1] = allocate(&a_bin16, &ListNode);
+            new_bodies_it[1] = AllocType(void*, alloc2, &ListNode);;
         } else {
-            new_bodies_it[1] = allocate(&a_bin8, &Empty);
+            new_bodies_it[1] = AllocType(Body, alloc1, &Empty);;
         }
 
-        new_bodies_it = new_bodies_it[1];
-        it_0 = it_0[1];
+        new_bodies_it = (void**)new_bodies_it[1];
+        it_0 = (void**)it_0[1];
     }
 
     return new_bodies;
 }
 
+void* garray[3] = {nullptr, nullptr, nullptr};
+
 int main(int argc, char** argv) 
 {
-    initializeStartup();
+    INIT_LOCKS();
+    GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
 
-    register void* rbp asm("rbp");
-    initializeThreadLocalInfo(rbp);
+    InitBSQMemoryTheadLocalInfo();
 
-    int n = 3;
+    GCAllocator* allocs[2] = { &alloc1, &alloc2 };
+    gtl_info.initializeGC<2>(allocs);
+
+    int n = 5;
     void** sys = createNBodySystem();
     double step = 0.01;
     
-    debug_print("energy: %g\n", energy(sys));
+    printf("energy: %g\n", energy(sys));
 
     /* Currently does not work for large n, fails after about 20 advances */
     for(int i = 0; i < n; i++) {
         if(i % 10 == 0) {
-            loadNativeRootSet();
             collect();
             static_bodies_index = 0;
         }
         sys = advance(sys, step);
     }
 
-    loadNativeRootSet();
+    gtl_info.disable_stack_refs_for_tests = true;
+
     collect();
 
-    debug_print("energy: %g\n", energy(sys));
+    printf("energy: %g\n", energy(sys));
 
     return 0;
 }
