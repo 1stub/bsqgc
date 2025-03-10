@@ -26,7 +26,7 @@ CFLAGS_OPT.release=-O3 -march=x86-64-v3
 CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
 CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}
 
-SUPPORT_HEADERS=$(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h $(SUPPORT_DIR)arraylist.h $(SUPPORT_DIR)pagetable.h
+SUPPORT_HEADERS=$(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h $(SUPPORT_DIR)arraylist.h $(SUPPORT_DIR)pagetable.h $(SUPPORT_DIR)qsort.h 
 SUPPORT_SOURCES=$(RUNTIME_DIR)common.cpp $(SUPPORT_DIR)xalloc.cpp
 SUPPORT_OBJS=$(OUT_OBJ)common.o $(OUT_OBJ)xalloc.o
 
