@@ -1,11 +1,7 @@
 
 #include "allocator.h"
 #include "gc.h"
-
-//TODO: remove dependency on cstdlib -- use our own quicksort
-#include <cstdlib>
-
-#include <stdio.h>
+#include "../support/qsort.h"
 
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
@@ -15,17 +11,6 @@
 
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
-
-//oh my god i spent 8 hours debugging just to find out my comparison function was wrong...
-int compare(const void* a, const void* b) 
-{
-    void* ptrA = *(void**)a;
-    void* ptrB = *(void**)b;
-
-    if (ptrA < ptrB) return -1;
-    if (ptrA > ptrB) return 1;
-    return 0;
-}
 
 void reprocessPageInfo(PageInfo* page) noexcept
 {
@@ -39,7 +24,7 @@ void reprocessPageInfo(PageInfo* page) noexcept
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //First we need to sort the roots we find
-    qsort(tinfo.roots, tinfo.roots_count, sizeof(void*), compare);
+    qsort(tinfo.roots, 0, tinfo.roots_count - 1, tinfo.roots_count);
     
     size_t roots_idx = 0;
     size_t oldroots_idx = 0;
