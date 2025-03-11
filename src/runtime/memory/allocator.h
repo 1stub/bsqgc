@@ -352,6 +352,23 @@ public:
         return this->allocsize;
     }
 
+    //simple check to see if a page is in alloc/evac/pendinggc pages
+    bool checkNonAllocOrGCPage(PageInfo* p) {
+        if(p == alloc_page || p == evac_page) {
+            return false;
+        }
+
+        PageInfo* cur = pendinggc_pages;
+        while(cur != nullptr) {
+            if(cur == p) {
+                return false;
+            }
+            cur = cur->next;
+        }
+
+        return true;
+    }
+
     inline void* allocate(TypeInfoBase* type)
     {
         assert(type->type_size == this->allocsize);

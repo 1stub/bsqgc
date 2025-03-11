@@ -83,6 +83,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
 
 void GCAllocator::processPage(PageInfo* p) noexcept
 {
+    float old_util = p->approx_utilization;
     float n_util = CALC_APPROX_UTILIZATION(p);
     p->approx_utilization = n_util;
     int bucket_index = 0;

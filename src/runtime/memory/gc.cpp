@@ -13,13 +13,18 @@
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
 
-void reprocessPageInfo(PageInfo* page) noexcept
+void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //This should not be called on pages that are (1) active allocators or evacuators or (2) pending collection pages
 
     //
     //TODO: we need to reprocess the page info here and get it in the correct list of pages
     //
+
+    GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
+    if(gcalloc->checkNonAllocOrGCPage(page)) {
+        gcalloc->processPage(page);
+    }
 }
 
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
@@ -108,6 +113,17 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         //
         //TODO: once we have heapified the lists we can compare the computed capcity with the capcity in the heap and (if we are over a threshold) and call reprocessPageInfo
         //
+
+        //
+        //Looks like we will also need to do a more proper bst deletion here since in this case
+        //it is possible for our page to exist in the bst already
+        //
+
+        //not totally confident in this float comparisons 
+        float new_util = CALC_APPROX_UTILIZATION(objects_page);
+        if(new_util > objects_page->approx_utilization || new_util < objects_page->approx_utilization){
+            reprocessPageInfo(objects_page, tinfo);
+        }
     }
 
     GC_REFCT_LOCK_RELEASE();
