@@ -368,7 +368,7 @@ int main(int argc, char** argv)
     GCAllocator* allocs[2] = { &alloc1, &alloc2 };
     gtl_info.initializeGC<2>(allocs);
 
-    int n = 20000;
+    int n = 50000000;
     void** sys = createNBodySystem();
     double step = 0.01;
     

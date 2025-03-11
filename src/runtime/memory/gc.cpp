@@ -21,10 +21,6 @@ void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
     //TODO: we need to reprocess the page info here and get it in the correct list of pages
     //
 
-    GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
-    if(gcalloc->checkNonAllocOrGCPage(page)) {
-        gcalloc->processPage(page);
-    }
 }
 
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
@@ -115,15 +111,15 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         //
 
         //
-        //Looks like we will also need to do a more proper bst deletion here since in this case
-        //it is possible for our page to exist in the bst already
+        //Need to think more about what is actually necessary here - 
+        //for some reason my brain just cant quite figure out what
+        //exactly i need to do. it appears removing from old location
+        //in one of our bst buckets, but idrk. also i discovered
+        //that we never actually insert a page into the global page
+        //list which is not good. something object could be keeing 
+        //everything alive?
         //
 
-        //not totally confident in this float comparisons 
-        float new_util = CALC_APPROX_UTILIZATION(objects_page);
-        if(new_util > objects_page->approx_utilization || new_util < objects_page->approx_utilization){
-            reprocessPageInfo(objects_page, tinfo);
-        }
     }
 
     GC_REFCT_LOCK_RELEASE();
