@@ -120,6 +120,9 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         //everything alive?
         //
 
+        //this is HORRIBY innefficient
+        //TODO: FIX THIS PLZ!!!! And do the stuff i wrote above prob
+        objects_page->rebuild();
     }
 
     GC_REFCT_LOCK_RELEASE();
@@ -189,7 +192,8 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)) {
+    if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)
+        && ((uintptr_t)addr & 0xFFF) != 0) {
         MetaData* meta = PageInfo::getObjectMetadataAligned(addr);
         void* obj = (void*)((uint8_t*)meta + sizeof(MetaData));
         

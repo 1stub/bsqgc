@@ -3,6 +3,7 @@
 #include <iostream>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 GCAllocator alloc1(8, REAL_ENTRY_SIZE(8), collect);
 GCAllocator alloc2(16, REAL_ENTRY_SIZE(16), collect);

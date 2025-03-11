@@ -35,6 +35,7 @@ void PageInfo::rebuild() noexcept
     for(int64_t i = this->entrycount - 1; i >= 0; i--) {
         MetaData* meta = this->getMetaEntryAtIndex(i);
         
+        //investigate this macro. shouldnt we need to check not marked aswell?
         if(GC_SHOULD_FREE_LIST_ADD(meta)) {
             FreeListEntry* entry = this->getFreelistEntryAtIndex(i);
             entry->next = this->freelist;
@@ -95,9 +96,12 @@ void GCAllocator::processPage(PageInfo* p) noexcept
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
         this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
     }
+    //we need to put on pending gc pages, filled pages are for evacs
+    //we need a way to tell if our page is evac page or not, if it is we cannot
+    //put in on the pendinggc list
     else if(IS_FULL(n_util)) {
-        p->next = this->filled_pages;
-        filled_pages = p;
+        p->next = this->pendinggc_pages;
+        pendinggc_pages = p;
     }
     else {
         GC_MEM_LOCK_ACQUIRE();
