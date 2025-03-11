@@ -3,6 +3,7 @@
 #include "../common.h"
 #include "../support/arraylist.h"
 #include "../support/pagetable.h"
+#include "gc.h"
 
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
@@ -140,6 +141,12 @@ public:
     {
         return this->pagetable.pagetable_query(addr);
     }
+
+    void addNewPage(PageInfo* newPage) noexcept
+    {
+        newPage->next = empty_pages;  
+        empty_pages = newPage;        
+    }
 };
 
 #ifndef ALLOC_DEBUG_CANARY
@@ -237,15 +244,22 @@ private:
             this->alloc_page = this->getFreshPageForAllocator();
         }
         else {
-            assert(false);
-
             //rotate collection pages
+            processPage(this->alloc_page);
+            this->alloc_page = nullptr;
 
             //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+            static int filled_pages_count = 0;
+            filled_pages_count++;
 
             //check if we need to collect and do so
+            if(filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
+                collect();
+                filled_pages_count = 0;
+            }
         
             //get the new page
+            this->alloc_page = this->getFreshPageForAllocator();
         }
 
         this->freelist = this->alloc_page->freelist;

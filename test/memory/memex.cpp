@@ -1,4 +1,5 @@
 #include "../../src/runtime/memory/gc.h"
+#include "../../src/runtime/memory/threadinfo.h"
 
 #include <string>
 #include <format>

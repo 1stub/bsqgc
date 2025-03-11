@@ -2,6 +2,7 @@
 #include "allocator.h"
 #include "gc.h"
 #include "../support/qsort.h"
+#include "threadinfo.h"
 
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
