@@ -20,6 +20,11 @@ void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
     //
     //TODO: we need to reprocess the page info here and get it in the correct list of pages
     //
+    GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
+    if(gcalloc->checkNonAllocOrGCPage(page)) {
+        gcalloc->deleteOldPage(page);
+        gcalloc->processPage(page);
+    }
 
 }
 
@@ -58,6 +63,22 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
     }
 
     tinfo.old_roots_count = 0;
+}
+
+bool pageNeedsMoved(float old_util, float new_util)
+{
+    if(old_util < 0.90f && new_util >= 0.90f) {
+        return true;
+    }
+    else if(old_util >= 0.90f && new_util < 0.90f) {
+        return true;
+    }
+    else if((old_util - new_util) > 0.05f || (new_util - old_util) > 0.05f) {
+        return true;
+    }
+    else{
+        return false;
+    }
 }
 
 void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
@@ -110,19 +131,10 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         //TODO: once we have heapified the lists we can compare the computed capcity with the capcity in the heap and (if we are over a threshold) and call reprocessPageInfo
         //
 
-        //
-        //Need to think more about what is actually necessary here - 
-        //for some reason my brain just cant quite figure out what
-        //exactly i need to do. it appears removing from old location
-        //in one of our bst buckets, but idrk. also i discovered
-        //that we never actually insert a page into the global page
-        //list which is not good. something object could be keeing 
-        //everything alive?
-        //
 
-        //this is HORRIBY innefficient
-        //TODO: FIX THIS PLZ!!!! And do the stuff i wrote above prob
-        objects_page->rebuild();
+        if(pageNeedsMoved(objects_page->approx_utilization, CALC_APPROX_UTILIZATION(objects_page))) {
+            reprocessPageInfo(objects_page, tinfo);
+        }
     }
 
     GC_REFCT_LOCK_RELEASE();

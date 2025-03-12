@@ -308,6 +308,47 @@ private:
         }
     }
 
+    inline PageInfo* deletePageFromBucket(PageInfo* root, PageInfo* old_page)
+    {
+        float old_util = old_page->approx_utilization;
+
+        if(root == nullptr) {
+            return root;
+        }
+
+        if(root->approx_utilization > old_util && root != old_page) {
+            root->left = deletePageFromBucket(root->left, old_page);
+        }
+        else if (root->approx_utilization < old_util && root != old_page) {
+            root->right = deletePageFromBucket(root->right, old_page);
+        }
+        else {
+            if(root->left == nullptr) {
+                PageInfo* tmp = root->right;
+                root = nullptr;
+                return tmp;
+            }
+            if(root->right == nullptr) {
+                PageInfo* tmp = root->left;
+                root = nullptr;
+                return tmp;
+            }
+
+            PageInfo* successor = getSuccessor(root);
+            root->approx_utilization = successor->approx_utilization;
+            root->right = deletePageFromBucket(root->right, successor);
+        }
+        return root;
+    }
+
+    inline PageInfo* getSuccessor(PageInfo* p) {
+        p = p->right;
+        while(p != nullptr && p->left != nullptr) {
+            p = p->left;
+        }
+        return p;
+    }
+
     PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
     {
         //it is crucial we remove the page we find here
@@ -369,6 +410,35 @@ public:
         return true;
     }
 
+    //used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
+    void deleteOldPage(PageInfo* p) 
+    {
+        int bucket_index = 0;
+        float old_util = p->approx_utilization;
+
+        if(IS_LOW_UTIL(old_util)) {
+            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+            this->deletePageFromBucket(
+                this->low_utilization_buckets[bucket_index], p);        
+        }
+        else if(IS_HIGH_UTIL(old_util)) {
+            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+            this->deletePageFromBucket(
+                this->high_utilization_buckets[bucket_index], p);
+        }
+        else {
+            PageInfo* cur = this->filled_pages;
+            PageInfo* prev = nullptr;
+            while(cur != nullptr && cur != p) {
+                prev = cur;
+                cur = cur->next;
+            }
+
+            prev->next = cur->next;
+            p->next = nullptr;
+        }
+    }
+
     inline void* allocate(TypeInfoBase* type)
     {
         assert(type->type_size == this->allocsize);
@@ -415,83 +485,3 @@ public:
     //process all the pending gc pages, the current alloc page, and evac page -- reset for next round
     void processCollectorPages() noexcept;
 };
-
-
-/*
-   inline PageInfo* getSuccessor(PageInfo* p) {
-        p = p->right;
-        while(p != nullptr && p->left != nullptr) {
-            p = p->left;
-        }
-        return p;
-    }
-
-    inline PageInfo* deletePageFromBucket(PageInfo* root, PageInfo* old_page)
-    {
-        float old_util = old_page->approx_utilization;
-
-        if(root == nullptr) {
-            return root;
-        }
-
-        if(root->approx_utilization > old_util && root != old_page) {
-            root->left = deletePageFromBucket(root->left, old_page);
-        }
-        else if (root->approx_utilization < old_util && root != old_page) {
-            root->right = deletePageFromBucket(root->right, old_page);
-        }
-        else {
-            if(root->left == nullptr) {
-                PageInfo* tmp = root->right;
-                root = nullptr;
-                return tmp;
-            }
-            if(root->right == nullptr) {
-                PageInfo* tmp = root->left;
-                root = nullptr;
-                return tmp;
-            }
-
-            PageInfo* successor = getSuccessor(root);
-            root->approx_utilization = successor->approx_utilization;
-            root->right = deletePageFromBucket(root->right, successor);
-        }
-        return root;
-    }
-
-    inline PageInfo* getSuccessor(PageInfo* p) {
-        p = p->right;
-        while(p != nullptr && p->left != nullptr) {
-            p = p->left;
-        }
-        return p;
-    }
-
-    //used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
-    void deleteOldPage(PageInfo* p) {
-        int bucket_index = 0;
-        float old_util = p->approx_utilization;
-
-        if(IS_LOW_UTIL(old_util)) {
-            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
-            this->deletePageFromBucket(
-                this->low_utilization_buckets[bucket_index], p);        
-        }
-        else if(IS_HIGH_UTIL(old_util)) {
-            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
-            this->deletePageFromBucket(
-                this->high_utilization_buckets[bucket_index], p);
-        }
-        else {
-            PageInfo* cur = this->filled_pages;
-            PageInfo* prev = nullptr;
-            while(cur != nullptr && cur != p) {
-                prev = cur;
-                cur = cur->next;
-            }
-
-            prev->next = cur->next;
-            p->next = nullptr;
-        }
-    }
-*/
