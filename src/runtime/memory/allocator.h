@@ -173,7 +173,9 @@ public:
 
 #define IS_LOW_UTIL(U) (U >= 0.01f && U < 0.60f)
 #define IS_HIGH_UTIL(U) (U > 0.60f && U <= 0.90f)
-#define IS_FULL(U) (U > 0.90f)
+
+//<=1.0f is very crucial here because new pages start at 100.0f, wihout we just reprocess them until OOM
+#define IS_FULL(U) (U > 0.90f && U <= 1.0f)
 
 //Find proper bucket based on increments of 0.05f
 #define GET_BUCKET_INDEX(U, N, I)                   \
