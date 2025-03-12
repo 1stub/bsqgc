@@ -52,8 +52,7 @@ std::string printtree(TreeNodeValue* node) {
 void* garray[3] = {nullptr, nullptr, nullptr};
 
 //
-//Very simple tree with two leafs
-//Good structure for further tests
+//Full tree of varrying depths
 //
 int main(int argc, char** argv) {
     INIT_LOCKS();
@@ -64,7 +63,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[1] = { &alloc2 };
     gtl_info.initializeGC<1>(allocs);
 
-    TreeNodeValue* t1 = makeTree(1, 4);
+    TreeNodeValue* t1 = makeTree(13, 4);
 
     auto t1_start = printtree(t1);
     collect();
