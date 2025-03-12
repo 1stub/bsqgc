@@ -3,6 +3,7 @@
 #include "../common.h"
 #include "../support/arraylist.h"
 #include "../support/pagetable.h"
+#include "gc.h"
 
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
@@ -140,6 +141,12 @@ public:
     {
         return this->pagetable.pagetable_query(addr);
     }
+
+    void addNewPage(PageInfo* newPage) noexcept
+    {
+        newPage->next = empty_pages;  
+        empty_pages = newPage;        
+    }
 };
 
 #ifndef ALLOC_DEBUG_CANARY
@@ -166,7 +173,9 @@ public:
 
 #define IS_LOW_UTIL(U) (U >= 0.01f && U < 0.60f)
 #define IS_HIGH_UTIL(U) (U > 0.60f && U <= 0.90f)
-#define IS_FULL(U) (U > 0.90f)
+
+//<=1.0f is very crucial here because new pages start at 100.0f, wihout we just reprocess them until OOM
+#define IS_FULL(U) (U > 0.90f && U <= 1.0f)
 
 //Find proper bucket based on increments of 0.05f
 #define GET_BUCKET_INDEX(U, N, I)                   \
@@ -237,15 +246,22 @@ private:
             this->alloc_page = this->getFreshPageForAllocator();
         }
         else {
-            assert(false);
-
             //rotate collection pages
+            processPage(this->alloc_page);
+            this->alloc_page = nullptr;
 
             //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+            static int filled_pages_count = 0;
+            filled_pages_count++;
 
             //check if we need to collect and do so
+            if(filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
+                collect();
+                filled_pages_count = 0;
+            }
         
             //get the new page
+            this->alloc_page = this->getFreshPageForAllocator();
         }
 
         this->freelist = this->alloc_page->freelist;
@@ -294,6 +310,47 @@ private:
         }
     }
 
+    inline PageInfo* deletePageFromBucket(PageInfo* root, PageInfo* old_page)
+    {
+        float old_util = old_page->approx_utilization;
+
+        if(root == nullptr) {
+            return root;
+        }
+
+        if(root->approx_utilization > old_util && root != old_page) {
+            root->left = deletePageFromBucket(root->left, old_page);
+        }
+        else if (root->approx_utilization < old_util && root != old_page) {
+            root->right = deletePageFromBucket(root->right, old_page);
+        }
+        else {
+            if(root->left == nullptr) {
+                PageInfo* tmp = root->right;
+                root = nullptr;
+                return tmp;
+            }
+            if(root->right == nullptr) {
+                PageInfo* tmp = root->left;
+                root = nullptr;
+                return tmp;
+            }
+
+            PageInfo* successor = getSuccessor(root);
+            root->approx_utilization = successor->approx_utilization;
+            root->right = deletePageFromBucket(root->right, successor);
+        }
+        return root;
+    }
+
+    inline PageInfo* getSuccessor(PageInfo* p) {
+        p = p->right;
+        while(p != nullptr && p->left != nullptr) {
+            p = p->left;
+        }
+        return p;
+    }
+
     PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
     {
         //it is crucial we remove the page we find here
@@ -336,6 +393,52 @@ public:
     inline size_t getAllocSize() const noexcept
     {
         return this->allocsize;
+    }
+
+    //simple check to see if a page is in alloc/evac/pendinggc pages
+    bool checkNonAllocOrGCPage(PageInfo* p) {
+        if(p == alloc_page || p == evac_page) {
+            return false;
+        }
+
+        PageInfo* cur = pendinggc_pages;
+        while(cur != nullptr) {
+            if(cur == p) {
+                return false;
+            }
+            cur = cur->next;
+        }
+
+        return true;
+    }
+
+    //used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
+    void deleteOldPage(PageInfo* p) 
+    {
+        int bucket_index = 0;
+        float old_util = p->approx_utilization;
+
+        if(IS_LOW_UTIL(old_util)) {
+            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+            this->deletePageFromBucket(
+                this->low_utilization_buckets[bucket_index], p);        
+        }
+        else if(IS_HIGH_UTIL(old_util)) {
+            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+            this->deletePageFromBucket(
+                this->high_utilization_buckets[bucket_index], p);
+        }
+        else {
+            PageInfo* cur = this->filled_pages;
+            PageInfo* prev = nullptr;
+            while(cur != nullptr && cur != p) {
+                prev = cur;
+                cur = cur->next;
+            }
+
+            prev->next = cur->next;
+            p->next = nullptr;
+        }
     }
 
     inline void* allocate(TypeInfoBase* type)

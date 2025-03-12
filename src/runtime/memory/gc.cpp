@@ -2,6 +2,7 @@
 #include "allocator.h"
 #include "gc.h"
 #include "../support/qsort.h"
+#include "threadinfo.h"
 
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
@@ -12,13 +13,16 @@
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
 
-void reprocessPageInfo(PageInfo* page) noexcept
+void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //This should not be called on pages that are (1) active allocators or evacuators or (2) pending collection pages
 
-    //
-    //TODO: we need to reprocess the page info here and get it in the correct list of pages
-    //
+    GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
+    if(gcalloc->checkNonAllocOrGCPage(page)) {
+        gcalloc->deleteOldPage(page);
+        gcalloc->processPage(page);
+    }
+
 }
 
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
@@ -56,6 +60,23 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
     }
 
     tinfo.old_roots_count = 0;
+}
+
+bool pageNeedsMoved(float old_util, float new_util)
+{
+    if(old_util < 0.90f && new_util >= 0.90f) {
+        return true;
+    }
+    else if(old_util >= 0.90f && new_util < 0.90f) {
+        return true;
+    }
+    else if(((old_util - new_util) > 0.05f || (new_util - old_util) > 0.05f) 
+        && old_util < 0.90f && new_util < 0.90f) {
+        return true;
+    }
+    else{
+        return false;
+    }
 }
 
 void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
@@ -104,9 +125,11 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         GC_IS_ALLOCATED(obj) = false;
 
         objects_page->freecount++;
-        //
-        //TODO: once we have heapified the lists we can compare the computed capcity with the capcity in the heap and (if we are over a threshold) and call reprocessPageInfo
-        //
+
+        //if a difference in utilization (>0.05f) or drop from filled pages detected reprocess
+        if(pageNeedsMoved(objects_page->approx_utilization, CALC_APPROX_UTILIZATION(objects_page))) {
+            reprocessPageInfo(objects_page, tinfo);
+        }
     }
 
     GC_REFCT_LOCK_RELEASE();
@@ -176,7 +199,8 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
-    if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)) {
+    if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)
+        && ((uintptr_t)addr & 0xFFF) != 0) {
         MetaData* meta = PageInfo::getObjectMetadataAligned(addr);
         void* obj = (void*)((uint8_t*)meta + sizeof(MetaData));
         

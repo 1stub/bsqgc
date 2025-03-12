@@ -1,12 +1,9 @@
 #include "../src/runtime/memory/gc.h"
+#include "../src/runtime/memory/threadinfo.h"
 #include <iostream>
 #include <math.h>
 #include <stdlib.h>
-
-//
-// Doesn't work with new cpp conversion, after some of the gc TODOs are
-// taken care of come back and run some tests here
-//
+#include <string.h>
 
 GCAllocator alloc1(8, REAL_ENTRY_SIZE(8), collect);
 GCAllocator alloc2(16, REAL_ENTRY_SIZE(16), collect);
@@ -372,24 +369,20 @@ int main(int argc, char** argv)
     GCAllocator* allocs[2] = { &alloc1, &alloc2 };
     gtl_info.initializeGC<2>(allocs);
 
-    int n = 5;
+    int n = 50000000;
     void** sys = createNBodySystem();
     double step = 0.01;
     
     printf("energy: %g\n", energy(sys));
 
-    /* Currently does not work for large n, fails after about 20 advances */
     for(int i = 0; i < n; i++) {
         if(i % 10 == 0) {
-            collect();
             static_bodies_index = 0;
         }
         sys = advance(sys, step);
     }
 
     gtl_info.disable_stack_refs_for_tests = true;
-
-    collect();
 
     printf("energy: %g\n", energy(sys));
 

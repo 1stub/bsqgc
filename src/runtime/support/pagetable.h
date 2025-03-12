@@ -8,13 +8,23 @@ class PageTableInUseInfo
 private:
     void** pagetable_root;
 
+    //
+    //Original implementation designed for 12 bits per level fails
+    //due to the fact that our pages being 4096 bytes, meaning since
+    //each block stores a void* we can have up to 4096/8 = 512 entries
+    //so in order to utilize space most effectively we can have
+    //log2(512) = 9 bits per level
+    //
+    
     constexpr static uintptr_t PAGETABLE_LEVELS = 4;
-    constexpr static uintptr_t BITS_PER_LEVEL = 12;
-
-    constexpr static uintptr_t LEVEL1_SHIFT = 36;
-    constexpr static uintptr_t LEVEL2_SHIFT = 24;
-    constexpr static uintptr_t LEVEL3_SHIFT = 12;
-    constexpr static uintptr_t LEVEL_MASK = 0xFFF;
+    constexpr static uintptr_t BITS_PER_LEVEL = 9; 
+    
+    constexpr static uintptr_t LEVEL1_SHIFT = 39; 
+    constexpr static uintptr_t LEVEL2_SHIFT = 30; 
+    constexpr static uintptr_t LEVEL3_SHIFT = 21; 
+    constexpr static uintptr_t LEVEL4_SHIFT = 12; 
+    constexpr static uintptr_t LEVEL_MASK = 0x1FF; 
+    constexpr static uintptr_t PAGE_MASK = 0xFFF;
     constexpr static uintptr_t PAGE_PRESENT = 1;
 
 public:
@@ -27,10 +37,10 @@ public:
         }
 
         uintptr_t address = (uintptr_t)addr;
-        uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK; // Bits 47-36
-        uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK; // Bits 35-24
-        uintptr_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK; // Bits 23-12
-        uintptr_t index4 = address & LEVEL_MASK;                   // Bits 11-0
+        uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK; // Bits 47-39
+        uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK; // Bits 38-30
+        uintptr_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK; // Bits 29-21
+        uintptr_t index4 = (address >> LEVEL4_SHIFT) & LEVEL_MASK; // Bits 20-12
 
         void** level1 = pagetable_root;
         if(!level1[index1]) {
@@ -60,10 +70,10 @@ public:
         }
         
         uintptr_t address = (uintptr_t)addr;
-        uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK;  // Bits 47-36
-        uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK;  // Bits 35-24
-        uintptr_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK;  // Bits 23-12
-        uintptr_t index4 = (address & PAGE_ADDR_MASK) & LEVEL_MASK; // Bits 11-0
+        uintptr_t index1 = (address >> LEVEL1_SHIFT) & LEVEL_MASK; // Bits 47-39
+        uintptr_t index2 = (address >> LEVEL2_SHIFT) & LEVEL_MASK; // Bits 38-30
+        uintptr_t index3 = (address >> LEVEL3_SHIFT) & LEVEL_MASK; // Bits 29-21
+        uintptr_t index4 = (address >> LEVEL4_SHIFT) & LEVEL_MASK; // Bits 20-12
 
         void** level1 = pagetable_root;
         if(!level1[index1]) {
