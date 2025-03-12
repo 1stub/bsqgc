@@ -17,9 +17,6 @@ void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //This should not be called on pages that are (1) active allocators or evacuators or (2) pending collection pages
 
-    //
-    //TODO: we need to reprocess the page info here and get it in the correct list of pages
-    //
     GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
     if(gcalloc->checkNonAllocOrGCPage(page)) {
         gcalloc->deleteOldPage(page);
@@ -73,7 +70,8 @@ bool pageNeedsMoved(float old_util, float new_util)
     else if(old_util >= 0.90f && new_util < 0.90f) {
         return true;
     }
-    else if((old_util - new_util) > 0.05f || (new_util - old_util) > 0.05f) {
+    else if(((old_util - new_util) > 0.05f || (new_util - old_util) > 0.05f) 
+        && old_util < 0.90f && new_util < 0.90f) {
         return true;
     }
     else{
@@ -127,11 +125,8 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         GC_IS_ALLOCATED(obj) = false;
 
         objects_page->freecount++;
-        //
-        //TODO: once we have heapified the lists we can compare the computed capcity with the capcity in the heap and (if we are over a threshold) and call reprocessPageInfo
-        //
 
-
+        //if a difference in utilization (>0.05f) or drop from filled pages detected reprocess
         if(pageNeedsMoved(objects_page->approx_utilization, CALC_APPROX_UTILIZATION(objects_page))) {
             reprocessPageInfo(objects_page, tinfo);
         }

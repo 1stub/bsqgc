@@ -84,6 +84,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
 
 void GCAllocator::processPage(PageInfo* p) noexcept
 {
+    float old_util = p->approx_utilization;
     float n_util = CALC_APPROX_UTILIZATION(p);
     p->approx_utilization = n_util;
     int bucket_index = 0;
@@ -96,12 +97,15 @@ void GCAllocator::processPage(PageInfo* p) noexcept
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
         this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
     }
-    //we need to put on pending gc pages, filled pages are for evacs
-    //we need a way to tell if our page is evac page or not, if it is we cannot
-    //put in on the pendinggc list
-    else if(IS_FULL(n_util)) {
+    //if our page freshly became full we need to gc
+    else if(IS_FULL(n_util) && !IS_FULL(old_util)) {
         p->next = this->pendinggc_pages;
         pendinggc_pages = p;
+    }
+    //if our page was full before and still full put on filled pages
+    else if(IS_FULL(n_util) && IS_FULL(old_util)) {
+        p->next = this->filled_pages;
+        filled_pages = p;
     }
     else {
         GC_MEM_LOCK_ACQUIRE();
