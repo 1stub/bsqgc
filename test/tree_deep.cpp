@@ -19,18 +19,18 @@ struct TreeNodeValue {
     int64_t val;
 };
 
-GCAllocator alloc2(24, REAL_ENTRY_SIZE(24), collect);
+GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 
 TreeNodeValue* makeTree(int64_t depth, int64_t val) {
     if (depth < 0) {
         return nullptr; 
     }
 
-    TreeNodeValue* n = AllocType(TreeNodeValue, alloc2, &TreeNodeType);
+    TreeNodeValue* n = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
     n->val = val;
 
-    n->left = makeTree(depth - 1, val + 1);
-    n->right = makeTree(depth - 1, val + 1);
+    n->left = makeTree(depth - 1, val);
+    n->right = makeTree(depth - 1, val);
 
     return n;
 }
@@ -60,9 +60,13 @@ int main(int argc, char** argv) {
 
     InitBSQMemoryTheadLocalInfo();
 
-    GCAllocator* allocs[1] = { &alloc2 };
+    GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
+    //If depth > 10, fails
+    //GCAlloc ends up being garbage data
+    //Looks like it is assigned a page pointer which clobbers the base pointer
+    //Without the manual collection calls this works fine
     TreeNodeValue* t1 = makeTree(13, 4);
 
     auto t1_start = printtree(t1);

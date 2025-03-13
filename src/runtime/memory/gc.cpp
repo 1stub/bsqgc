@@ -263,6 +263,7 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
         MarkStackEntry entry = tinfo.visit_stack.pop_back();
         TypeInfoBase* obj_type = GC_TYPE(entry.obj);
 
+        //Large trees appear to fail if | (entry.color == black) is included
         if((obj_type->ptr_mask == LEAF_PTR_MASK) | (entry.color == MARK_STACK_NODE_COLOR_BLACK)) {
             //no children so do by definition
             tinfo.pending_young.push_back(entry.obj);

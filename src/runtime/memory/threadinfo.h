@@ -75,7 +75,8 @@ struct BSQMemoryTheadLocalInfo
     BSQMemoryTheadLocalInfo() noexcept : tl_id(0), g_gcallocs(nullptr), native_stack_base(nullptr), native_stack_count(0), native_stack_contents(nullptr), roots_count(0), roots(nullptr), old_roots_count(0), old_roots(nullptr), forward_table_index(0), forward_table(nullptr), pending_roots(), visit_stack(), pending_young(), pending_decs(), max_decrement_count(BSQ_INITIAL_MAX_DECREMENT_COUNT) { }
 
     inline GCAllocator* getAllocatorForPageSize(PageInfo* page) noexcept {
-        return this->g_gcallocs[page->allocsize >> 3];
+        GCAllocator* gcalloc = this->g_gcallocs[page->allocsize >> 3];
+        return gcalloc;
     }
 
     void initialize(size_t tl_id, void** caller_rbp) noexcept;
