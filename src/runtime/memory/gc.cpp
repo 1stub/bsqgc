@@ -64,17 +64,30 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 bool pageNeedsMoved(float old_util, float new_util)
 {
-    if(old_util < 0.90f && new_util >= 0.90f) {
-        return true;
+    int old_bucket = 0;
+    int new_bucket = 0;
+
+    if(old_util <= 0.60f) {
+        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
+    } 
+    else {
+        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
     }
-    else if(old_util >= 0.90f && new_util < 0.90f) {
-        return true;
+
+    if(new_util <= 0.60f) {
+        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
     }
-    else if(((old_util - new_util) > 0.05f || (new_util - old_util) > 0.05f) 
-        && old_util < 0.90f && new_util < 0.90f) {
-        return true;
+    else {
+        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
     }
-    else{
+
+    if ((old_util <= 0.90f && new_util > 0.90f) || 
+        (old_util > 0.90f && new_util <= 0.90f) || 
+        (old_bucket != new_bucket) ||
+        ((old_util <= 0.60f && new_util > 0.60f) || (old_util > 0.60f && new_util <= 0.60f))){
+        return true;
+    } 
+    else {
         return false;
     }
 }

@@ -178,9 +178,12 @@ public:
 #define IS_FULL(U) (U > 0.90f && U <= 1.0f)
 
 //Find proper bucket based on increments of 0.05f
-#define GET_BUCKET_INDEX(U, N, I)                   \
+#define GET_BUCKET_INDEX(U, N, I, O)                \
 do {                                                \
     float tmp_util = 0.0f;                          \
+    if(O) {                                         \
+        tmp_util = 0.60f;                           \
+    }                                               \
     for (int i = 0; i < N; i++) {                   \
         float new_tmp_util = tmp_util + 0.05f;      \
         if (U > tmp_util && U <= new_tmp_util) {    \
@@ -214,64 +217,6 @@ private:
     //completely empty pages go back to the global pool
 
     void (*collectfp)();
-
-    PageInfo* getFreshPageForAllocator() noexcept
-    {
-        //find lowest util bucket with stuff, get lowest util page from bucket
-        PageInfo* page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
-        if(page == nullptr) {
-            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
-        }
-
-        return page;
-    }
-
-    PageInfo* getFreshPageForEvacuation() noexcept
-    {
-        //Try to grab high util, if fails go to low, fall thoguh making fresh page
-        PageInfo* page = findLowestUtilPage(high_utilization_buckets, NUM_HIGH_UTIL_BUCKETS);
-        if(page == nullptr) {
-            page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
-        }
-        if(page == nullptr) {
-            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
-        }
-
-        return page;
-    }
-
-    void allocatorRefreshPage() noexcept
-    {
-        if(this->alloc_page == nullptr) {
-            this->alloc_page = this->getFreshPageForAllocator();
-        }
-        else {
-            //rotate collection pages
-            processPage(this->alloc_page);
-            this->alloc_page = nullptr;
-
-            //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
-            static int filled_pages_count = 0;
-            filled_pages_count++;
-
-            //check if we need to collect and do so
-            if(filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
-                collect();
-                filled_pages_count = 0;
-            }
-        
-            //get the new page
-            this->alloc_page = this->getFreshPageForAllocator();
-        }
-
-        this->freelist = this->alloc_page->freelist;
-    }
-
-    void allocatorRefreshEvacuationPage() noexcept
-    {
-        this->evac_page = this->getFreshPageForEvacuation();
-        this->evacfreelist = this->evac_page->freelist;
-    }
 
     inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int num_bucket) 
     {
@@ -355,8 +300,8 @@ private:
     {
         //it is crucial we remove the page we find here
         PageInfo* p = nullptr;
-        PageInfo* parent = nullptr;
         for(int i = 0; i < n; i++) {
+            PageInfo* parent = nullptr;
             PageInfo* cur = buckets[i];
             if(cur == nullptr) {
                 continue;
@@ -366,25 +311,78 @@ private:
                 cur = cur->left;
             }
 
-            p = cur;
-
-            //just to be safe
-            cur->left = nullptr;
-            cur->right = nullptr;
-
-            if(parent != nullptr) {
-                parent->left = nullptr;
-                break;
+            if(cur->right != nullptr || parent != nullptr) {
+                parent->left = cur->right;
             }
-            else if(cur->right != nullptr) {
+            //cur must be root since parent is null
+            else if(cur->right != nullptr && parent == nullptr) {
                 buckets[i] = cur->right;
-            }
-            else {
-                buckets[i] = nullptr;
-                break;
-            }
+            }   
+
+            p = cur;
+            p->left = nullptr;
+            p->right = nullptr;
+            break;
         }
         return p;
+    }
+
+    PageInfo* getFreshPageForAllocator() noexcept
+    {
+        //find lowest util bucket with stuff, get lowest util page from bucket
+        PageInfo* page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
+        if(page == nullptr) {
+            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
+        }
+
+        return page;
+    }
+
+    PageInfo* getFreshPageForEvacuation() noexcept
+    {
+        //Try to grab high util, if fails go to low, fall thoguh making fresh page
+        PageInfo* page = findLowestUtilPage(high_utilization_buckets, NUM_HIGH_UTIL_BUCKETS);
+        if(page == nullptr) {
+            page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
+        }
+        if(page == nullptr) {
+            page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
+        }
+
+        return page;
+    }
+
+    void allocatorRefreshPage() noexcept
+    {
+        if(this->alloc_page == nullptr) {
+            this->alloc_page = this->getFreshPageForAllocator();
+        }
+        else {
+            //rotate collection pages
+            processPage(this->alloc_page);
+            this->alloc_page = nullptr;
+
+            //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+            static int filled_pages_count = 0;
+            filled_pages_count++;
+
+            //check if we need to collect and do so
+            if(filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
+                collect();
+                filled_pages_count = 0;
+            }
+        
+            //get the new page
+            this->alloc_page = this->getFreshPageForAllocator();
+        }
+
+        this->freelist = this->alloc_page->freelist;
+    }
+
+    void allocatorRefreshEvacuationPage() noexcept
+    {
+        this->evac_page = this->getFreshPageForEvacuation();
+        this->evacfreelist = this->evac_page->freelist;
     }
 
 public:
@@ -419,12 +417,12 @@ public:
         float old_util = p->approx_utilization;
 
         if(IS_LOW_UTIL(old_util)) {
-            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
             this->deletePageFromBucket(
                 this->low_utilization_buckets[bucket_index], p);        
         }
         else if(IS_HIGH_UTIL(old_util)) {
-            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
             this->deletePageFromBucket(
                 this->high_utilization_buckets[bucket_index], p);
         }

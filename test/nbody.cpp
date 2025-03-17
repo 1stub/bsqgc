@@ -9,9 +9,9 @@ struct TypeInfoBase CelestialBodyType = {
     .type_id = 1,
     .type_size = 32,
     .slot_size = 4,
-    .ptr_mask = "2011",  
+    .ptr_mask = "1100",  
     .typekey = "CelestialBodyType"
-}; //name, mass, pos, vel
+}; 
 
 struct TypeInfoBase VelocityType = {
     .type_id = 2,
@@ -28,6 +28,14 @@ struct TypeInfoBase PositionType = {
     .ptr_mask = "000",  
     .typekey = "PositionType"
 };
+
+TypeInfoBase ListNodeType = {
+    .type_id = 4,
+    .type_size = 16,
+    .slot_size = 2,
+    .ptr_mask = "11",  
+    .typekey = "ListNodeType"
+}; //next, ptr to cur object
 
 typedef struct {
     double x;
@@ -48,12 +56,18 @@ typedef struct {
 } Forces;
 
 typedef struct {
-    const char* name;
-    double mass;
     Position* pos;
     Velocity* vel;
+    uint64_t name;
+    double mass;
 } Body;
 
+struct ListNode {
+    ListNode* next;
+    Body* body;
+} ;
+
+GCAllocator alloc2(16, REAL_ENTRY_SIZE(16), collect);
 GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 GCAllocator alloc4(32, REAL_ENTRY_SIZE(32), collect);
 
@@ -64,15 +78,10 @@ GCAllocator alloc4(32, REAL_ENTRY_SIZE(32), collect);
 
 #define GET_MASS(D) (D * SOLAR_MASS)
 
-// Encode a string pointer with its length in the lower 3 bits
-#define ENCODE_STRING_PTR(ptr, len) ((const char*)((uintptr_t)(ptr) | ((len) & 0x7)))
-
-//In the global array we can put actual bodies references in here 
-//in order to keep them alive properly
+//Perhaps could be nice to just store each bodies original values here
 Body* garray[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
-//jupiter, saturn, uranus, neptune, sun
 
-const double jupiter_mass = GET_MASS(0.000954791938424326609);
+double jupiter_mass = GET_MASS(0.000954791938424326609);
 const Position jupiter_pos = {
     4.84143144246472090,
     -1.16032004402742839,
@@ -84,7 +93,7 @@ const Velocity jupiter_velocity = {
     -0.0000690460016972063023 * DAYS_PER_YEAR
 };
 
-const double saturn_mass = GET_MASS(0.000285885980666130812);
+double saturn_mass = GET_MASS(0.000285885980666130812);
 const Position saturn_position = {
     8.34336671824457987,
     4.12479856412430479,
@@ -96,7 +105,7 @@ const Velocity saturn_velocity = {
     0.0000230417297573763929 * DAYS_PER_YEAR
 };
 
-const double uranus_mass = GET_MASS(0.0000436624404335156298);
+double uranus_mass = GET_MASS(0.0000436624404335156298);
 const Position uranus_position = {
     12.8943695621391310,
     -15.1111514016986312,
@@ -108,7 +117,7 @@ const Velocity uranus_velocity = {
     -0.0000296589568540237556 * DAYS_PER_YEAR
 };
 
-const double neptune_mass = GET_MASS(0.0000515138902046611451);
+double neptune_mass = GET_MASS(0.0000515138902046611451);
 const Position neptune_position = {
     15.3796971148509165,
     -25.9193146099879641,
@@ -120,7 +129,7 @@ const Velocity neptune_velocity = {
     -0.0000951592254519715870 * DAYS_PER_YEAR
 };
 
-//mass is SOLAR_MASS
+double sun_mass = SOLAR_MASS;
 const Position sun_position = {
     0.0,
     0.0,
@@ -132,7 +141,8 @@ const Velocity sun_velocity = {
     0.0
 };
 
-void offsetMomemtum(Body* b, double px, double py, double pz) {
+void offsetMomemtum(Body* b, double px, double py, double pz) 
+{
     b->vel->vx = -px / SOLAR_MASS;
     b->vel->vy = -py / SOLAR_MASS;
     b->vel->vz = -pz / SOLAR_MASS;
@@ -151,78 +161,109 @@ double distance(Body* b0, Body* b1)
     return sqrt((dx * dx) + (dy * dy) + (dz * dz));
 }
 
-void createBody(int i, Position p, Velocity v, const char* n, double m) 
+Body* createBody(Position p, Velocity v, uint64_t n, double m) 
 {
-    garray[i] = AllocType(Body, alloc4, &CelestialBodyType);
-    (garray[i])->pos = AllocType(Position, alloc3, &PositionType);
-    (garray[i])->vel = AllocType(Velocity, alloc3, &VelocityType);
+    Body* b = AllocType(Body, alloc4, &CelestialBodyType);
+    b->pos = AllocType(Position, alloc3, &PositionType);
+    b->vel = AllocType(Velocity, alloc3, &VelocityType);
     
-    (garray[i])->name = n;
-    (garray[i])->mass = m;
-    (garray[i])->pos->x = p.x;
-    (garray[i])->pos->y = p.y;
-    (garray[i])->pos->z = p.z;
-    (garray[i])->vel->vx = v.vx;
-    (garray[i])->vel->vy = v.vy;
-    (garray[i])->vel->vz = v.vz;
+    b->name = n;
+    b->mass = m;
+    b->pos->x = p.x;
+    b->pos->y = p.y;
+    b->pos->z = p.z;
+    b->vel->vx = v.vx;
+    b->vel->vy = v.vy;
+    b->vel->vz = v.vz;
+
+    return b;
 }
 
-//Populates garray with body references
-void createNBodySystem() 
-{
-    createBody(0, jupiter_pos, jupiter_velocity, ENCODE_STRING_PTR("jupiter", 7), jupiter_mass);
-    createBody(1, saturn_position, saturn_velocity, ENCODE_STRING_PTR("saturn", 6), saturn_mass);
-    createBody(2, uranus_position, uranus_velocity, ENCODE_STRING_PTR("uranus", 6), uranus_mass);
-    createBody(3, neptune_position, neptune_velocity, ENCODE_STRING_PTR("neptune", 7), neptune_mass);
+ListNode* createNBodySystem() {
+    ListNode* planets = AllocType(ListNode, alloc2, &ListNodeType);
+    ListNode* current = planets;
 
-    //sun
+    current->body = createBody(jupiter_pos, jupiter_velocity, 0, jupiter_mass);
+    current->next = AllocType(ListNode, alloc2, &ListNodeType);
+    current = current->next;
+
+    current->body = createBody(saturn_position, saturn_velocity, 1, saturn_mass);
+    current->next = AllocType(ListNode, alloc2, &ListNodeType);
+    current = current->next;
+
+    current->body = createBody(uranus_position, uranus_velocity, 2, uranus_mass);
+    current->next = AllocType(ListNode, alloc2, &ListNodeType);
+    current = current->next;
+
+    current->body = createBody(neptune_position, neptune_velocity, 3, neptune_mass);
+    current->next = nullptr;
+
     double px = 0.0, py = 0.0, pz = 0.0;
-    for (int i = 0; i < (N - 1); i++) {
-        px += garray[i]->vel->vx * garray[i]->mass;
-        py += garray[i]->vel->vy * garray[i]->mass;
-        pz += garray[i]->vel->vz * garray[i]->mass;
+    ListNode* temp = planets;
+    while (temp != nullptr) {
+        px += temp->body->vel->vx * temp->body->mass;
+        py += temp->body->vel->vy * temp->body->mass;
+        pz += temp->body->vel->vz * temp->body->mass;
+        temp = temp->next;
     }
 
-    createBody(4, sun_position, sun_velocity, ENCODE_STRING_PTR("sun", 6), SOLAR_MASS);
+    current->next = AllocType(ListNode, alloc2, &ListNodeType);
+    current = current->next;
+
+    current->body = createBody(sun_position, sun_velocity, 4, sun_mass);
+    current->next = nullptr; 
+
+    return planets;
 }
 
-double potentialEnergyCompute() 
+double potentialEnergyCompute(ListNode* planets) 
 {
     double potential = 0.0;
-    for (int i = 0; i < N; i++) {
-        Body* b0 = garray[i];
+    ListNode* it1 = planets;
+    while(it1 != nullptr) {
+        Body* b0 = it1->body;
+        it1 = it1->next;
 
-        for (int j = i + 1; j < N; j++) {
-            Body* b1 = garray[j];
+        ListNode* it2 = it1;
+        while (it2 != nullptr) {
+            Body* b1 = it2->body;
             
             potential += (b0->mass * b1->mass) / distance(b0, b1);
+
+            it2 = it2->next;
         }
     }
 
     return potential;
 }
 
-double energy() 
+double energy(ListNode* planets) 
 {
+    ListNode* it = planets;
+
     double kinetic = 0.0;
-    for(int i = 0; i < N; i++) {
-        Body* b = garray[0]; 
+    while(it != nullptr) {
+        Body* b = it->body; 
         kinetic += kineticEnergy(b);
+
+        it = it->next;
     }
 
-    double potential = potentialEnergyCompute();
+    double potential = potentialEnergyCompute(planets);
     return (kinetic - potential);
 }
 
 
-static inline Forces getForces(Body* b0, double dt) 
+static inline Forces getForces(ListNode* planets, Body* b0, double dt) 
 {
     Forces forces_b1 = {.fx = 0.0, .fy = 0.0, .fz = 0.0};
+    ListNode* it = planets;
 
-    for (int j = 0; j < N; j++) {
-        Body* b1 = garray[j];
+    while (it != nullptr) {
+        Body* b1 = it->body;
 
         if (b0->name == b1->name) {
+            it = it->next;
             continue;
         }
 
@@ -236,6 +277,8 @@ static inline Forces getForces(Body* b0, double dt)
         forces_b1.fx += dx * b1->mass * mag;
         forces_b1.fy += dy * b1->mass * mag;
         forces_b1.fz += dz * b1->mass * mag;
+
+        it = it->next;
     }
 
     Forces forces = {.fx = 0.0, .fy = 0.0, .fz = 0.0};
@@ -247,11 +290,16 @@ static inline Forces getForces(Body* b0, double dt)
 }
 
 /* advance to next system */
-void advance(double dt) 
+ListNode* advance(ListNode* planets, double dt) 
 {
-    for(int i = 0; i < N; i++) {
-        Body* b0 = garray[i];
-        Forces forces = getForces(b0, dt);
+    ListNode* new_planets = AllocType(ListNode, alloc2, &ListNodeType);
+    ListNode* current = new_planets;    
+
+    ListNode* planets_it = planets;
+
+    while(planets_it != nullptr) {
+        Body* b0 = planets_it->body;
+        Forces forces = getForces(planets, b0, dt);
 
         double fx = forces.fx;
         double fy = forces.fy;
@@ -264,18 +312,17 @@ void advance(double dt)
             .z = b0->pos->z + (fz * dt)  
         };
 
-        Body* new_body = AllocType(Body, alloc4, &CelestialBodyType);
-        new_body->pos = AllocType(Position, alloc3, &PositionType);
-        new_body->vel = AllocType(Velocity, alloc3, &VelocityType);
-        new_body->name = b0->name;
-        new_body->mass = b0->mass;
-        new_body->pos->x = npos.x;
-        new_body->pos->y = npos.y;
-        new_body->pos->z = npos.z;
-        new_body->vel->vx = nvel.vx;
-        new_body->vel->vy = nvel.vy;
-        new_body->vel->vz = nvel.vz;
+        planets_it = planets_it->next;
+        current->body = createBody(npos, nvel, b0->name, b0->mass);
+        if(planets_it == nullptr) {
+            current->next = nullptr;
+        }
+        else {
+            current->next = AllocType(ListNode, alloc2, &ListNodeType);
+        }
     }
+
+    return new_planets;
 }
 
 int main(int argc, char** argv) 
@@ -285,22 +332,25 @@ int main(int argc, char** argv)
 
     InitBSQMemoryTheadLocalInfo();
 
-    GCAllocator* allocs[2] = { &alloc3, &alloc4 };
-    gtl_info.initializeGC<2>(allocs);
+    GCAllocator* allocs[3] = { &alloc2, &alloc3, &alloc4 };
+    gtl_info.initializeGC<3>(allocs);
 
     int n = 50000000;
-    createNBodySystem();
+    ListNode* sys = createNBodySystem();
     double step = 0.01;
     
-    printf("energy: %g\n", energy());
+    printf("energy: %g\n", energy(sys));
 
     for(int i = 0; i < n; i++) {
-        advance(step);
+        if(i % 500000 == 0) {
+            printf("%i\n", i);
+        }
+        sys = advance(sys, step);
     }
 
     gtl_info.disable_stack_refs_for_tests = true;
 
-    printf("energy: %g\n", energy());
+    printf("energy: %g\n", energy(sys));
 
     return 0;
 }
