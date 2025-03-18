@@ -144,8 +144,12 @@ public:
 
     void addNewPage(PageInfo* newPage) noexcept
     {
+        GC_MEM_LOCK_ACQUIRE();
+
         newPage->next = empty_pages;  
-        empty_pages = newPage;        
+        empty_pages = newPage;    
+        
+        GC_MEM_LOCK_RELEASE();
     }
 };
 
@@ -218,11 +222,11 @@ private:
 
     void (*collectfp)();
 
-    inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int num_bucket) 
+    inline void insertPageInBucket(PageInfo* bucket, PageInfo* new_page, float n_util) 
     {
-        PageInfo* root = bucket[num_bucket];                                           
+        PageInfo* root = bucket;                                           
         if(root == nullptr) {
-            bucket[num_bucket] = new_page;
+            bucket = new_page;
             new_page->left = nullptr;
             new_page->right = nullptr;
 
@@ -311,13 +315,16 @@ private:
                 cur = cur->left;
             }
 
-            if(cur->right != nullptr || parent != nullptr) {
+            if(cur->right != nullptr && parent != nullptr) {
                 parent->left = cur->right;
             }
             //cur must be root since parent is null
             else if(cur->right != nullptr && parent == nullptr) {
                 buckets[i] = cur->right;
-            }   
+            }
+            else {
+                buckets[i] = nullptr;
+            }
 
             p = cur;
             p->left = nullptr;

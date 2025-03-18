@@ -35,7 +35,6 @@ void PageInfo::rebuild() noexcept
     for(int64_t i = this->entrycount - 1; i >= 0; i--) {
         MetaData* meta = this->getMetaEntryAtIndex(i);
         
-        //investigate this macro. shouldnt we need to check not marked aswell?
         if(GC_SHOULD_FREE_LIST_ADD(meta)) {
             FreeListEntry* entry = this->getFreelistEntryAtIndex(i);
             entry->next = this->freelist;
@@ -90,17 +89,15 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     int bucket_index = 0;
 
     if(p->entrycount == p->freecount) {
-        GC_MEM_LOCK_ACQUIRE();
         GlobalPageGCManager::g_gc_page_manager.addNewPage(p);
-        GC_MEM_LOCK_RELEASE();
     }
     else if(IS_LOW_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
-        this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);    
+        this->insertPageInBucket(this->low_utilization_buckets[bucket_index], p, n_util);    
     }
     else if(IS_HIGH_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
-        this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
+        this->insertPageInBucket(this->high_utilization_buckets[bucket_index], p, n_util);
     }
     //if our page freshly became full we need to gc
     else if(IS_FULL(n_util) && !IS_FULL(old_util)) {

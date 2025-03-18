@@ -346,6 +346,7 @@ int main(int argc, char** argv)
             printf("%i\n", i);
         }
         sys = advance(sys, step);
+        //collect();
     }
 
     gtl_info.disable_stack_refs_for_tests = true;
