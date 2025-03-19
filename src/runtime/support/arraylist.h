@@ -96,7 +96,7 @@ public:
         }
 
         //tail should be in the tail segment
-        if(this->tail < this->tail_min || this->tail > this->tail_max) {
+        if(this->tail < this->tail_min || this->tail >= this->tail_max) {
             return false;
         }
 

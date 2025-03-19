@@ -104,6 +104,7 @@ class GlobalThreadAllocInfo
 public:
     static size_t s_thread_counter;
     static void* s_current_page_address;
+    static uint32_t newly_filled_pages_count;
 
     //TODO: if we need to do deterministic replay we can add a thread page-get buffer here to record/replay from
 };
@@ -135,6 +136,9 @@ typedef struct MetaData
 static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #endif
 
+// After we evacuate an object we need to update the original metadata
+#define RESET_METADATA_FOR_OBJECT(M, FP) *M = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=(FP), .ref_count=0 }
+
 #define GC_GET_META_DATA_ADDR(O) ((MetaData*)((uint8_t*)O - sizeof(MetaData)))
 
 #define GC_IS_MARKED(O) (GC_GET_META_DATA_ADDR(O))->ismarked
@@ -156,5 +160,5 @@ static_assert(sizeof(MetaData) == 8, "MetaData size is not 8 bytes");
 #define GC_CLEAR_YOUNG_MARK(META) { (META)->isyoung = false; }
 #define GC_CLEAR_ROOT_MARK(META) { (META)->ismarked = false; (META)->isroot = false; }
 
-#define GC_SHOULD_FREE_LIST_ADD(META) (!(META)->isalloc)
+#define GC_SHOULD_FREE_LIST_ADD(META) (!(META)->isalloc || ((META)->ref_count == 0 && !(META)->isroot) || (!(META)->isroot && !(META)->ismarked))
 

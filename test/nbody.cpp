@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct TypeInfoBase CelestialBodyType = {
+TypeInfoBase CelestialBodyType = {
     .type_id = 1,
     .type_size = 32,
     .slot_size = 4,
@@ -13,7 +13,7 @@ struct TypeInfoBase CelestialBodyType = {
     .typekey = "CelestialBodyType"
 }; 
 
-struct TypeInfoBase VelocityType = {
+TypeInfoBase VelocityType = {
     .type_id = 2,
     .type_size = 24,
     .slot_size = 3,
@@ -21,7 +21,7 @@ struct TypeInfoBase VelocityType = {
     .typekey = "VelocityType"
 };
 
-struct TypeInfoBase PositionType = {
+TypeInfoBase PositionType = {
     .type_id = 3,
     .type_size = 24,
     .slot_size = 3,
@@ -29,12 +29,12 @@ struct TypeInfoBase PositionType = {
     .typekey = "PositionType"
 };
 
-TypeInfoBase ListNodeType = {
+TypeInfoBase ListNode5Type = {
     .type_id = 4,
-    .type_size = 16,
-    .slot_size = 2,
-    .ptr_mask = "11",  
-    .typekey = "ListNodeType"
+    .type_size = 40,
+    .slot_size = 5,
+    .ptr_mask = "11111",  
+    .typekey = "ListNode5Type"
 }; //next, ptr to cur object
 
 typedef struct {
@@ -58,18 +58,13 @@ typedef struct {
 typedef struct {
     Position* pos;
     Velocity* vel;
-    uint64_t name;
+    uint8_t name;
     double mass;
 } Body;
 
-struct ListNode {
-    ListNode* next;
-    Body* body;
-} ;
-
-GCAllocator alloc2(16, REAL_ENTRY_SIZE(16), collect);
 GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 GCAllocator alloc4(32, REAL_ENTRY_SIZE(32), collect);
+GCAllocator alloc5(40, REAL_ENTRY_SIZE(40), collect);
 
 #define N 5
 #define PI 3.141592653589793
@@ -179,74 +174,49 @@ Body* createBody(Position p, Velocity v, uint64_t n, double m)
     return b;
 }
 
-ListNode* createNBodySystem() {
-    ListNode* planets = AllocType(ListNode, alloc2, &ListNodeType);
-    ListNode* current = planets;
+Body** createNBodySystem() {
+    Body** planets = AllocType(Body*, alloc5, &ListNode5Type);
 
-    current->body = createBody(jupiter_pos, jupiter_velocity, 0, jupiter_mass);
-    current->next = AllocType(ListNode, alloc2, &ListNodeType);
-    current = current->next;
-
-    current->body = createBody(saturn_position, saturn_velocity, 1, saturn_mass);
-    current->next = AllocType(ListNode, alloc2, &ListNodeType);
-    current = current->next;
-
-    current->body = createBody(uranus_position, uranus_velocity, 2, uranus_mass);
-    current->next = AllocType(ListNode, alloc2, &ListNodeType);
-    current = current->next;
-
-    current->body = createBody(neptune_position, neptune_velocity, 3, neptune_mass);
-    current->next = nullptr;
+    planets[0] = createBody(jupiter_pos, jupiter_velocity, 0, jupiter_mass);
+    planets[1] = createBody(saturn_position, saturn_velocity, 1, saturn_mass);
+    planets[2] = createBody(uranus_position, uranus_velocity, 2, uranus_mass);
+    planets[3] = createBody(neptune_position, neptune_velocity, 3, neptune_mass);
 
     double px = 0.0, py = 0.0, pz = 0.0;
-    ListNode* temp = planets;
-    while (temp != nullptr) {
-        px += temp->body->vel->vx * temp->body->mass;
-        py += temp->body->vel->vy * temp->body->mass;
-        pz += temp->body->vel->vz * temp->body->mass;
-        temp = temp->next;
+    for (int i = 0; i < (N - 1); i++) {
+        px += planets[i]->vel->vx * planets[i]->mass;
+        py += planets[i]->vel->vy * planets[i]->mass;
+        pz += planets[i]->vel->vz * planets[i]->mass;
     }
 
-    current->next = AllocType(ListNode, alloc2, &ListNodeType);
-    current = current->next;
-
-    current->body = createBody(sun_position, sun_velocity, 4, sun_mass);
-    current->next = nullptr; 
+    planets[4] = createBody(sun_position, sun_velocity, 4, sun_mass);
+    offsetMomemtum(planets[4], px, py, pz);
 
     return planets;
 }
 
-double potentialEnergyCompute(ListNode* planets) 
+double potentialEnergyCompute(Body** planets) 
 {
     double potential = 0.0;
-    ListNode* it1 = planets;
-    while(it1 != nullptr) {
-        Body* b0 = it1->body;
-        it1 = it1->next;
+    for(int i = 0; i < N; i++) {
+        Body* b0 = planets[i];
 
-        ListNode* it2 = it1;
-        while (it2 != nullptr) {
-            Body* b1 = it2->body;
+        for (int j = i+1; j < N; j++) {
+            Body* b1 = planets[j];
             
             potential += (b0->mass * b1->mass) / distance(b0, b1);
-
-            it2 = it2->next;
         }
     }
 
     return potential;
 }
 
-double energy(ListNode* planets) 
+double energy(Body** planets) 
 {
-    ListNode* it = planets;
-
     double kinetic = 0.0;
-    while(it != nullptr) {
-        Body* b = it->body; 
+    for(int i = 0; i < N; i++) {
+        Body* b = planets[i]; 
         kinetic += kineticEnergy(b);
-
-        it = it->next;
     }
 
     double potential = potentialEnergyCompute(planets);
@@ -254,16 +224,13 @@ double energy(ListNode* planets)
 }
 
 
-static inline Forces getForces(ListNode* planets, Body* b0, double dt) 
+static inline Forces getForces(Body** planets, Body* b0, double dt) 
 {
     Forces forces_b1 = {.fx = 0.0, .fy = 0.0, .fz = 0.0};
-    ListNode* it = planets;
-
-    while (it != nullptr) {
-        Body* b1 = it->body;
+    for (int i = 0; i < N; i++) {
+        Body* b1 = planets[i];
 
         if (b0->name == b1->name) {
-            it = it->next;
             continue;
         }
 
@@ -277,8 +244,6 @@ static inline Forces getForces(ListNode* planets, Body* b0, double dt)
         forces_b1.fx += dx * b1->mass * mag;
         forces_b1.fy += dy * b1->mass * mag;
         forces_b1.fz += dz * b1->mass * mag;
-
-        it = it->next;
     }
 
     Forces forces = {.fx = 0.0, .fy = 0.0, .fz = 0.0};
@@ -290,15 +255,15 @@ static inline Forces getForces(ListNode* planets, Body* b0, double dt)
 }
 
 /* advance to next system */
-ListNode* advance(ListNode* planets, double dt) 
+Body** advance(Body** planets, double dt) 
 {
-    ListNode* new_planets = AllocType(ListNode, alloc2, &ListNodeType);
-    ListNode* current = new_planets;    
+    if (planets == nullptr) {
+        assert(false);
+    }
+    Body** new_planets = AllocType(Body*, alloc5, &ListNode5Type);
 
-    ListNode* planets_it = planets;
-
-    while(planets_it != nullptr) {
-        Body* b0 = planets_it->body;
+    for(int i = 0; i < N; i++) {
+        Body* b0 = planets[i];
         Forces forces = getForces(planets, b0, dt);
 
         double fx = forces.fx;
@@ -312,14 +277,7 @@ ListNode* advance(ListNode* planets, double dt)
             .z = b0->pos->z + (fz * dt)  
         };
 
-        planets_it = planets_it->next;
-        current->body = createBody(npos, nvel, b0->name, b0->mass);
-        if(planets_it == nullptr) {
-            current->next = nullptr;
-        }
-        else {
-            current->next = AllocType(ListNode, alloc2, &ListNodeType);
-        }
+        new_planets[i] = createBody(npos, nvel, b0->name, b0->mass);
     }
 
     return new_planets;
@@ -332,21 +290,27 @@ int main(int argc, char** argv)
 
     InitBSQMemoryTheadLocalInfo();
 
-    GCAllocator* allocs[3] = { &alloc2, &alloc3, &alloc4 };
+    GCAllocator* allocs[3] = { &alloc3, &alloc4, &alloc5 };
     gtl_info.initializeGC<3>(allocs);
 
     int n = 50000000;
-    ListNode* sys = createNBodySystem();
+    Body** sys = createNBodySystem();
     double step = 0.01;
     
     printf("energy: %g\n", energy(sys));
 
+    //
+    //We need to manually trigger a collection to prevent
+    //our collector from running while we are in the middle of
+    //allocating an object. Slots in ListNode5Type could be nullptr
+    //in this case leading to segfaults
+    //
     for(int i = 0; i < n; i++) {
-        if(i % 500000 == 0) {
-            printf("%i\n", i);
-        }
         sys = advance(sys, step);
-        //collect();
+
+        if(i % 1000 == 0) {
+            collect();
+        }
     }
 
     gtl_info.disable_stack_refs_for_tests = true;

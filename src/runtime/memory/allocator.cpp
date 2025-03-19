@@ -36,6 +36,8 @@ void PageInfo::rebuild() noexcept
         MetaData* meta = this->getMetaEntryAtIndex(i);
         
         if(GC_SHOULD_FREE_LIST_ADD(meta)) {
+            //just to be safe reset metadata
+            RESET_METADATA_FOR_OBJECT(meta, MAX_FWD_INDEX);
             FreeListEntry* entry = this->getFreelistEntryAtIndex(i);
             entry->next = this->freelist;
             this->freelist = entry;
@@ -93,11 +95,11 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     }
     else if(IS_LOW_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
-        this->insertPageInBucket(this->low_utilization_buckets[bucket_index], p, n_util);    
+        this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);    
     }
     else if(IS_HIGH_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
-        this->insertPageInBucket(this->high_utilization_buckets[bucket_index], p, n_util);
+        this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
     }
     //if our page freshly became full we need to gc
     else if(IS_FULL(n_util) && !IS_FULL(old_util)) {

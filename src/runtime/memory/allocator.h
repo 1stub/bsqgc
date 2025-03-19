@@ -222,25 +222,31 @@ private:
 
     void (*collectfp)();
 
-    inline void insertPageInBucket(PageInfo* bucket, PageInfo* new_page, float n_util) 
-    {
-        PageInfo* root = bucket;                                           
+    inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int index) 
+    {                             
+        if(new_page == nullptr) {
+            assert(0);
+        }
+        
+        PageInfo* root = bucket[index];     
+        new_page->left = nullptr;
+        new_page->right = nullptr;
+
         if(root == nullptr) {
-            bucket = new_page;
+            bucket[index] = new_page;
             new_page->left = nullptr;
             new_page->right = nullptr;
 
             return ;
         }
     
+        //Perhaps do so just to make sure we modify the real bucket?
         PageInfo* current = root;
         while (true) {
             if (n_util < current->approx_utilization) {
                 if (current->left == nullptr) {
                     //Insert as the left child
                     current->left = new_page;
-                    new_page->left = nullptr;
-                    new_page->right = nullptr;
                     break;
                 } else {
                     current = current->left;
@@ -249,8 +255,6 @@ private:
                 if (current->right == nullptr) {
                     //Insert as the right child
                     current->right = new_page;
-                    new_page->left = nullptr;
-                    new_page->right = nullptr;
                     break;
                 } else {
                     current = current->right;
@@ -259,37 +263,32 @@ private:
         }
     }
 
-    inline PageInfo* deletePageFromBucket(PageInfo* root, PageInfo* old_page)
+    inline void deletePageFromBucket(PageInfo* root, PageInfo* old_page)
     {
         float old_util = old_page->approx_utilization;
 
         if(root == nullptr) {
-            return root;
+            return ;
         }
 
         if(root->approx_utilization > old_util && root != old_page) {
-            root->left = deletePageFromBucket(root->left, old_page);
+            deletePageFromBucket(root->left, old_page);
         }
         else if (root->approx_utilization < old_util && root != old_page) {
-            root->right = deletePageFromBucket(root->right, old_page);
+            deletePageFromBucket(root->right, old_page);
         }
         else {
             if(root->left == nullptr) {
-                PageInfo* tmp = root->right;
-                root = nullptr;
-                return tmp;
+                root = root->right;
             }
             if(root->right == nullptr) {
-                PageInfo* tmp = root->left;
-                root = nullptr;
-                return tmp;
+                root = root->left;
             }
 
             PageInfo* successor = getSuccessor(root);
             root->approx_utilization = successor->approx_utilization;
-            root->right = deletePageFromBucket(root->right, successor);
+            deletePageFromBucket(root->right, successor);
         }
-        return root;
     }
 
     inline PageInfo* getSuccessor(PageInfo* p) {
@@ -370,13 +369,11 @@ private:
             this->alloc_page = nullptr;
 
             //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
-            static int filled_pages_count = 0;
-            filled_pages_count++;
+            GlobalThreadAllocInfo::newly_filled_pages_count++;
 
             //check if we need to collect and do so
-            if(filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
+            if(GlobalThreadAllocInfo::newly_filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
                 collect();
-                filled_pages_count = 0;
             }
         
             //get the new page

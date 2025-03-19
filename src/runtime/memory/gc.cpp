@@ -7,16 +7,12 @@
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
-// After we evacuate an object we need to update the original metadata
-#define RESET_METADATA_FOR_OBJECT(M, FP) *M = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=(FP), .ref_count=0 }
-
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
 
 void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //This should not be called on pages that are (1) active allocators or evacuators or (2) pending collection pages
-
     GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
     if(gcalloc->checkNonAllocOrGCPage(page)) {
         gcalloc->deleteOldPage(page);
@@ -362,4 +358,5 @@ void collect() noexcept
 
     xmem_zerofill(gtl_info.roots, gtl_info.roots_count);
     gtl_info.roots_count = 0;
+    GlobalThreadAllocInfo::newly_filled_pages_count = 0;
 }

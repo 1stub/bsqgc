@@ -60,6 +60,8 @@ struct BSQMemoryTheadLocalInfo
     size_t forward_table_index = 0;
     void** forward_table;
 
+    uint32_t newly_filled_pages_count = 0;
+
     ArrayList<void*> pending_roots; //the worklist of roots that we need to do visits from
     ArrayList<MarkStackEntry> visit_stack; //stack for doing a depth first visit (and topo organization) of the object graph
 
