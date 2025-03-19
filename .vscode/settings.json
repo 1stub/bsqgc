@@ -7,7 +7,12 @@
         "limits": "cpp",
         "new": "cpp",
         "*.ipp": "cpp",
-        "memory_resource": "cpp"
+        "memory_resource": "cpp",
+        "chrono": "cpp",
+        "text_encoding": "cpp",
+        "typeindex": "cpp",
+        "typeinfo": "cpp",
+        "source_location": "cpp"
     },
     "workbench.productIconTheme": "undoDebugger"
 }

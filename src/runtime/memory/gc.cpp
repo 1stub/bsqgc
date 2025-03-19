@@ -7,16 +7,12 @@
 // Used to determine if a pointer points into the data segment of an object
 #define POINTS_TO_DATA_SEG(P) P >= (void*)PAGE_FIND_OBJ_BASE(P) && P < (void*)((char*)PAGE_FIND_OBJ_BASE(P) + PAGE_MASK_EXTRACT_PINFO(P)->entrysize)
 
-// After we evacuate an object we need to update the original metadata
-#define RESET_METADATA_FOR_OBJECT(M, FP) *M = { .type=nullptr, .isalloc=false, .isyoung=false, .ismarked=false, .isroot=false, .forward_index=(FP), .ref_count=0 }
-
 #define INC_REF_COUNT(O) (++GC_REF_COUNT(O))
 #define DEC_REF_COUNT(O) (--GC_REF_COUNT(O))
 
 void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //This should not be called on pages that are (1) active allocators or evacuators or (2) pending collection pages
-
     GCAllocator* gcalloc = tinfo.getAllocatorForPageSize(page);
     if(gcalloc->checkNonAllocOrGCPage(page)) {
         gcalloc->deleteOldPage(page);
@@ -64,17 +60,30 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 bool pageNeedsMoved(float old_util, float new_util)
 {
-    if(old_util < 0.90f && new_util >= 0.90f) {
-        return true;
+    int old_bucket = 0;
+    int new_bucket = 0;
+
+    if(old_util <= 0.60f) {
+        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
+    } 
+    else {
+        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
     }
-    else if(old_util >= 0.90f && new_util < 0.90f) {
-        return true;
+
+    if(new_util <= 0.60f) {
+        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
     }
-    else if(((old_util - new_util) > 0.05f || (new_util - old_util) > 0.05f) 
-        && old_util < 0.90f && new_util < 0.90f) {
-        return true;
+    else {
+        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
     }
-    else{
+
+    if ((old_util <= 0.90f && new_util > 0.90f) || 
+        (old_util > 0.90f && new_util <= 0.90f) || 
+        (old_bucket != new_bucket) ||
+        ((old_util <= 0.60f && new_util > 0.60f) || (old_util > 0.60f && new_util <= 0.60f))){
+        return true;
+    } 
+    else {
         return false;
     }
 }
@@ -263,6 +272,7 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
         MarkStackEntry entry = tinfo.visit_stack.pop_back();
         TypeInfoBase* obj_type = GC_TYPE(entry.obj);
 
+        //Large trees appear to fail if | (entry.color == black) is included
         if((obj_type->ptr_mask == LEAF_PTR_MASK) | (entry.color == MARK_STACK_NODE_COLOR_BLACK)) {
             //no children so do by definition
             tinfo.pending_young.push_back(entry.obj);
@@ -348,4 +358,5 @@ void collect() noexcept
 
     xmem_zerofill(gtl_info.roots, gtl_info.roots_count);
     gtl_info.roots_count = 0;
+    GlobalThreadAllocInfo::newly_filled_pages_count = 0;
 }

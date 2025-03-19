@@ -144,8 +144,12 @@ public:
 
     void addNewPage(PageInfo* newPage) noexcept
     {
+        GC_MEM_LOCK_ACQUIRE();
+
         newPage->next = empty_pages;  
-        empty_pages = newPage;        
+        empty_pages = newPage;    
+        
+        GC_MEM_LOCK_RELEASE();
     }
 };
 
@@ -178,9 +182,12 @@ public:
 #define IS_FULL(U) (U > 0.90f && U <= 1.0f)
 
 //Find proper bucket based on increments of 0.05f
-#define GET_BUCKET_INDEX(U, N, I)                   \
+#define GET_BUCKET_INDEX(U, N, I, O)                \
 do {                                                \
     float tmp_util = 0.0f;                          \
+    if(O) {                                         \
+        tmp_util = 0.60f;                           \
+    }                                               \
     for (int i = 0; i < N; i++) {                   \
         float new_tmp_util = tmp_util + 0.05f;      \
         if (U > tmp_util && U <= new_tmp_util) {    \
@@ -214,6 +221,127 @@ private:
     //completely empty pages go back to the global pool
 
     void (*collectfp)();
+
+    inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int index) 
+    {                             
+        if(new_page == nullptr) {
+            assert(0);
+        }
+        
+        PageInfo* root = bucket[index];     
+        new_page->left = nullptr;
+        new_page->right = nullptr;
+
+        if(root == nullptr) {
+            bucket[index] = new_page;
+            new_page->left = nullptr;
+            new_page->right = nullptr;
+
+            return ;
+        }
+    
+        //Perhaps do so just to make sure we modify the real bucket?
+        PageInfo* current = root;
+        while (true) {
+            if (n_util < current->approx_utilization) {
+                if (current->left == nullptr) {
+                    //Insert as the left child
+                    current->left = new_page;
+                    break;
+                } else {
+                    current = current->left;
+                }
+            } else {
+                if (current->right == nullptr) {
+                    //Insert as the right child
+                    current->right = new_page;
+                    break;
+                } else {
+                    current = current->right;
+                }
+            }
+        }
+    }
+
+    //
+    //Could perhaps be nice to make this not recursive
+    //
+    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* old_page, int index)
+    {
+        float old_util = old_page->approx_utilization;
+        //had to grab a ref here to make sure we stay in the bucket through recursive calls
+        PageInfo** root_ptr = &bucket[index]; 
+        PageInfo* root = *root_ptr;
+    
+        if (root == nullptr) {
+            return; 
+        }
+    
+        if (root->approx_utilization > old_util && root != old_page) {
+            deletePageFromBucket(&((*root_ptr)->left), old_page, index);
+        }
+        else if (root->approx_utilization < old_util && root != old_page) {
+            deletePageFromBucket(&((*root_ptr)->right), old_page, index);
+        }
+        else {
+            if (root->left == nullptr) {
+                // Case 1: No left child
+                *root_ptr = root->right; 
+            }
+            else if (root->right == nullptr) {
+                // Case 2: No right child
+                *root_ptr = root->left; 
+            }
+            else {
+                // Case 3: Node has two children
+                PageInfo* successor = getSuccessor(root);
+                root->approx_utilization = successor->approx_utilization;
+                deletePageFromBucket(&((*root_ptr)->right), successor, index);
+            }
+        }
+    }
+
+    inline PageInfo* getSuccessor(PageInfo* p) {
+        p = p->right;
+        while(p != nullptr && p->left != nullptr) {
+            p = p->left;
+        }
+        return p;
+    }
+
+    PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
+    {
+        //it is crucial we remove the page we find here
+        PageInfo* p = nullptr;
+        for(int i = 0; i < n; i++) {
+            PageInfo* parent = nullptr;
+            PageInfo* cur = buckets[i];
+            if(cur == nullptr) {
+                continue;
+            }
+            while(cur->left != nullptr) {
+                parent = cur;
+                cur = cur->left;
+            }
+
+            if(cur->right != nullptr && parent != nullptr) {
+                parent->left = cur->right;
+            }
+            //cur must be root since parent is null
+            else if(cur->right != nullptr && parent == nullptr) {
+                buckets[i] = cur->right;
+            }
+            else {
+                buckets[i] = nullptr;
+            }
+
+            p = cur;
+            p->left = nullptr;
+            p->right = nullptr;
+            break;
+        }
+        return p;
+    }
 
     PageInfo* getFreshPageForAllocator() noexcept
     {
@@ -251,13 +379,11 @@ private:
             this->alloc_page = nullptr;
 
             //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
-            static int filled_pages_count = 0;
-            filled_pages_count++;
+            GlobalThreadAllocInfo::newly_filled_pages_count++;
 
             //check if we need to collect and do so
-            if(filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
+            if(GlobalThreadAllocInfo::newly_filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
                 collect();
-                filled_pages_count = 0;
             }
         
             //get the new page
@@ -271,120 +397,6 @@ private:
     {
         this->evac_page = this->getFreshPageForEvacuation();
         this->evacfreelist = this->evac_page->freelist;
-    }
-
-    inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int num_bucket) 
-    {
-        PageInfo* root = bucket[num_bucket];                                           
-        if(root == nullptr) {
-            bucket[num_bucket] = new_page;
-            new_page->left = nullptr;
-            new_page->right = nullptr;
-
-            return ;
-        }
-    
-        PageInfo* current = root;
-        while (true) {
-            if (n_util < current->approx_utilization) {
-                if (current->left == nullptr) {
-                    //Insert as the left child
-                    current->left = new_page;
-                    new_page->left = nullptr;
-                    new_page->right = nullptr;
-                    break;
-                } else {
-                    current = current->left;
-                }
-            } else {
-                if (current->right == nullptr) {
-                    //Insert as the right child
-                    current->right = new_page;
-                    new_page->left = nullptr;
-                    new_page->right = nullptr;
-                    break;
-                } else {
-                    current = current->right;
-                }
-            }
-        }
-    }
-
-    inline PageInfo* deletePageFromBucket(PageInfo* root, PageInfo* old_page)
-    {
-        float old_util = old_page->approx_utilization;
-
-        if(root == nullptr) {
-            return root;
-        }
-
-        if(root->approx_utilization > old_util && root != old_page) {
-            root->left = deletePageFromBucket(root->left, old_page);
-        }
-        else if (root->approx_utilization < old_util && root != old_page) {
-            root->right = deletePageFromBucket(root->right, old_page);
-        }
-        else {
-            if(root->left == nullptr) {
-                PageInfo* tmp = root->right;
-                root = nullptr;
-                return tmp;
-            }
-            if(root->right == nullptr) {
-                PageInfo* tmp = root->left;
-                root = nullptr;
-                return tmp;
-            }
-
-            PageInfo* successor = getSuccessor(root);
-            root->approx_utilization = successor->approx_utilization;
-            root->right = deletePageFromBucket(root->right, successor);
-        }
-        return root;
-    }
-
-    inline PageInfo* getSuccessor(PageInfo* p) {
-        p = p->right;
-        while(p != nullptr && p->left != nullptr) {
-            p = p->left;
-        }
-        return p;
-    }
-
-    PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
-    {
-        //it is crucial we remove the page we find here
-        PageInfo* p = nullptr;
-        PageInfo* parent = nullptr;
-        for(int i = 0; i < n; i++) {
-            PageInfo* cur = buckets[i];
-            if(cur == nullptr) {
-                continue;
-            }
-            while(cur->left != nullptr) {
-                parent = cur;
-                cur = cur->left;
-            }
-
-            p = cur;
-
-            //just to be safe
-            cur->left = nullptr;
-            cur->right = nullptr;
-
-            if(parent != nullptr) {
-                parent->left = nullptr;
-                break;
-            }
-            else if(cur->right != nullptr) {
-                buckets[i] = cur->right;
-            }
-            else {
-                buckets[i] = nullptr;
-                break;
-            }
-        }
-        return p;
     }
 
 public:
@@ -419,14 +431,14 @@ public:
         float old_util = p->approx_utilization;
 
         if(IS_LOW_UTIL(old_util)) {
-            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index);
+            GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
             this->deletePageFromBucket(
-                this->low_utilization_buckets[bucket_index], p);        
+                this->low_utilization_buckets, p, bucket_index);        
         }
         else if(IS_HIGH_UTIL(old_util)) {
-            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index);
+            GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
             this->deletePageFromBucket(
-                this->high_utilization_buckets[bucket_index], p);
+                this->high_utilization_buckets, p, bucket_index);
         }
         else {
             PageInfo* cur = this->filled_pages;
