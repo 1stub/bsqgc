@@ -263,31 +263,41 @@ private:
         }
     }
 
-    inline void deletePageFromBucket(PageInfo* root, PageInfo* old_page)
+    //
+    //Could perhaps be nice to make this not recursive
+    //
+    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* old_page, int index)
     {
         float old_util = old_page->approx_utilization;
-
-        if(root == nullptr) {
-            return ;
+        //had to grab a ref here to make sure we stay in the bucket through recursive calls
+        PageInfo** root_ptr = &bucket[index]; 
+        PageInfo* root = *root_ptr;
+    
+        if (root == nullptr) {
+            return; 
         }
-
-        if(root->approx_utilization > old_util && root != old_page) {
-            deletePageFromBucket(root->left, old_page);
+    
+        if (root->approx_utilization > old_util && root != old_page) {
+            deletePageFromBucket(&((*root_ptr)->left), old_page, index);
         }
         else if (root->approx_utilization < old_util && root != old_page) {
-            deletePageFromBucket(root->right, old_page);
+            deletePageFromBucket(&((*root_ptr)->right), old_page, index);
         }
         else {
-            if(root->left == nullptr) {
-                root = root->right;
+            if (root->left == nullptr) {
+                // Case 1: No left child
+                *root_ptr = root->right; 
             }
-            if(root->right == nullptr) {
-                root = root->left;
+            else if (root->right == nullptr) {
+                // Case 2: No right child
+                *root_ptr = root->left; 
             }
-
-            PageInfo* successor = getSuccessor(root);
-            root->approx_utilization = successor->approx_utilization;
-            deletePageFromBucket(root->right, successor);
+            else {
+                // Case 3: Node has two children
+                PageInfo* successor = getSuccessor(root);
+                root->approx_utilization = successor->approx_utilization;
+                deletePageFromBucket(&((*root_ptr)->right), successor, index);
+            }
         }
     }
 
@@ -423,12 +433,12 @@ public:
         if(IS_LOW_UTIL(old_util)) {
             GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
             this->deletePageFromBucket(
-                this->low_utilization_buckets[bucket_index], p);        
+                this->low_utilization_buckets, p, bucket_index);        
         }
         else if(IS_HIGH_UTIL(old_util)) {
             GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
             this->deletePageFromBucket(
-                this->high_utilization_buckets[bucket_index], p);
+                this->high_utilization_buckets, p, bucket_index);
         }
         else {
             PageInfo* cur = this->filled_pages;

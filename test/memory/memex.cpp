@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
 
     ListNodeValue* l1 = makeList(2, 5); //stays live
     garray[0] = l1;
-    makeList(5, 0); //dies
+    makeList(3, 0); //dies
     auto p1start = printlist(l1);
 
     collect();
