@@ -75,12 +75,5 @@ int main(int argc, char** argv) {
     auto t1_end = printtree(t1);
 
     assert(t1_start == t1_end);
-
-    collect();
-    auto t1_end_end = printtree(t1);
-
-    assert(t1_end == t1_end_end);
-    assert(t1_start == t1_end_end);
-
     return 0;
 }

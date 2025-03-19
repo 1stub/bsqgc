@@ -2,7 +2,7 @@
 
 thread_local void* roots_array[BSQ_MAX_ROOTS];
 thread_local void* old_roots_array[BSQ_MAX_ROOTS];
-thread_local void* forward_table_array[BSQ_MAX_ROOTS];
+thread_local void* forward_table_array[BSQ_MAX_FWD_TABLE_ENTRIES];
 
 thread_local GCAllocator* g_gcallocs_array[BSQ_MAX_ALLOC_SLOTS];
 
