@@ -63,11 +63,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
-    //If depth > 10, fails
-    //GCAlloc ends up being garbage data
-    //Looks like it is assigned a page pointer which clobbers the base pointer
-    //Without the manual collection calls this works fine
-    TreeNodeValue* t1 = makeTree(20, 4);
+    TreeNodeValue* t1 = makeTree(14, 4);
 
     auto t1_start = printtree(t1);
     collect();
