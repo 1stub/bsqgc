@@ -63,7 +63,10 @@ bool pageNeedsMoved(float old_util, float new_util)
     int old_bucket = 0;
     int new_bucket = 0;
 
-    if(old_util <= 0.60f) {
+    if(old_util > 1.0f) {
+        return false;
+    }
+    else if(old_util <= 0.60f) {
         GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
     } 
     else {

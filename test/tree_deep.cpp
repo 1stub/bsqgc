@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     //GCAlloc ends up being garbage data
     //Looks like it is assigned a page pointer which clobbers the base pointer
     //Without the manual collection calls this works fine
-    TreeNodeValue* t1 = makeTree(14, 4);
+    TreeNodeValue* t1 = makeTree(20, 4);
 
     auto t1_start = printtree(t1);
     collect();

@@ -175,7 +175,7 @@ public:
 #define NUM_LOW_UTIL_BUCKETS 12
 #define NUM_HIGH_UTIL_BUCKETS 6
 
-#define IS_LOW_UTIL(U) (U >= 0.01f && U < 0.60f)
+#define IS_LOW_UTIL(U) (U >= 0.01f && U <= 0.60f)
 #define IS_HIGH_UTIL(U) (U > 0.60f && U <= 0.90f)
 
 //<=1.0f is very crucial here because new pages start at 100.0f, wihout we just reprocess them until OOM
