@@ -63,7 +63,10 @@ bool pageNeedsMoved(float old_util, float new_util)
     int old_bucket = 0;
     int new_bucket = 0;
 
-    if(old_util <= 0.60f) {
+    if(old_util > 1.0f) {
+        return false;
+    }
+    else if(old_util <= 0.60f) {
         GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
     } 
     else {
@@ -289,7 +292,9 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
                 if(*slots != nullptr) {
                     if ((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
                         MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
-                        if(GC_SHOULD_VISIT(meta)) {
+
+                        //if meta==nullptr the slot has not been alloc'd yet
+                        if(meta != nullptr && GC_SHOULD_VISIT(meta)) {
                             GC_MARK_AS_MARKED(meta);
                             tinfo.visit_stack.push_back({*slots, MARK_STACK_NODE_COLOR_GREY});
                         }

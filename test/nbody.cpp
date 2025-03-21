@@ -159,6 +159,11 @@ double distance(Body* b0, Body* b1)
 Body* createBody(Position p, Velocity v, uint64_t n, double m) 
 {
     Body* b = AllocType(Body, alloc4, &CelestialBodyType);
+
+    //handle potential collection trigger preventing invalid metadata access
+    b->pos = nullptr;
+    b->vel = nullptr;
+
     b->pos = AllocType(Position, alloc3, &PositionType);
     b->vel = AllocType(Velocity, alloc3, &VelocityType);
     
@@ -261,6 +266,11 @@ Body** advance(Body** planets, double dt)
         assert(false);
     }
     Body** new_planets = AllocType(Body*, alloc5, &ListNode5Type);
+    new_planets[0] = nullptr;
+    new_planets[1] = nullptr;
+    new_planets[2] = nullptr;
+    new_planets[3] = nullptr;
+    new_planets[4] = nullptr;
 
     for(int i = 0; i < N; i++) {
         Body* b0 = planets[i];
@@ -299,18 +309,8 @@ int main(int argc, char** argv)
     
     printf("energy: %g\n", energy(sys));
 
-    //
-    //We need to manually trigger a collection to prevent
-    //our collector from running while we are in the middle of
-    //allocating an object. Slots in ListNode5Type could be nullptr
-    //in this case leading to segfaults
-    //
     for(int i = 0; i < n; i++) {
         sys = advance(sys, step);
-
-        if(i % 1000 == 0) {
-            collect();
-        }
     }
 
     gtl_info.disable_stack_refs_for_tests = true;
