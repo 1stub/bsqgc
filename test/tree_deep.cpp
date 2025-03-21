@@ -3,6 +3,7 @@
 
 #include <string>
 #include <format>
+#include <stack>
 
 //had to add extra slot to represent val field
 struct TypeInfoBase TreeNodeType = {
@@ -21,18 +22,45 @@ struct TreeNodeValue {
 
 GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 
+//
+//Made this non-recursive to avoid tons of stack frames when we call
+//a collection. This allows less false roots to be detected
+//
 TreeNodeValue* makeTree(int64_t depth, int64_t val) {
     if (depth < 0) {
         return nullptr; 
     }
 
-    TreeNodeValue* n = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
-    n->val = val;
+    std::stack<std::pair<TreeNodeValue*, int64_t>> stack;
 
-    n->left = makeTree(depth - 1, val);
-    n->right = makeTree(depth - 1, val);
+    TreeNodeValue* root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
+    root->left = nullptr;
+    root->right = nullptr;
+    root->val = val;
 
-    return n;
+    stack.push({root, depth});
+    while (!stack.empty()) {
+        auto [node, depth] = stack.top();
+        stack.pop();
+
+        if (depth > 0) {
+            //left child
+            node->left = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
+            node->left->left = nullptr;
+            node->left->right = nullptr;
+            node->left->val = val;
+            stack.push({node->left, depth - 1});
+
+            //right child
+            node->right = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
+            node->right->left = nullptr;
+            node->right->right = nullptr;
+            node->right->val = val;
+            stack.push({node->right, depth - 1});
+        }
+    }
+
+    return root;
 }
 
 std::string printtree(TreeNodeValue* node) {
@@ -63,7 +91,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
-    TreeNodeValue* t1 = makeTree(14, 4);
+    TreeNodeValue* t1 = makeTree(16, 4);
 
     auto t1_start = printtree(t1);
     collect();
