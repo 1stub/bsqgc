@@ -39,7 +39,7 @@ std::string printtree(TreeNodeValue* node) {
         return "null"; 
     }
 
-    std::string addr = "xx"; // Replace with std::format("{:x}", (uintptr_t)node) if available
+    std::string addr = "xx"; 
     std::string nodeStr = "[" + addr + ", " + std::to_string(node->val) + "]";
 
     std::string leftStr = printtree(node->left);
@@ -65,8 +65,7 @@ int main(int argc, char **argv)
     TreeNodeValue* tree3 = makeTree(1, 4);
     TreeNodeValue* tree4 = makeTree(1, 4);
     TreeNodeValue* tree5 = makeTree(1, 4);
-    TreeNodeValue* tree6    // Ensure all trees are created successfully
-    = makeTree(1, 4);
+    TreeNodeValue* tree6 = makeTree(1, 4);
     TreeNodeValue* tree7 = makeTree(1, 4);
     TreeNodeValue* tree8 = makeTree(1, 4);
     TreeNodeValue* tree9 = makeTree(1, 4);
