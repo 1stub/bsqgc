@@ -45,34 +45,48 @@ struct TypeInfoBase TreeNode5Type = {
     .typekey = "TreeNode5Type"
 };
 
+enum class TreeNodeType {
+    TreeNode1,
+    TreeNode2,
+    TreeNode3,
+    TreeNode4,
+    TreeNode5
+};
+
 struct TreeNodeBase {
-    virtual ~TreeNodeBase() = default; // Enable polymorphic behavior
+    virtual ~TreeNodeBase() = default;
     int64_t val = 0;
+    TreeNodeType type;
 };
 
 struct TreeNode1Value : TreeNodeBase{
+    TreeNode1Value() { type = TreeNodeType::TreeNode1; }
     TreeNodeBase* n1 = nullptr;
 };
 
 struct TreeNode2Value : TreeNodeBase {
+    TreeNode2Value() { type = TreeNodeType::TreeNode2; }
     TreeNodeBase* n1 = nullptr;
     TreeNodeBase* n2 = nullptr;
 };
 
 struct TreeNode3Value : TreeNodeBase {
+    TreeNode3Value() { type = TreeNodeType::TreeNode3; }
     TreeNodeBase* n1 = nullptr;
     TreeNodeBase* n2 = nullptr;
     TreeNodeBase* n3 = nullptr;
 };
 
-struct TreeNode4Value : TreeNodeBase{
+struct TreeNode4Value : TreeNodeBase {
+    TreeNode4Value() { type = TreeNodeType::TreeNode4; }
     TreeNodeBase* n1 = nullptr;
     TreeNodeBase* n2 = nullptr;
     TreeNodeBase* n3 = nullptr;
     TreeNodeBase* n4 = nullptr;
 };
 
-struct TreeNode5Value : TreeNodeBase{
+struct TreeNode5Value : TreeNodeBase {
+    TreeNode5Value() { type = TreeNodeType::TreeNode5; }
     TreeNodeBase* n1 = nullptr;
     TreeNodeBase* n2 = nullptr;
     TreeNodeBase* n3 = nullptr;
@@ -95,25 +109,24 @@ TreeNodeBase* makeTree(int64_t depth, int64_t val) {
         return nullptr;
     }
 
-    // Randomly choose the type of the current node
     int node_type = type_dist(gen);
 
     switch (node_type) {
         case 1: {
-            auto* node = AllocType(TreeNode1Value, alloc2, &TreeNode1Type);
+            TreeNode1Value* node = AllocType(TreeNode1Value, alloc2, &TreeNode1Type);
             node->val = val;
             node->n1 = makeTree(depth - 1, val + 1);
             return node;
         }
         case 2: {
-            auto* node = AllocType(TreeNode2Value, alloc3, &TreeNode2Type);
+            TreeNode2Value* node = AllocType(TreeNode2Value, alloc3, &TreeNode2Type);
             node->val = val;
             node->n1 = makeTree(depth - 1, val + 1);
             node->n2 = makeTree(depth - 1, val + 1);
             return node;
         }
         case 3: {
-            auto* node = AllocType(TreeNode3Value, alloc4, &TreeNode3Type);
+            TreeNode3Value* node = AllocType(TreeNode3Value, alloc4, &TreeNode3Type);
             node->val = val;
             node->n1 = makeTree(depth - 1, val + 1);
             node->n2 = makeTree(depth - 1, val + 1);
@@ -121,7 +134,7 @@ TreeNodeBase* makeTree(int64_t depth, int64_t val) {
             return node;
         }
         case 4: {
-            auto* node = AllocType(TreeNode4Value, alloc5, &TreeNode4Type);
+            TreeNode4Value* node = AllocType(TreeNode4Value, alloc5, &TreeNode4Type);
             node->val = val;
             node->n1 = makeTree(depth - 1, val + 1);
             node->n2 = makeTree(depth - 1, val + 1);
@@ -130,7 +143,7 @@ TreeNodeBase* makeTree(int64_t depth, int64_t val) {
             return node;
         }
         case 5: {
-            auto* node = AllocType(TreeNode5Value, alloc6, &TreeNode5Type);
+            TreeNode5Value* node = AllocType(TreeNode5Value, alloc6, &TreeNode5Type);
             node->val = val;
             node->n1 = makeTree(depth - 1, val + 1);
             node->n2 = makeTree(depth - 1, val + 1);
@@ -144,11 +157,6 @@ TreeNodeBase* makeTree(int64_t depth, int64_t val) {
     }
 }
 
-//
-//TODO: 
-//To keep -fno-rtti flag need to introduce maybe an enum storing
-//type of each of these structs helping us not use dynamic casts here
-//
 std::string printtree(TreeNodeBase* node) {
     if (node == nullptr) {
         return "null";
@@ -158,20 +166,30 @@ std::string printtree(TreeNodeBase* node) {
     std::string nodeStr = "[" + addr + ", " + std::to_string(node->val) + "]";
 
     std::string childStrs;
-    if (auto* n1 = dynamic_cast<TreeNode1Value*>(node)) {
+    TypeInfoBase* type = GC_TYPE(node);
+
+    if (type == &TreeNode1Type) {
+        TreeNode1Value* n1 = static_cast<TreeNode1Value*>(node);
         childStrs += printtree(n1->n1);
-    } 
-    else if (auto* n2 = dynamic_cast<TreeNode2Value*>(node)) {
+    }
+    else if (type == &TreeNode2Type) {
+        TreeNode2Value* n2 = static_cast<TreeNode2Value*>(node);
         childStrs += printtree(n2->n1) + ", " + printtree(n2->n2);
-    } 
-    else if (auto* n3 = dynamic_cast<TreeNode3Value*>(node)) {
+    }
+    else if (type == &TreeNode3Type) {
+        TreeNode3Value* n3 = static_cast<TreeNode3Value*>(node);
         childStrs += printtree(n3->n1) + ", " + printtree(n3->n2) + ", " + printtree(n3->n3);
-    } 
-    else if (auto* n4 = dynamic_cast<TreeNode4Value*>(node)) {
+    }
+    else if (type == &TreeNode4Type) {
+        TreeNode4Value* n4 = static_cast<TreeNode4Value*>(node);
         childStrs += printtree(n4->n1) + ", " + printtree(n4->n2) + ", " + printtree(n4->n3) + ", " + printtree(n4->n4);
-    } 
-    else if (auto* n5 = dynamic_cast<TreeNode5Value*>(node)) {
+    }
+    else if (type == &TreeNode5Type) {
+        TreeNode5Value* n5 = static_cast<TreeNode5Value*>(node);
         childStrs += printtree(n5->n1) + ", " + printtree(n5->n2) + ", " + printtree(n5->n3) + ", " + printtree(n5->n4) + ", " + printtree(n5->n5);
+    }
+    else {
+        return "null";
     }
 
     return nodeStr + ", " + childStrs;
@@ -180,7 +198,14 @@ std::string printtree(TreeNodeBase* node) {
 void* garray[3] = {nullptr, nullptr, nullptr};
 
 //
-//Full tree of varrying depths
+//NOTE: This test is really hard to debug. Likely will need to make
+//it deterministic.
+//
+
+//
+//The main purpose of this test is to be able to ensure 
+//the collector can handle having multiple allocators
+//and weird tree shapes
 //
 int main(int argc, char** argv) {
     INIT_LOCKS();
@@ -191,7 +216,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[5] = { &alloc2, &alloc3, &alloc4, &alloc5, &alloc6};
     gtl_info.initializeGC<5>(allocs);
 
-    TreeNodeBase* t1 = makeTree(5, 4);
+    TreeNodeBase* t1 = makeTree(1, 0);
 
     auto t1_start = printtree(t1);
     collect();

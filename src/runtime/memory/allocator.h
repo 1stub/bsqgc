@@ -470,7 +470,16 @@ public:
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
         SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
 
-        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
+        void* obj = SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
+
+        #if 0
+        //initialize all slots to nullptr
+        for(uint32_t i = 0; i < type->slot_size; i++) {
+            ((void**)obj)[i] = nullptr;
+        }
+        #endif
+
+        return obj;
     }
 
     inline void* allocateEvacuation(TypeInfoBase* type)

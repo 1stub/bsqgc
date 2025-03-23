@@ -24,7 +24,7 @@ GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 
 //
 //Made this non-recursive to avoid tons of stack frames when we call
-//a collection. This allows less false roots to be detected
+//a collection
 //
 TreeNodeValue* makeTree(int64_t depth, int64_t val) {
     if (depth < 0) {
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
-    TreeNodeValue* t1 = makeTree(16, 4);
+    TreeNodeValue* t1 = makeTree(20, 4);
 
     auto t1_start = printtree(t1);
     collect();
