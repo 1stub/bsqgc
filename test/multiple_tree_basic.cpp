@@ -50,12 +50,16 @@ std::string printtree(TreeNodeValue* node) {
 
 void* garray[3] = {nullptr, nullptr, nullptr};
 
+//
+//Could be nice to place each tree root in garray
+//
 int main(int argc, char **argv)
 {
     INIT_LOCKS();
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);

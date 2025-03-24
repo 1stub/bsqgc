@@ -1,4 +1,5 @@
 #include "allocator.h"
+#include "threadinfo.h"
 
 GlobalDataStorage GlobalDataStorage::g_global_data;
 
@@ -140,6 +141,34 @@ void GCAllocator::processCollectorPages() noexcept
         cur = next;
     }
     this->pendinggc_pages = nullptr;
+}
+
+
+void GCAllocator::allocatorRefreshPage() noexcept
+{
+    if(this->alloc_page == nullptr) {
+        this->alloc_page = this->getFreshPageForAllocator();
+    }
+    else {
+        //rotate collection pages
+        processPage(this->alloc_page);
+        this->alloc_page = nullptr;
+
+        //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+        gtl_info.newly_filled_pages_count++;
+
+        //check if we need to collect and do so
+        if(gtl_info.newly_filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
+            if(!gtl_info.disable_automatic_collections) {
+                collect();
+            }
+        }
+    
+        //get the new page
+        this->alloc_page = this->getFreshPageForAllocator();
+    }
+
+    this->freelist = this->alloc_page->freelist;
 }
 
 //TODO: Rework these very funky canary check functions !!!

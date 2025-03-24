@@ -53,7 +53,6 @@ enum class TreeNodeType {
     TreeNode5
 };
 
-
 struct TreeNode1Value{
     void* n1 = nullptr;
     int64_t val = 0;
@@ -202,14 +201,17 @@ void* garray[3] = {nullptr, nullptr, nullptr};
 
 //
 //The main purpose of this test is to be able to ensure 
-//the collector can handle having multiple allocators
-//and weird tree shapes
+//the collector can handle having multiple allocators.
+//
+//This creates a tree in a sort of funnel shape where each layer's
+//children nodes differ from the previous
 //
 int main(int argc, char** argv) {
     INIT_LOCKS();
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
 
     GCAllocator* allocs[5] = { &alloc3, &alloc4, &alloc5, &alloc6, &alloc7 };
     gtl_info.initializeGC<5>(allocs);

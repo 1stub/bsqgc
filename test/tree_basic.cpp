@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);

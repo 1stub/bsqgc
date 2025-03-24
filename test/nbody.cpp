@@ -299,6 +299,7 @@ int main(int argc, char** argv)
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
 
     GCAllocator* allocs[3] = { &alloc3, &alloc4, &alloc5 };
     gtl_info.initializeGC<3>(allocs);
@@ -309,11 +310,13 @@ int main(int argc, char** argv)
     
     printf("energy: %g\n", energy(sys));
 
+    //Lets collect every 10000 systems
     for(int i = 0; i < n; i++) {
         sys = advance(sys, step);
+        if(i % 10000 == 0) {
+            collect();
+        }
     }
-
-    gtl_info.disable_stack_refs_for_tests = true;
 
     printf("energy: %g\n", energy(sys));
 

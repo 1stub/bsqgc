@@ -368,31 +368,6 @@ private:
         return page;
     }
 
-    void allocatorRefreshPage() noexcept
-    {
-        if(this->alloc_page == nullptr) {
-            this->alloc_page = this->getFreshPageForAllocator();
-        }
-        else {
-            //rotate collection pages
-            processPage(this->alloc_page);
-            this->alloc_page = nullptr;
-
-            //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
-            GlobalThreadAllocInfo::newly_filled_pages_count++;
-
-            //check if we need to collect and do so
-            if(GlobalThreadAllocInfo::newly_filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
-                collect();
-            }
-        
-            //get the new page
-            this->alloc_page = this->getFreshPageForAllocator();
-        }
-
-        this->freelist = this->alloc_page->freelist;
-    }
-
     void allocatorRefreshEvacuationPage() noexcept
     {
         this->evac_page = this->getFreshPageForEvacuation();
@@ -498,4 +473,7 @@ public:
 
     //process all the pending gc pages, the current alloc page, and evac page -- reset for next round
     void processCollectorPages() noexcept;
+
+    //May call collection, needs definition in cpp file to prevent cyclic dependicies in fetching gtl_info
+    void allocatorRefreshPage() noexcept;
 };

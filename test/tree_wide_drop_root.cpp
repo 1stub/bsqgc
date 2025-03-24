@@ -138,32 +138,44 @@ std::string printtree(TreeNodeValue* node) {
     return nodeStr + ", " + childStrs;
 }
 
-void* garray[3] = {nullptr, nullptr, nullptr};
+TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 
+//
+//The purpose of this test is to make a very wide tree, drop the root,
+//but in garray maintain a reference to one random node within the tree and ensure
+//his subtree doesnt get deleted after dropping our main root.
+//
 int main(int argc, char **argv)
 {
     INIT_LOCKS();
-    GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
+    GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
 
     InitBSQMemoryTheadLocalInfo();
     gtl_info.disable_automatic_collections = true;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[1] = { &alloc248 };
     gtl_info.initializeGC<1>(allocs);
 
-    //These two trees should print the same output
     TreeNodeValue* root = makeTree(2, 2);
-    TreeNodeValue* root0 = makeTree(2, 2);
+    garray[0] = root;
+    garray[1] = root->n15; //stays alive
 
-    auto root_init = printtree(root);
-    auto root0_init = printtree(root0);
+    int n15_init_val = root->n15->val;
+
+    auto n15_init = printtree(garray[1]);
 
     collect();
 
-    auto root_final = printtree(root);
-    auto root0_final = printtree(root0);
+    root = nullptr;
 
-    assert((root_init == root_final) == (root0_init == root0_final));
-    
+    collect();
+
+    auto n15_final = printtree(garray[1]);
+
+    assert(garray[1] != nullptr);
+    assert(n15_final == n15_init);
+    assert(garray[1]->val == n15_init_val);
+
     return 0;
 }

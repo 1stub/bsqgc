@@ -90,6 +90,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
+    //Force this node to be root, may not be necessary but works fine
     TreeNodeValue* tree_root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
     garray[0] = tree_root;
     makeTree(tree_root, 20, 4);

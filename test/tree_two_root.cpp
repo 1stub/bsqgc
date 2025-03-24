@@ -70,12 +70,17 @@ int main(int argc, char **argv)
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[1] = { &alloc4 };
     gtl_info.initializeGC<1>(allocs);
 
     TreeNodeValue* root1 = makeSharedTree(10, 2);
+    garray[0] = root1;
     TreeNodeValue* root2 = AllocType(TreeNodeValue, alloc4, &TreeNode3Type);
+    root2->val = 2; //we started with 2 as value for root1
+    garray[1] = root2;
 
     root2->n1 = root1->n1;
     root2->n2 = root1->n2;
@@ -85,14 +90,14 @@ int main(int argc, char **argv)
 
     collect();
 
-    //drop root2
-    root2 = nullptr;
+    //drop root1
+    root1 = nullptr;
     
     collect();
 
-    auto root1_final = printtree(root1);
+    auto root2_final = printtree(root2);
 
-    assert(root1_init == root1_final);
+    assert(root1_init == root2_final);
 
     return 0;
 }
