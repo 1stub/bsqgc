@@ -370,6 +370,11 @@ private:
 
     void allocatorRefreshEvacuationPage() noexcept
     {
+        //if our evac page is full put it on filled pages list (no need to rebuild)
+        if(this->evac_page != nullptr && this->evac_page->freecount == 0) {
+            this->evac_page->next = this->filled_pages;
+            this->filled_pages = this->evac_page;
+        }
         this->evac_page = this->getFreshPageForEvacuation();
         this->evacfreelist = this->evac_page->freelist;
     }

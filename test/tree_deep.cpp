@@ -4,6 +4,7 @@
 #include <string>
 #include <format>
 #include <stack>
+#include <cmath>
 
 //had to add extra slot to represent val field
 struct TypeInfoBase TreeNodeType = {
@@ -26,12 +27,14 @@ GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 //Made this non-recursive to avoid tons of stack frames when we call
 //a collection
 //
-TreeNodeValue* makeTree(TreeNodeValue* root, int64_t depth, int64_t val) {
-    if (depth < 0) {
+TreeNodeValue* makeTree(int64_t depth, int64_t val) {
+    if (depth < 1) {
         return nullptr; 
     }
 
     std::stack<std::pair<TreeNodeValue*, int64_t>> stack;
+
+    TreeNodeValue* root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
 
     root->left = nullptr;
     root->right = nullptr;
@@ -82,21 +85,23 @@ TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 //Full tree of varrying depths
 //A possible improvement could be making tree for each depth up to a certain threshold (say n=14)
 //
+
+//TODO: figure out why we are off by exactly one treenode type size in our final calculation
 int main(int argc, char** argv) {
     INIT_LOCKS();
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
-    //Force this node to be root, may not be necessary but works fine
-    TreeNodeValue* tree_root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
+    int depth = 13;
+    TreeNodeValue* tree_root = makeTree(depth, 4);
     garray[0] = tree_root;
-    makeTree(tree_root, 13, 4);
 
-    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+    uint64_t init_total_bytes = (uint64_t)(pow(2.0, depth + 1) * TreeNodeType.type_size);
 
     auto t1_start = printtree(tree_root);
     collect();
@@ -104,7 +109,9 @@ int main(int argc, char** argv) {
     auto t1_end = printtree(tree_root);
 
     assert(t1_start == t1_end);
-    assert(init_total_bytes == gtl_info.total_live_bytes);
+
+    uint64_t final = gtl_info.total_live_bytes;
+    assert(init_total_bytes == final);
 
     return 0;
 }

@@ -67,7 +67,8 @@ int main(int argc, char** argv) {
 
     TreeNodeValue* t1 = makeTree(1, 4);
 
-    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+    //one tree where all 3 nodes are 24 bytes
+    uint64_t init_total_bytes = 3 * 24;
 
     auto t1_start = printtree(t1);
     collect();
