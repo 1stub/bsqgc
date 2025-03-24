@@ -219,11 +219,15 @@ int main(int argc, char** argv) {
     void* t = makeTree(1, 5, 0);
     garray[0] = t;
 
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+
     auto t1_start = printtree(t);
     collect();
 
     auto t1_end = printtree(t);
 
     assert(t1_start == t1_end);
+    assert(init_total_bytes == gtl_info.total_live_bytes);
+
     return 0;
 }

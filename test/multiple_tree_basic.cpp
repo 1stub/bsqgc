@@ -84,6 +84,8 @@ int main(int argc, char **argv)
     TreeNodeValue* tree18 = makeTree(1, 4);
     TreeNodeValue* tree19 = makeTree(1, 4);
 
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+
     assert(tree1 != nullptr);
     assert(tree2 != nullptr);
     assert(tree3 != nullptr);
@@ -165,6 +167,8 @@ int main(int argc, char **argv)
     assert(tree17_initial_state == tree17_final_state);
     assert(tree18_initial_state == tree18_final_state);
     assert(tree19_initial_state == tree19_final_state);
+
+    assert(init_total_bytes == gtl_info.total_live_bytes);
 
     return 0;
 }

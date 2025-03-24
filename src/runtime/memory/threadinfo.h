@@ -70,8 +70,15 @@ struct BSQMemoryTheadLocalInfo
 
     size_t max_decrement_count;
 
-    //We may want this in prod, so it'll always be visible
+    //We may want this in prod, so i'll have it always be visible
     bool disable_automatic_collections = false;
+
+#ifdef MEM_STATS
+    uint64_t num_allocs = 0;
+    uint64_t total_gc_pages = 0;
+    uint64_t total_empty_gc_pages = 0;
+    uint64_t total_live_bytes = 0; //doesnt include canary or metadata size
+#endif
 
 #ifdef BSQ_GC_CHECK_ENABLED
     bool disable_stack_refs_for_tests = false;

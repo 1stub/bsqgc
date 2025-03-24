@@ -64,6 +64,8 @@ void* garray[3] = {nullptr, nullptr, nullptr};
 //No objects should be deleted since they still have one root ref
 //after dropping the second.
 //
+
+//TODO: Calculate memstats for total bytes when rebuilding a page
 int main(int argc, char **argv)
 {
     INIT_LOCKS();
@@ -88,6 +90,8 @@ int main(int argc, char **argv)
 
     auto root1_init = printtree(root1);
 
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+
     collect();
 
     //drop root1
@@ -98,6 +102,10 @@ int main(int argc, char **argv)
     auto root2_final = printtree(root2);
 
     assert(root1_init == root2_final);
+
+    //We should only lose one node for root1
+    uint64_t final = gtl_info.total_live_bytes;
+    assert(init_total_bytes == (final + TreeNode3Type.type_size));
 
     return 0;
 }

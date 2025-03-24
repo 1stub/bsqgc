@@ -80,6 +80,7 @@ TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 
 //
 //Full tree of varrying depths
+//A possible improvement could be making tree for each depth up to a certain threshold (say n=14)
 //
 int main(int argc, char** argv) {
     INIT_LOCKS();
@@ -93,7 +94,9 @@ int main(int argc, char** argv) {
     //Force this node to be root, may not be necessary but works fine
     TreeNodeValue* tree_root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
     garray[0] = tree_root;
-    makeTree(tree_root, 20, 4);
+    makeTree(tree_root, 13, 4);
+
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
 
     auto t1_start = printtree(tree_root);
     collect();
@@ -101,5 +104,7 @@ int main(int argc, char** argv) {
     auto t1_end = printtree(tree_root);
 
     assert(t1_start == t1_end);
+    assert(init_total_bytes == gtl_info.total_live_bytes);
+
     return 0;
 }

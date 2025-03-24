@@ -67,6 +67,8 @@ int main(int argc, char** argv) {
 
     TreeNodeValue* t1 = makeTree(1, 4);
 
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+
     auto t1_start = printtree(t1);
     collect();
 
@@ -79,6 +81,8 @@ int main(int argc, char** argv) {
 
     assert(t1_end == t1_end_end);
     assert(t1_start == t1_end_end);
+
+    assert(init_total_bytes == gtl_info.total_live_bytes);
 
     return 0;
 }

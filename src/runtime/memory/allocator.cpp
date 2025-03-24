@@ -61,6 +61,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
         this->empty_pages = this->empty_pages->next;
 
         pp = PageInfo::initialize(page, entrysize, realsize);
+        gtl_info.total_empty_gc_pages--;
     }
     else {
 #ifndef ALLOC_DEBUG_MEM_DETERMINISTIC
@@ -78,6 +79,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
         this->pagetable.pagetable_insert(page);
 
         pp = PageInfo::initialize(page, entrysize, realsize);
+        gtl_info.total_gc_pages++;
     }
 
     GC_MEM_LOCK_RELEASE();
@@ -93,6 +95,7 @@ void GCAllocator::processPage(PageInfo* p) noexcept
 
     if(p->entrycount == p->freecount) {
         GlobalPageGCManager::g_gc_page_manager.addNewPage(p);
+        gtl_info.total_empty_gc_pages++;
     }
     else if(IS_LOW_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
@@ -170,6 +173,20 @@ void GCAllocator::allocatorRefreshPage() noexcept
 
     this->freelist = this->alloc_page->freelist;
 }
+
+#ifdef MEM_STATS
+void GCAllocator::increaseAllocMemStats(uint32_t size)
+{
+    gtl_info.num_allocs++;
+    gtl_info.total_live_bytes += size;
+}
+
+void GCAllocator::updateMemStats() 
+{
+    //do stuff!
+}
+
+#endif
 
 //TODO: Rework these very funky canary check functions !!!
 

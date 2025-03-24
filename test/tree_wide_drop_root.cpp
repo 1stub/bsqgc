@@ -162,6 +162,7 @@ int main(int argc, char **argv)
     garray[1] = root->n15; //stays alive
 
     int n15_init_val = root->n15->val;
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
 
     auto n15_init = printtree(garray[1]);
 
@@ -176,6 +177,7 @@ int main(int argc, char **argv)
     assert(garray[1] != nullptr);
     assert(n15_final == n15_init);
     assert(garray[1]->val == n15_init_val);
+    assert(init_total_bytes == (gtl_info.total_live_bytes - 248));
 
     return 0;
 }

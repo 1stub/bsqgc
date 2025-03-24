@@ -428,26 +428,6 @@ public:
         }
     }
 
-    inline void* allocate(TypeInfoBase* type)
-    {
-        assert(type->type_size == this->allocsize);
-
-        if(this->freelist == nullptr) [[unlikely]] {
-            this->allocatorRefreshPage();
-        }
-
-        void* entry = this->freelist;
-        this->freelist = this->freelist->next;
-        this->alloc_page->freelist = this->alloc_page->freelist->next;
-            
-        this->alloc_page->freecount--;
-
-        SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
-        SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
-
-        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
-    }
-
     inline void* allocateEvacuation(TypeInfoBase* type)
     {
         assert(type->type_size == this->allocsize);
@@ -467,6 +447,33 @@ public:
 
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
+
+    inline void* allocate(TypeInfoBase* type)
+    {
+        assert(type->type_size == this->allocsize);
+    
+        if(this->freelist == nullptr) [[unlikely]] {
+            this->allocatorRefreshPage();
+        }
+    
+        void* entry = this->freelist;
+        this->freelist = this->freelist->next;
+        this->alloc_page->freelist = this->alloc_page->freelist->next;
+            
+        this->alloc_page->freecount--;
+    
+        SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
+        SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
+    
+        increaseAllocMemStats(type->type_size);
+    
+        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
+    }
+
+    void increaseAllocMemStats(uint32_t size);
+
+    //call at end of collection if memstats are enabled
+    void updateMemStats();
 
     //Take a page (that may be in of the page sets -- or may not -- if it is a alloc or evac page) and move it to the appropriate page set
     void processPage(PageInfo* p) noexcept;
