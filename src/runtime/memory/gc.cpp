@@ -18,7 +18,6 @@ void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
         gcalloc->deleteOldPage(page);
         gcalloc->processPage(page);
     }
-
 }
 
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept

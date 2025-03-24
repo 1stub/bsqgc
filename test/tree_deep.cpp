@@ -26,14 +26,13 @@ GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 //Made this non-recursive to avoid tons of stack frames when we call
 //a collection
 //
-TreeNodeValue* makeTree(int64_t depth, int64_t val) {
+TreeNodeValue* makeTree(TreeNodeValue* root, int64_t depth, int64_t val) {
     if (depth < 0) {
         return nullptr; 
     }
 
     std::stack<std::pair<TreeNodeValue*, int64_t>> stack;
 
-    TreeNodeValue* root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
     root->left = nullptr;
     root->right = nullptr;
     root->val = val;
@@ -77,26 +76,28 @@ std::string printtree(TreeNodeValue* node) {
     return nodeStr + ", " + leftStr + ", " + rightStr;
 }
 
-void* garray[3] = {nullptr, nullptr, nullptr};
+TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 
 //
 //Full tree of varrying depths
 //
 int main(int argc, char** argv) {
     INIT_LOCKS();
-    GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
+    GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
 
     InitBSQMemoryTheadLocalInfo();
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
-    TreeNodeValue* t1 = makeTree(20, 4);
+    TreeNodeValue* tree_root = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
+    garray[0] = tree_root;
+    makeTree(tree_root, 20, 4);
 
-    auto t1_start = printtree(t1);
+    auto t1_start = printtree(tree_root);
     collect();
 
-    auto t1_end = printtree(t1);
+    auto t1_end = printtree(tree_root);
 
     assert(t1_start == t1_end);
     return 0;

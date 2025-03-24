@@ -74,7 +74,9 @@
         "ios": "cpp",
         "locale": "cpp",
         "queue": "cpp",
-        "stack": "cpp"
+        "stack": "cpp",
+        "any": "cpp",
+        "__tree": "cpp"
     },
     "workbench.productIconTheme": "undoDebugger"
 }
