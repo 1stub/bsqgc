@@ -19,14 +19,14 @@ struct TreeNodeValue {
     int64_t val;
 };
 
-GCAllocator alloc2(24, REAL_ENTRY_SIZE(24), collect);
+GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 
 TreeNodeValue* makeTree(int64_t depth, int64_t val) {
     if (depth < 0) {
         return nullptr; 
     }
 
-    TreeNodeValue* n = AllocType(TreeNodeValue, alloc2, &TreeNodeType);
+    TreeNodeValue* n = AllocType(TreeNodeValue, alloc3, &TreeNodeType);
     n->val = val;
 
     n->left = makeTree(depth - 1, val + 1);
@@ -60,8 +60,9 @@ int main(int argc, char** argv) {
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
 
     InitBSQMemoryTheadLocalInfo();
+    gtl_info.disable_automatic_collections = true;
 
-    GCAllocator* allocs[1] = { &alloc2 };
+    GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
     TreeNodeValue* t1 = makeTree(1, 4);

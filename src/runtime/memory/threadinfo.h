@@ -70,6 +70,9 @@ struct BSQMemoryTheadLocalInfo
 
     size_t max_decrement_count;
 
+    //We may want this in prod, so it'll always be visible
+    bool disable_automatic_collections = false;
+
 #ifdef BSQ_GC_CHECK_ENABLED
     bool disable_stack_refs_for_tests = false;
 #endif
@@ -97,4 +100,3 @@ struct BSQMemoryTheadLocalInfo
 };
 
 extern thread_local BSQMemoryTheadLocalInfo gtl_info;
-

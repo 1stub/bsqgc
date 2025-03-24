@@ -18,14 +18,13 @@ void reprocessPageInfo(PageInfo* page, BSQMemoryTheadLocalInfo& tinfo) noexcept
         gcalloc->deleteOldPage(page);
         gcalloc->processPage(page);
     }
-
 }
 
 void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
     //First we need to sort the roots we find
     qsort(tinfo.roots, 0, tinfo.roots_count - 1, tinfo.roots_count);
-    
+
     size_t roots_idx = 0;
     size_t oldroots_idx = 0;
 
