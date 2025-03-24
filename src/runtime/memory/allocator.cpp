@@ -175,15 +175,37 @@ void GCAllocator::allocatorRefreshPage() noexcept
 }
 
 #ifdef MEM_STATS
-void GCAllocator::increaseAllocMemStats(uint32_t size)
-{
-    gtl_info.num_allocs++;
-    gtl_info.total_live_bytes += size;
-}
 
 void GCAllocator::updateMemStats() 
 {
-    //do stuff!
+    auto process = [this](PageInfo* page) {
+        if (!page) return;
+        gtl_info.total_live_bytes += (page->allocsize * (page->entrycount - page->freecount));
+    };
+
+    auto traverseBST = [&process](PageInfo* node, auto&& self) -> void {
+        if (!node) return;
+        process(node);
+        self(node->left, self);
+        self(node->right, self); 
+    };
+
+    //compute stats for filled pages
+    PageInfo* filled_it = this->filled_pages;
+    while(filled_it != nullptr) {
+        process(filled_it);
+        filled_it = filled_it->next;
+    }
+
+    //compute stats for high util pages
+    for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++) {
+        traverseBST(this->high_utilization_buckets[i], traverseBST);
+    }
+
+    //compute stats for low util pages
+    for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++) {
+        traverseBST(this->low_utilization_buckets[i], traverseBST);
+    }
 }
 
 #endif

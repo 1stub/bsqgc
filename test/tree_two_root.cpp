@@ -65,7 +65,6 @@ void* garray[3] = {nullptr, nullptr, nullptr};
 //after dropping the second.
 //
 
-//TODO: Calculate memstats for total bytes when rebuilding a page
 int main(int argc, char **argv)
 {
     INIT_LOCKS();
@@ -90,18 +89,18 @@ int main(int argc, char **argv)
 
     auto root1_init = printtree(root1);
 
-    uint64_t init_total_bytes = gtl_info.total_live_bytes;
-
     collect();
 
-    //drop root1
-    root1 = nullptr;
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+
+    //drop root2
+    garray[1] = nullptr;
     
     collect();
 
-    auto root2_final = printtree(root2);
+    auto root1_final = printtree(root1);
 
-    assert(root1_init == root2_final);
+    assert(root1_init == root1_final);
 
     //We should only lose one node for root1
     uint64_t final = gtl_info.total_live_bytes;

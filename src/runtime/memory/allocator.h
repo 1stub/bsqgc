@@ -464,13 +464,9 @@ public:
     
         SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
         SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
-    
-        increaseAllocMemStats(type->type_size);
-    
+        
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
-
-    void increaseAllocMemStats(uint32_t size);
 
     //call at end of collection if memstats are enabled
     void updateMemStats();

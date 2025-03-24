@@ -84,7 +84,8 @@ int main(int argc, char **argv)
     TreeNodeValue* tree18 = makeTree(1, 4);
     TreeNodeValue* tree19 = makeTree(1, 4);
 
-    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+    //we run 19 trees, each create 3 nodes of size 24 bytes
+    uint64_t init_total_bytes = 19 * (24 * 3);
 
     assert(tree1 != nullptr);
     assert(tree2 != nullptr);
@@ -168,7 +169,8 @@ int main(int argc, char **argv)
     assert(tree18_initial_state == tree18_final_state);
     assert(tree19_initial_state == tree19_final_state);
 
-    assert(init_total_bytes == gtl_info.total_live_bytes);
+    uint64_t final = gtl_info.total_live_bytes;
+    assert(init_total_bytes == final);
 
     return 0;
 }

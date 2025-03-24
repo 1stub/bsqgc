@@ -344,10 +344,12 @@ void collect() noexcept
     processDecrements(gtl_info);
     gtl_info.pending_decs.clear();
 
+    gtl_info.total_live_bytes = 0;
     for(size_t i = 0; i < BSQ_MAX_ALLOC_SLOTS; i++) {
         GCAllocator* alloc = gtl_info.g_gcallocs[i];
         if(alloc != nullptr) {
             alloc->processCollectorPages();
+            alloc->updateMemStats();
         }
     }
 
