@@ -224,14 +224,15 @@ private:
 
     inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int index) 
     {                             
-        if(new_page == nullptr) {
-            assert(0);
+        if(new_page == nullptr) { //sanity check
+            assert(false);
         }
         
         PageInfo* root = bucket[index];     
         new_page->left = nullptr;
         new_page->right = nullptr;
 
+        //no root case
         if(root == nullptr) {
             bucket[index] = new_page;
             new_page->left = nullptr;
@@ -240,7 +241,6 @@ private:
             return ;
         }
     
-        //Perhaps do so just to make sure we modify the real bucket?
         PageInfo* current = root;
         while (true) {
             if (n_util < current->approx_utilization) {
@@ -264,7 +264,7 @@ private:
     }
 
     //
-    //Could perhaps be nice to make this not recursive
+    //Could be nice to make this method non-recursive, gets kinda messy through
     //
     inline void deletePageFromBucket(PageInfo* root, PageInfo* old_page)
     {
@@ -389,7 +389,7 @@ public:
         return this->allocsize;
     }
 
-    //simple check to see if a page is in alloc/evac/pendinggc pages
+    //Simple check to see if a page is in alloc/evac/pendinggc pages
     bool checkNonAllocOrGCPage(PageInfo* p) {
         if(p == alloc_page || p == evac_page) {
             return false;
@@ -406,7 +406,7 @@ public:
         return true;
     }
 
-    //used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
+    //Used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
     void deleteOldPage(PageInfo* p) 
     {
         int bucket_index = 0;
@@ -422,6 +422,8 @@ public:
             this->deletePageFromBucket(
                 this->high_utilization_buckets[bucket_index], p);
         }
+
+        //May want to make this traversal not O(n) worst case (sort?)
         else {
             PageInfo* cur = this->filled_pages;
             PageInfo* prev = nullptr;
@@ -475,7 +477,11 @@ public:
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
 
+#ifdef MEM_STATS
     void updateMemStats();
+#else
+    inline void updateMemStats() {}
+#endif
 
     //Take a page (that may be in of the page sets -- or may not -- if it is a alloc or evac page) and move it to the appropriate page set
     void processPage(PageInfo* p) noexcept;

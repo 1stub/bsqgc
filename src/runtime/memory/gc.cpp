@@ -57,44 +57,41 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
     tinfo.old_roots_count = 0;
 }
 
-//LOOK AT THIS!!!!
 bool pageNeedsMoved(float old_util, float new_util)
 {
-    int old_low_bucket = -1;
-    int old_high_bucket = -1;
-    int new_low_bucket = -1;
-    int new_high_bucket = -1;
-
-    //pages start with util == 100.0f, so just check if we are above 1 to determine if the page is already stored
-    if(old_util > 1.1f) {
+    //Case where page hasnt been processed before
+    if (old_util > 1.1f) {
         return false;
     }
-    else if(new_util < 0.01f && old_util > 0.01f) { //became empty
+
+    //Handle empty page case
+    if (new_util < 0.01f && old_util > 0.01f) {
         return true;
     }
-    else if(old_util <= 0.60f) {
-        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_low_bucket, 0);
-    } 
-    else {
-        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_high_bucket, 1);
-    }
 
-    if(new_util <= 0.60f) {
-        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_low_bucket, 0);
-    }
-    else {
-        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_high_bucket, 1);
-    }
-
-    if ((old_util <= 0.90f && new_util > 0.90f) || 
-        (old_util > 0.90f && new_util <= 0.90f) || 
-        (old_low_bucket != new_low_bucket) ||
-        (old_high_bucket != new_high_bucket) ||
-        ((old_util <= 0.60f && new_util > 0.60f) || (old_util > 0.60f && new_util <= 0.60f))){
+    const bool was_low = old_util <= 0.60f;
+    const bool now_low = new_util <= 0.60f;
+    
+    if (was_low != now_low) {
         return true;
-    } 
-    else {
-        return false;
+    }
+
+    const bool was_high_util = old_util > 0.90f;
+    const bool now_high_util = new_util > 0.90f;
+    if (was_high_util != now_high_util) {
+        return true;
+    }
+
+    if (now_low) {
+        int old_bucket, new_bucket = -1;
+        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
+        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
+        return old_bucket != new_bucket;
+    } else {
+        int old_bucket, new_bucket = -1;
+        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
+        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
+        return old_bucket != new_bucket;
     }
 }
 
@@ -283,7 +280,6 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
         MarkStackEntry entry = tinfo.visit_stack.pop_back();
         TypeInfoBase* obj_type = GC_TYPE(entry.obj);
 
-        //Large trees appear to fail if | (entry.color == black) is included
         if((obj_type->ptr_mask == LEAF_PTR_MASK) | (entry.color == MARK_STACK_NODE_COLOR_BLACK)) {
             //no children so do by definition
             tinfo.pending_young.push_back(entry.obj);
@@ -301,7 +297,7 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
                     if ((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
                         MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
 
-                        //if meta==nullptr the slot has not been alloc'd yet
+                        //check metadata isnt null for sanitys sake
                         if(meta != nullptr && GC_SHOULD_VISIT(meta)) {
                             GC_MARK_AS_MARKED(meta);
                             tinfo.visit_stack.push_back({*slots, MARK_STACK_NODE_COLOR_GREY});
