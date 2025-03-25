@@ -300,6 +300,7 @@ int main(int argc, char** argv)
 
     InitBSQMemoryTheadLocalInfo();
     gtl_info.disable_automatic_collections = true;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[3] = { &alloc3, &alloc4, &alloc5 };
     gtl_info.initializeGC<3>(allocs);

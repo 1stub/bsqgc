@@ -92,7 +92,6 @@ int main(int argc, char** argv) {
 
     InitBSQMemoryTheadLocalInfo();
     gtl_info.disable_automatic_collections = true;
-    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
@@ -112,6 +111,12 @@ int main(int argc, char** argv) {
 
     uint64_t final = gtl_info.total_live_bytes;
     assert(init_total_bytes == final);
+
+    gtl_info.disable_stack_refs_for_tests = true;
+    garray[0] = nullptr;
+    collect();
+
+    assert(gtl_info.total_live_bytes == 0);
 
     return 0;
 }

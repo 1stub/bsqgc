@@ -174,7 +174,6 @@ int main(int argc, char **argv)
 
     garray[0] = nullptr;
     garray[1] = nullptr;
-
     collect();
     
     assert(gtl_info.total_live_bytes == 0);

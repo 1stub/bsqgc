@@ -186,7 +186,6 @@ int main(int argc, char **argv)
     assert(true_final_bytes == expected_final_bytes);
 
     garray[1] = nullptr;
-    
     collect();
 
     assert(gtl_info.total_live_bytes == 0);

@@ -57,31 +57,39 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
     tinfo.old_roots_count = 0;
 }
 
+//LOOK AT THIS!!!!
 bool pageNeedsMoved(float old_util, float new_util)
 {
-    int old_bucket = 0;
-    int new_bucket = 0;
+    int old_low_bucket = -1;
+    int old_high_bucket = -1;
+    int new_low_bucket = -1;
+    int new_high_bucket = -1;
 
-    if(old_util > 1.0f) {
+    //pages start with util == 100.0f, so just check if we are above 1 to determine if the page is already stored
+    if(old_util > 1.1f) {
         return false;
     }
+    else if(new_util < 0.01f && old_util > 0.01f) { //became empty
+        return true;
+    }
     else if(old_util <= 0.60f) {
-        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
+        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_low_bucket, 0);
     } 
     else {
-        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
+        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_high_bucket, 1);
     }
 
     if(new_util <= 0.60f) {
-        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
+        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_low_bucket, 0);
     }
     else {
-        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
+        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_high_bucket, 1);
     }
 
     if ((old_util <= 0.90f && new_util > 0.90f) || 
         (old_util > 0.90f && new_util <= 0.90f) || 
-        (old_bucket != new_bucket) ||
+        (old_low_bucket != new_low_bucket) ||
+        (old_high_bucket != new_high_bucket) ||
         ((old_util <= 0.60f && new_util > 0.60f) || (old_util > 0.60f && new_util <= 0.60f))){
         return true;
     } 
@@ -100,8 +108,7 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         deccount++;
 
         // Skip if the object is already freed or if we find a root object
-        //If this object is a root we dont want to explore its children (this deletes a subtree who is still alive)
-        if (!GC_IS_ALLOCATED(obj) || GC_IS_ROOT(obj)) {
+        if (!GC_IS_ALLOCATED(obj)) {
             continue;
         }
 
@@ -115,10 +122,11 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
                 char mask = *(ptr_mask++);
 
                 if(*slots != nullptr) {
-                    if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0) {
+                    //If this object is a root we dont want to explore its children (this deletes a subtree who is still alive)
+                    if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0  && !GC_IS_ROOT(*slots)) {
                         tinfo.pending_decs.push_back(*slots);
                     }
-                    if(PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots) && DEC_REF_COUNT(*slots) == 0) {
+                    if(PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots) && DEC_REF_COUNT(*slots) == 0 && !GC_IS_ROOT(*slots)) {
                         tinfo.pending_decs.push_back(*slots);
                     }
                 }
@@ -332,6 +340,7 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void collect() noexcept
 {   
+    static bool should_reset_pending_decs = true;
     gtl_info.pending_young.initialize();
     markingWalk(gtl_info);
     processMarkedYoungObjects(gtl_info);
@@ -340,10 +349,18 @@ void collect() noexcept
     xmem_zerofill(gtl_info.forward_table, gtl_info.forward_table_index);
     gtl_info.forward_table_index = 0;
 
-    gtl_info.pending_decs.initialize();
+
+    if(should_reset_pending_decs) {
+        gtl_info.pending_decs.initialize();
+        should_reset_pending_decs = false;
+    }
     computeDeadRootsForDecrement(gtl_info);
     processDecrements(gtl_info);
-    gtl_info.pending_decs.clear();
+    //we do not want to clear pending decs list every collection since it may still be populated
+    if(gtl_info.pending_decs.isEmpty()) {
+        gtl_info.pending_decs.clear();
+        should_reset_pending_decs = true;
+    }
 
     gtl_info.total_live_bytes = 0;
     for(size_t i = 0; i < BSQ_MAX_ALLOC_SLOTS; i++) {
