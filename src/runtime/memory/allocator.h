@@ -266,38 +266,39 @@ private:
     //
     //Could perhaps be nice to make this not recursive
     //
-    inline void deletePageFromBucket(PageInfo** bucket, PageInfo* old_page, int index)
+    inline void deletePageFromBucket(PageInfo* root, PageInfo* old_page)
     {
         float old_util = old_page->approx_utilization;
-        //had to grab a ref here to make sure we stay in the bucket through recursive calls
-        PageInfo** root_ptr = &bucket[index]; 
-        PageInfo* root = *root_ptr;
-    
         if (root == nullptr) {
             return; 
         }
     
-        if (root->approx_utilization > old_util && root != old_page) {
-            deletePageFromBucket(&((*root_ptr)->left), old_page, index);
-        }
-        else if (root->approx_utilization < old_util && root != old_page) {
-            deletePageFromBucket(&((*root_ptr)->right), old_page, index);
-        }
-        else {
+        //Used for determining if we have same approx util (since floats suck)
+        float diff = old_util - root->approx_utilization;
+        bool eq = -0.00001 <= diff && diff <= 0.00001;
+    
+        if (root == old_page) {
+            // Found the node to delete
             if (root->left == nullptr) {
-                // Case 1: No left child
-                *root_ptr = root->right; 
+                root = root->right; 
             }
             else if (root->right == nullptr) {
-                // Case 2: No right child
-                *root_ptr = root->left; 
+                root = root->left; 
             }
             else {
-                // Case 3: Node has two children
                 PageInfo* successor = getSuccessor(root);
                 root->approx_utilization = successor->approx_utilization;
-                deletePageFromBucket(&((*root_ptr)->right), successor, index);
+                deletePageFromBucket(root->right, successor);
             }
+        }
+
+        //TODO: Take a deeper look at using this pointer comparison tiebreaker thingy
+        else if ((root->approx_utilization > old_util) || 
+                 (eq && (root < old_page))) {  // Use pointer comparison as tiebreaker
+            deletePageFromBucket(root->left, old_page);
+        }
+        else {
+            deletePageFromBucket(root->right, old_page);
         }
     }
 
@@ -370,11 +371,12 @@ private:
 
     void allocatorRefreshEvacuationPage() noexcept
     {
-        //if our evac page is full put it on filled pages list (no need to rebuild)
+        //if our evac page is full put it on filled pages list (no need to rebuild, all objects are old)
         if(this->evac_page != nullptr && this->evac_page->freecount == 0) {
             this->evac_page->next = this->filled_pages;
             this->filled_pages = this->evac_page;
         }
+
         this->evac_page = this->getFreshPageForEvacuation();
         this->evacfreelist = this->evac_page->freelist;
     }
@@ -413,12 +415,12 @@ public:
         if(IS_LOW_UTIL(old_util)) {
             GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
             this->deletePageFromBucket(
-                this->low_utilization_buckets, p, bucket_index);        
+                this->low_utilization_buckets[bucket_index], p);        
         }
         else if(IS_HIGH_UTIL(old_util)) {
             GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
             this->deletePageFromBucket(
-                this->high_utilization_buckets, p, bucket_index);
+                this->high_utilization_buckets[bucket_index], p);
         }
         else {
             PageInfo* cur = this->filled_pages;
@@ -431,6 +433,26 @@ public:
             prev->next = cur->next;
             p->next = nullptr;
         }
+    }
+
+    inline void* allocate(TypeInfoBase* type)
+    {
+        assert(type->type_size == this->allocsize);
+
+        if(this->freelist == nullptr) [[unlikely]] {
+            this->allocatorRefreshPage();
+        }
+
+        void* entry = this->freelist;
+        this->freelist = this->freelist->next;
+        this->alloc_page->freelist = this->alloc_page->freelist->next;
+            
+        this->alloc_page->freecount--;
+
+        SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
+        SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
+
+        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
 
     inline void* allocateEvacuation(TypeInfoBase* type)
@@ -453,27 +475,6 @@ public:
         return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
     }
 
-    inline void* allocate(TypeInfoBase* type)
-    {
-        assert(type->type_size == this->allocsize);
-    
-        if(this->freelist == nullptr) [[unlikely]] {
-            this->allocatorRefreshPage();
-        }
-    
-        void* entry = this->freelist;
-        this->freelist = this->freelist->next;
-        this->alloc_page->freelist = this->alloc_page->freelist->next;
-            
-        this->alloc_page->freecount--;
-    
-        SET_ALLOC_LAYOUT_HANDLE_CANARY(entry, type);
-        SETUP_ALLOC_INITIALIZE_FRESH_META(SETUP_ALLOC_LAYOUT_GET_META_PTR(entry), type);
-        
-        return SETUP_ALLOC_LAYOUT_GET_OBJ_PTR(entry);
-    }
-
-    //call at end of collection if memstats are enabled
     void updateMemStats();
 
     //Take a page (that may be in of the page sets -- or may not -- if it is a alloc or evac page) and move it to the appropriate page set

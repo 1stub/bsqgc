@@ -99,8 +99,9 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         void* obj = (void**)tinfo.pending_decs.pop_front();
         deccount++;
 
-        // Skip if the object is already freed
-        if (!GC_IS_ALLOCATED(obj)) {
+        // Skip if the object is already freed or if we find a root object
+        //If this object is a root we dont want to explore its children (this deletes a subtree who is still alive)
+        if (!GC_IS_ALLOCATED(obj) || GC_IS_ROOT(obj)) {
             continue;
         }
 

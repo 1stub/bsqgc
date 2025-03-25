@@ -4,7 +4,6 @@
 #include <string>
 #include <format>
 #include <stack>
-#include <cmath>
 
 //had to add extra slot to represent val field
 struct TypeInfoBase TreeNodeType = {
@@ -28,7 +27,7 @@ GCAllocator alloc3(24, REAL_ENTRY_SIZE(24), collect);
 //a collection
 //
 TreeNodeValue* makeTree(int64_t depth, int64_t val) {
-    if (depth < 1) {
+    if (depth < 0) {
         return nullptr; 
     }
 
@@ -93,6 +92,7 @@ int main(int argc, char** argv) {
 
     InitBSQMemoryTheadLocalInfo();
     gtl_info.disable_automatic_collections = true;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
@@ -101,11 +101,11 @@ int main(int argc, char** argv) {
     TreeNodeValue* tree_root = makeTree(depth, 4);
     garray[0] = tree_root;
 
-    uint64_t init_total_bytes = (uint64_t)(pow(2.0, depth + 1) * TreeNodeType.type_size);
+    uint64_t init_total_bytes = ((1 << (depth + 1)) - 1) * TreeNodeType.type_size;
 
     auto t1_start = printtree(tree_root);
     collect();
-
+    
     auto t1_end = printtree(tree_root);
 
     assert(t1_start == t1_end);

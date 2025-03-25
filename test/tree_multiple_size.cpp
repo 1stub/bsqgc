@@ -216,10 +216,33 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[5] = { &alloc3, &alloc4, &alloc5, &alloc6, &alloc7 };
     gtl_info.initializeGC<5>(allocs);
 
-    void* t = makeTree(1, 5, 0);
+    int depth = 5;
+    void* t = makeTree(1, depth, 0);
     garray[0] = t;
 
-    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+    uint64_t expected_bytes = 0;
+    uint64_t nodes_at_level = 1;
+    for (int level = 0; level <= depth; level++) {
+        TypeInfoBase* current_type;
+        int children_per_node;
+        
+        switch(level + 1) { //+1 because our types start with one
+            case 1: current_type = &TreeNode1Type; children_per_node = 1; break;
+            case 2: current_type = &TreeNode2Type; children_per_node = 2; break;
+            case 3: current_type = &TreeNode3Type; children_per_node = 3; break;
+            case 4: current_type = &TreeNode4Type; children_per_node = 4; break;
+            case 5: current_type = &TreeNode5Type; children_per_node = 5; break;
+            default: continue;
+        }
+        
+        expected_bytes += nodes_at_level * current_type->type_size;
+        
+        if (level < depth) {
+            nodes_at_level *= children_per_node; 
+        }
+    }
+
+    uint64_t init_total_bytes = expected_bytes;
 
     auto t1_start = printtree(t);
     collect();
@@ -227,7 +250,9 @@ int main(int argc, char** argv) {
     auto t1_end = printtree(t);
 
     assert(t1_start == t1_end);
-    assert(init_total_bytes == gtl_info.total_live_bytes);
+
+    uint64_t final = gtl_info.total_live_bytes;
+    assert(init_total_bytes == final);
 
     return 0;
 }

@@ -9,7 +9,7 @@ struct TypeInfoBase TreeNode30Type = {
     .type_id = 1,
     .type_size = 248,
     .slot_size = 31,
-    .ptr_mask = "11111111111111111111111111110",  
+    .ptr_mask = "1111111111111111111111111111110",  
     .typekey = "TreeNode30Type"
 };
 
@@ -138,35 +138,46 @@ std::string printtree(TreeNodeValue* node) {
     return nodeStr + ", " + childStrs;
 }
 
-void* garray[3] = {nullptr, nullptr, nullptr};
+TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 
 int main(int argc, char **argv)
 {
     INIT_LOCKS();
-    GlobalDataStorage::g_global_data.initialize(sizeof(garray), garray);
+    GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
 
     InitBSQMemoryTheadLocalInfo();
     gtl_info.disable_automatic_collections = true;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[1] = { &alloc248 };
     gtl_info.initializeGC<1>(allocs);
 
     //These two trees should print the same output
-    TreeNodeValue* root = makeTree(2, 2);
-    TreeNodeValue* root0 = makeTree(2, 2);
+    int depth = 2;
+    TreeNodeValue* root = makeTree(depth, 2);
+    garray[0] = root;
+    TreeNodeValue* root0 = makeTree(depth, 2);
+    garray[1] = root0;
 
-    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+    uint64_t init_total_bytes = ((1 + 30 + 30*30) * TreeNode30Type.type_size) * 2;
 
-    auto root_init = printtree(root);
-    auto root0_init = printtree(root0);
+    auto root_init = printtree(garray[0]);
+    auto root0_init = printtree(garray[1]);
 
     collect();
 
-    auto root_final = printtree(root);
-    auto root0_final = printtree(root0);
+    auto root_final = printtree(garray[0]);
+    auto root0_final = printtree(garray[1]);
 
     assert((root_init == root_final) == (root0_init == root0_final));
     assert(init_total_bytes == gtl_info.total_live_bytes);
+
+    garray[0] = nullptr;
+    garray[1] = nullptr;
+
+    collect();
+    
+    assert(gtl_info.total_live_bytes == 0);
     
     return 0;
 }
