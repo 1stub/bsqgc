@@ -66,6 +66,10 @@ int main(int argc, char** argv) {
     gtl_info.initializeGC<1>(allocs);
 
     TreeNodeValue* t1 = makeTree(1, 4);
+    garray[0] = t1;
+
+    //one tree where all 3 nodes are 24 bytes
+    uint64_t init_total_bytes = 3 * 24;
 
     auto t1_start = printtree(t1);
     collect();
@@ -79,6 +83,14 @@ int main(int argc, char** argv) {
 
     assert(t1_end == t1_end_end);
     assert(t1_start == t1_end_end);
+
+    assert(init_total_bytes == gtl_info.total_live_bytes);
+
+    gtl_info.disable_stack_refs_for_tests = true;
+    garray[0] = nullptr;
+    collect();
+
+    assert(gtl_info.total_live_bytes == 0);
 
     return 0;
 }

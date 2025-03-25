@@ -9,7 +9,7 @@ struct TypeInfoBase TreeNode30Type = {
     .type_id = 1,
     .type_size = 248,
     .slot_size = 31,
-    .ptr_mask = "11111111111111111111111111110",  
+    .ptr_mask = "1111111111111111111111111111110",  
     .typekey = "TreeNode30Type"
 };
 
@@ -157,17 +157,20 @@ int main(int argc, char **argv)
     GCAllocator* allocs[1] = { &alloc248 };
     gtl_info.initializeGC<1>(allocs);
 
-    TreeNodeValue* root = makeTree(2, 2);
+    int depth = 2;
+    TreeNodeValue* root = makeTree(depth, 2);
     garray[0] = root;
     garray[1] = root->n15; //stays alive
 
     int n15_init_val = root->n15->val;
-
     auto n15_init = printtree(garray[1]);
 
     collect();
 
-    root = nullptr;
+    uint64_t init_total_bytes = (1 + 30 + 30*30) * TreeNode30Type.type_size;
+    assert(gtl_info.total_live_bytes == init_total_bytes);
+
+    garray[0] = nullptr;
 
     collect();
 
@@ -176,6 +179,16 @@ int main(int argc, char **argv)
     assert(garray[1] != nullptr);
     assert(n15_final == n15_init);
     assert(garray[1]->val == n15_init_val);
+
+    //30 nodes for n15's children and one for itself
+    uint64_t expected_final_bytes = 31 * TreeNode30Type.type_size;
+    uint64_t true_final_bytes = gtl_info.total_live_bytes;
+    assert(true_final_bytes == expected_final_bytes);
+
+    garray[1] = nullptr;
+    collect();
+
+    assert(gtl_info.total_live_bytes == 0);
 
     return 0;
 }

@@ -59,34 +59,39 @@ void computeDeadRootsForDecrement(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 bool pageNeedsMoved(float old_util, float new_util)
 {
-    int old_bucket = 0;
-    int new_bucket = 0;
-
-    if(old_util > 1.0f) {
+    //Case where page hasnt been processed before
+    if (old_util > 1.1f) {
         return false;
     }
-    else if(old_util <= 0.60f) {
-        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
-    } 
-    else {
-        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
-    }
 
-    if(new_util <= 0.60f) {
-        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
-    }
-    else {
-        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
-    }
-
-    if ((old_util <= 0.90f && new_util > 0.90f) || 
-        (old_util > 0.90f && new_util <= 0.90f) || 
-        (old_bucket != new_bucket) ||
-        ((old_util <= 0.60f && new_util > 0.60f) || (old_util > 0.60f && new_util <= 0.60f))){
+    //Handle empty page case
+    if (new_util < 0.01f && old_util > 0.01f) {
         return true;
-    } 
-    else {
-        return false;
+    }
+
+    const bool was_low = old_util <= 0.60f;
+    const bool now_low = new_util <= 0.60f;
+    
+    if (was_low != now_low) {
+        return true;
+    }
+
+    const bool was_high_util = old_util > 0.90f;
+    const bool now_high_util = new_util > 0.90f;
+    if (was_high_util != now_high_util) {
+        return true;
+    }
+
+    if (now_low) {
+        int old_bucket, new_bucket = -1;
+        GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
+        GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
+        return old_bucket != new_bucket;
+    } else {
+        int old_bucket, new_bucket = -1;
+        GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
+        GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
+        return old_bucket != new_bucket;
     }
 }
 
@@ -99,7 +104,7 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         void* obj = (void**)tinfo.pending_decs.pop_front();
         deccount++;
 
-        // Skip if the object is already freed
+        // Skip if the object is already freed or if we find a root object
         if (!GC_IS_ALLOCATED(obj)) {
             continue;
         }
@@ -114,10 +119,11 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
                 char mask = *(ptr_mask++);
 
                 if(*slots != nullptr) {
-                    if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0) {
+                    //If this object is a root we dont want to explore its children (this deletes a subtree who is still alive)
+                    if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0  && !GC_IS_ROOT(*slots)) {
                         tinfo.pending_decs.push_back(*slots);
                     }
-                    if(PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots) && DEC_REF_COUNT(*slots) == 0) {
+                    if(PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots) && DEC_REF_COUNT(*slots) == 0 && !GC_IS_ROOT(*slots)) {
                         tinfo.pending_decs.push_back(*slots);
                     }
                 }
@@ -274,7 +280,6 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
         MarkStackEntry entry = tinfo.visit_stack.pop_back();
         TypeInfoBase* obj_type = GC_TYPE(entry.obj);
 
-        //Large trees appear to fail if | (entry.color == black) is included
         if((obj_type->ptr_mask == LEAF_PTR_MASK) | (entry.color == MARK_STACK_NODE_COLOR_BLACK)) {
             //no children so do by definition
             tinfo.pending_young.push_back(entry.obj);
@@ -292,7 +297,7 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
                     if ((mask == PTR_MASK_PTR) | PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots)) {
                         MetaData* meta = GC_GET_META_DATA_ADDR(*slots);
 
-                        //if meta==nullptr the slot has not been alloc'd yet
+                        //check metadata isnt null for sanitys sake
                         if(meta != nullptr && GC_SHOULD_VISIT(meta)) {
                             GC_MARK_AS_MARKED(meta);
                             tinfo.visit_stack.push_back({*slots, MARK_STACK_NODE_COLOR_GREY});
@@ -331,6 +336,7 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void collect() noexcept
 {   
+    static bool should_reset_pending_decs = true;
     gtl_info.pending_young.initialize();
     markingWalk(gtl_info);
     processMarkedYoungObjects(gtl_info);
@@ -339,15 +345,25 @@ void collect() noexcept
     xmem_zerofill(gtl_info.forward_table, gtl_info.forward_table_index);
     gtl_info.forward_table_index = 0;
 
-    gtl_info.pending_decs.initialize();
+
+    if(should_reset_pending_decs) {
+        gtl_info.pending_decs.initialize();
+        should_reset_pending_decs = false;
+    }
     computeDeadRootsForDecrement(gtl_info);
     processDecrements(gtl_info);
-    gtl_info.pending_decs.clear();
+    //we do not want to clear pending decs list every collection since it may still be populated
+    if(gtl_info.pending_decs.isEmpty()) {
+        gtl_info.pending_decs.clear();
+        should_reset_pending_decs = true;
+    }
 
+    gtl_info.total_live_bytes = 0;
     for(size_t i = 0; i < BSQ_MAX_ALLOC_SLOTS; i++) {
         GCAllocator* alloc = gtl_info.g_gcallocs[i];
         if(alloc != nullptr) {
             alloc->processCollectorPages();
+            alloc->updateMemStats();
         }
     }
 

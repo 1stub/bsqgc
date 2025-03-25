@@ -61,6 +61,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
         this->empty_pages = this->empty_pages->next;
 
         pp = PageInfo::initialize(page, entrysize, realsize);
+        gtl_info.total_empty_gc_pages--;
     }
     else {
 #ifndef ALLOC_DEBUG_MEM_DETERMINISTIC
@@ -78,6 +79,7 @@ PageInfo* GlobalPageGCManager::allocateFreshPage(uint16_t entrysize, uint16_t re
         this->pagetable.pagetable_insert(page);
 
         pp = PageInfo::initialize(page, entrysize, realsize);
+        gtl_info.total_gc_pages++;
     }
 
     GC_MEM_LOCK_RELEASE();
@@ -93,6 +95,7 @@ void GCAllocator::processPage(PageInfo* p) noexcept
 
     if(p->entrycount == p->freecount) {
         GlobalPageGCManager::g_gc_page_manager.addNewPage(p);
+        gtl_info.total_empty_gc_pages++;
     }
     else if(IS_LOW_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
@@ -170,6 +173,44 @@ void GCAllocator::allocatorRefreshPage() noexcept
 
     this->freelist = this->alloc_page->freelist;
 }
+
+#ifdef MEM_STATS
+
+inline void process(PageInfo* page)
+{
+    if (!page) return;
+    gtl_info.total_live_bytes += (page->allocsize * (page->entrycount - page->freecount));
+}
+
+void traverseBST(PageInfo* node) 
+{
+    if (!node) return;
+    process(node);
+    traverseBST(node->left);
+    traverseBST(node->right); 
+}
+
+void GCAllocator::updateMemStats() 
+{
+    //compute stats for filled pages
+    PageInfo* filled_it = this->filled_pages;
+    while(filled_it != nullptr) {
+        process(filled_it);
+        filled_it = filled_it->next;
+    }
+
+    //compute stats for high util pages
+    for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++) {
+        traverseBST(this->high_utilization_buckets[i]);
+    }
+
+    //compute stats for low util pages
+    for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++) {
+        traverseBST(this->low_utilization_buckets[i]);
+    }
+}
+
+#endif
 
 //TODO: Rework these very funky canary check functions !!!
 

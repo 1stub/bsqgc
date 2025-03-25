@@ -64,6 +64,7 @@ void* garray[3] = {nullptr, nullptr, nullptr};
 //No objects should be deleted since they still have one root ref
 //after dropping the second.
 //
+
 int main(int argc, char **argv)
 {
     INIT_LOCKS();
@@ -76,7 +77,8 @@ int main(int argc, char **argv)
     GCAllocator* allocs[1] = { &alloc4 };
     gtl_info.initializeGC<1>(allocs);
 
-    TreeNodeValue* root1 = makeSharedTree(10, 2);
+    int depth = 10;
+    TreeNodeValue* root1 = makeSharedTree(depth, 2);
     garray[0] = root1;
     TreeNodeValue* root2 = AllocType(TreeNodeValue, alloc4, &TreeNode3Type);
     root2->val = 2; //we started with 2 as value for root1
@@ -90,14 +92,33 @@ int main(int argc, char **argv)
 
     collect();
 
-    //drop root1
-    root1 = nullptr;
+    uint64_t init_total_bytes = gtl_info.total_live_bytes;
+
+    //drop root2
+    garray[1] = nullptr;
     
     collect();
 
-    auto root2_final = printtree(root2);
+    auto root1_final = printtree(root1);
 
-    assert(root1_init == root2_final);
+    assert(root1_init == root1_final);
+
+    //We should only lose one node for root1
+    uint64_t final = gtl_info.total_live_bytes;
+    assert(init_total_bytes == (final + TreeNode3Type.type_size));
+
+    garray[0] = nullptr;
+
+    //We have a pretty big tree here, so we need lots of collections to clear out pending decs
+    collect();
+    collect();
+    collect();
+    collect();
+    collect();
+    collect();
+    collect();
+
+    assert(gtl_info.total_live_bytes == 0);
 
     return 0;
 }
