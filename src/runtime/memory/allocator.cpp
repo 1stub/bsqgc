@@ -107,8 +107,15 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     }
     //if our page freshly became full we need to gc
     else if(IS_FULL(n_util) && !IS_FULL(old_util)) {
-        p->next = this->pendinggc_pages;
-        pendinggc_pages = p;
+        //We dont want to collect evac page
+        if(!(p == this->evac_page)) {
+            p->next = this->pendinggc_pages;
+            pendinggc_pages = p;
+        }
+        else {
+            p->next = this->filled_pages;
+            filled_pages = p;
+        }
     }
     //if our page was full before and still full put on filled pages
     else if(IS_FULL(n_util) && IS_FULL(old_util)) {

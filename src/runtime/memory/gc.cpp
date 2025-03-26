@@ -69,29 +69,40 @@ bool pageNeedsMoved(float old_util, float new_util)
         return true;
     }
 
-    const bool was_low = old_util <= 0.60f;
-    const bool now_low = new_util <= 0.60f;
-    
-    if (was_low != now_low) {
+    const bool was_low_util = IS_LOW_UTIL(old_util);
+    const bool now_low_util = IS_LOW_UTIL(new_util);
+    if (was_low_util != now_low_util) {
         return true;
     }
 
-    const bool was_high_util = old_util > 0.90f;
-    const bool now_high_util = new_util > 0.90f;
+    const bool was_high_util = IS_HIGH_UTIL(old_util);
+    const bool now_high_util = IS_HIGH_UTIL(new_util);
     if (was_high_util != now_high_util) {
         return true;
     }
 
-    if (now_low) {
-        int old_bucket, new_bucket = -1;
+    const bool was_full = IS_FULL(old_util);
+    const bool now_full = IS_FULL(new_util);
+    if (was_full != now_full) {
+        return true;
+    }
+
+    if (now_low_util) {
+        int old_bucket = -1; 
+        int new_bucket = -1;
         GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, old_bucket, 0);
         GET_BUCKET_INDEX(new_util, NUM_LOW_UTIL_BUCKETS, new_bucket, 0);
         return old_bucket != new_bucket;
-    } else {
-        int old_bucket, new_bucket = -1;
+    } 
+    else if (now_high_util){
+        int old_bucket = -1; 
+        int new_bucket = -1;
         GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, old_bucket, 1);
         GET_BUCKET_INDEX(new_util, NUM_HIGH_UTIL_BUCKETS, new_bucket, 1);
         return old_bucket != new_bucket;
+    }
+    else {
+        return false;
     }
 }
 

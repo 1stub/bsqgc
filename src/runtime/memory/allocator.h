@@ -242,7 +242,7 @@ private:
         }
     
         PageInfo* current = root;
-        while (true) {
+        while (current != nullptr) {
             if (n_util < current->approx_utilization) {
                 if (current->left == nullptr) {
                     //Insert as the left child
@@ -264,11 +264,22 @@ private:
     }
 
     //
-    //Could be nice to make this method non-recursive, gets kinda messy through
+    //IMPORTANT: Current bug is related to handling pages of same utilization 
+    //in insertion and deletion. Currently there is no proper manner of handing this
+    //which causes tree_shared to fail on larger trees. What appears to be a nice
+    //approach in this context is to just use the next pointer for each page
+    //to create a list if the eq condition holds. 
     //
-    inline void deletePageFromBucket(PageInfo* root, PageInfo* old_page)
+    //ALSO: Make sure to properly use refernces when deleting nodes from the tree.
+    //current deletion logic appears fine in this aspect, but important to keep in mind.
+    //Proper usage of references allow us to get away of not needing to store the previous
+    //node when walking the tree.
+    //
+
+    void deletePageFromBucket(PageInfo** root_ptr, PageInfo* old_page)
     {
         float old_util = old_page->approx_utilization;
+        PageInfo* root = *root_ptr;
         if (root == nullptr) {
             return; 
         }
@@ -277,28 +288,29 @@ private:
         float diff = old_util - root->approx_utilization;
         bool eq = -0.00001 <= diff && diff <= 0.00001;
     
+        //When we are deleting nodes it is important we work with references from this nodes
+        //parent to ensure changes are properly reflected in the parent node
         if (root == old_page) {
             // Found the node to delete
             if (root->left == nullptr) {
-                root = root->right; 
+                *root_ptr = root->right; 
             }
             else if (root->right == nullptr) {
-                root = root->left; 
+                *root_ptr = root->left; 
             }
             else {
                 PageInfo* successor = getSuccessor(root);
                 root->approx_utilization = successor->approx_utilization;
-                deletePageFromBucket(root->right, successor);
+                deletePageFromBucket(&((*root_ptr)->right), successor);
             }
         }
 
         //TODO: Take a deeper look at using this pointer comparison tiebreaker thingy
-        else if ((root->approx_utilization > old_util) || 
-                 (eq && (root < old_page))) {  // Use pointer comparison as tiebreaker
-            deletePageFromBucket(root->left, old_page);
+        else if ((root->approx_utilization > old_util) || (eq && (old_page < root))) {  // Use pointer comparison as tiebreaker
+            deletePageFromBucket(&((*root_ptr)->left), old_page);
         }
         else {
-            deletePageFromBucket(root->right, old_page);
+            deletePageFromBucket(&((*root_ptr)->right), old_page);
         }
     }
 
@@ -371,10 +383,9 @@ private:
 
     void allocatorRefreshEvacuationPage() noexcept
     {
-        //if our evac page is full put it on filled pages list (no need to rebuild, all objects are old)
+        //if our evac page is full put it on filled pages list
         if(this->evac_page != nullptr && this->evac_page->freecount == 0) {
-            this->evac_page->next = this->filled_pages;
-            this->filled_pages = this->evac_page;
+            this->processPage(this->evac_page);
         }
 
         this->evac_page = this->getFreshPageForEvacuation();
@@ -415,12 +426,12 @@ public:
         if(IS_LOW_UTIL(old_util)) {
             GET_BUCKET_INDEX(old_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
             this->deletePageFromBucket(
-                this->low_utilization_buckets[bucket_index], p);        
+                &this->low_utilization_buckets[bucket_index], p);        
         }
         else if(IS_HIGH_UTIL(old_util)) {
             GET_BUCKET_INDEX(old_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
             this->deletePageFromBucket(
-                this->high_utilization_buckets[bucket_index], p);
+                &this->high_utilization_buckets[bucket_index], p);
         }
 
         //May want to make this traversal not O(n) worst case (sort?)
@@ -432,7 +443,12 @@ public:
                 cur = cur->next;
             }
 
-            prev->next = cur->next;
+            if(prev == nullptr) {
+                this->filled_pages = cur->next;
+            }
+            else {
+                prev->next = cur->next;
+            }
             p->next = nullptr;
         }
     }

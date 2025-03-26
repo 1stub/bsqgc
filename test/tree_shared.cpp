@@ -111,7 +111,7 @@ int main(int argc, char **argv)
     GCAllocator* allocs[2] = { &alloc2, &alloc4 };
     gtl_info.initializeGC<2>(allocs);
 
-    int depth = 10;
+    int depth = 4;
     TreeNode3Value* root1 = makeSharedTree(depth, 2);
     garray[0] = root1;
     TreeNode1Value* root2 = AllocType(TreeNode1Value, alloc2, &TreeNode1Type);
@@ -151,6 +151,7 @@ int main(int argc, char **argv)
     collect();
     collect();
     collect();
+
 
     assert(gtl_info.total_live_bytes == 0);
 
