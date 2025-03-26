@@ -84,8 +84,6 @@ TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 //Full tree of varrying depths
 //A possible improvement could be making tree for each depth up to a certain threshold (say n=14)
 //
-
-//TODO: figure out why we are off by exactly one treenode type size in our final calculation
 int main(int argc, char** argv) {
     INIT_LOCKS();
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);

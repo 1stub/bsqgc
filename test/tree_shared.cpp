@@ -111,7 +111,7 @@ int main(int argc, char **argv)
     GCAllocator* allocs[2] = { &alloc2, &alloc4 };
     gtl_info.initializeGC<2>(allocs);
 
-    int depth = 4;
+    int depth = 10;
     TreeNode3Value* root1 = makeSharedTree(depth, 2);
     garray[0] = root1;
     TreeNode1Value* root2 = AllocType(TreeNode1Value, alloc2, &TreeNode1Type);
@@ -129,6 +129,12 @@ int main(int argc, char **argv)
     //drop root1
     garray[0] = nullptr;
     
+    //We have a pretty big tree here, so we need lots of collections to clear out pending decs
+    collect();
+    collect();
+    collect();
+    collect();
+    collect();
     collect();
 
     auto root2_final = printtree(root2);

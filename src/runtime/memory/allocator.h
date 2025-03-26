@@ -4,6 +4,7 @@
 #include "../support/arraylist.h"
 #include "../support/pagetable.h"
 #include "gc.h"
+#include <array>
 
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
@@ -222,28 +223,47 @@ private:
 
     void (*collectfp)();
 
-    inline void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util, int index) 
+    void insertPageInBucket(PageInfo** bucket, PageInfo* new_page, float n_util) 
     {                             
         if(new_page == nullptr) { //sanity check
             assert(false);
         }
         
-        PageInfo* root = bucket[index];     
+        PageInfo* root = *bucket;     
         new_page->left = nullptr;
         new_page->right = nullptr;
+        new_page->next = nullptr;
 
         //no root case
         if(root == nullptr) {
-            bucket[index] = new_page;
-            new_page->left = nullptr;
-            new_page->right = nullptr;
-
+            *bucket = new_page;
             return ;
         }
     
         PageInfo* current = root;
         while (current != nullptr) {
-            if (n_util < current->approx_utilization) {
+            float diff = n_util - root->approx_utilization;
+            bool eq = -0.00001 <= diff && diff <= 0.00001;
+            
+            //if current and our pages utilization are equal we add it to this pages list
+            //a possible enhancement could be inserting at beginning of list, would mean
+            //having to refactor this code though
+            if(eq) {
+                if(current->next == nullptr) {
+                    current->next = new_page;
+                }
+                else {
+                    PageInfo* it = current;
+                    while(it->next != nullptr) {
+                        it = it->next;
+                    }
+                    it->next = new_page;
+                }
+                break;
+            }
+
+            //traverse down left subtree
+            else if (n_util < current->approx_utilization) {
                 if (current->left == nullptr) {
                     //Insert as the left child
                     current->left = new_page;
@@ -251,7 +271,10 @@ private:
                 } else {
                     current = current->left;
                 }
-            } else {
+            } 
+
+            //traverse down right subtree
+            else {
                 if (current->right == nullptr) {
                     //Insert as the right child
                     current->right = new_page;
@@ -262,6 +285,9 @@ private:
             }
         }
     }
+
+    //Actually this bug is fixed now but I am going to leave this big comment
+    //so i can review it thursday morning (i need sleep)
 
     //
     //IMPORTANT: Current bug is related to handling pages of same utilization 
@@ -276,6 +302,7 @@ private:
     //node when walking the tree.
     //
 
+
     void deletePageFromBucket(PageInfo** root_ptr, PageInfo* old_page)
     {
         float old_util = old_page->approx_utilization;
@@ -288,25 +315,49 @@ private:
         float diff = old_util - root->approx_utilization;
         bool eq = -0.00001 <= diff && diff <= 0.00001;
     
-        //When we are deleting nodes it is important we work with references from this nodes
-        //parent to ensure changes are properly reflected in the parent node
-        if (root == old_page) {
-            // Found the node to delete
-            if (root->left == nullptr) {
-                *root_ptr = root->right; 
+        if (eq) {
+            // Handle case where root itself is the node to delete
+            if(root == old_page) {
+                if(root->next != nullptr) {
+                    *root_ptr = root->next;
+                    root->next->left = root->left;  // Preserve left subtree
+                    root->next->right = root->right; // Preserve right subtree
+                } 
+                else {
+                    // Normal BST deletion
+                    if (root->left == nullptr) {
+                        *root_ptr = root->right; 
+                    }
+                    else if (root->right == nullptr) {
+                        *root_ptr = root->left; 
+                    }
+                    else {
+                        PageInfo* successor = getSuccessor(root);
+
+                        //TODO: Look for an alternative to std::swap (i am tired and will fix this tomorrow)
+                        std::swap(root->next, successor->next);
+                        root->approx_utilization = successor->approx_utilization;
+                        deletePageFromBucket(&root->right, successor);
+                    }
+                }
+                return;
             }
-            else if (root->right == nullptr) {
-                *root_ptr = root->left; 
+    
+            //Handle node in the linked list
+            PageInfo* prev = root;
+            PageInfo* current = root->next;
+            while(current != nullptr) {
+                if(current == old_page) {
+                    prev->next = current->next;
+                    return;
+                }
+                prev = current;
+                current = current->next;
             }
-            else {
-                PageInfo* successor = getSuccessor(root);
-                root->approx_utilization = successor->approx_utilization;
-                deletePageFromBucket(&((*root_ptr)->right), successor);
-            }
+            return; //Node not found
         }
 
-        //TODO: Take a deeper look at using this pointer comparison tiebreaker thingy
-        else if ((root->approx_utilization > old_util) || (eq && (old_page < root))) {  // Use pointer comparison as tiebreaker
+        else if (root->approx_utilization > old_util) {  
             deletePageFromBucket(&((*root_ptr)->left), old_page);
         }
         else {
@@ -314,7 +365,8 @@ private:
         }
     }
 
-    inline PageInfo* getSuccessor(PageInfo* p) {
+    inline PageInfo* getSuccessor(PageInfo* p) 
+    {
         p = p->right;
         while(p != nullptr && p->left != nullptr) {
             p = p->left;
@@ -324,36 +376,43 @@ private:
 
     PageInfo* findLowestUtilPage(PageInfo** buckets, int n)
     {
-        //it is crucial we remove the page we find here
-        PageInfo* p = nullptr;
         for(int i = 0; i < n; i++) {
             PageInfo* parent = nullptr;
             PageInfo* cur = buckets[i];
-            if(cur == nullptr) {
-                continue;
-            }
+            if(cur == nullptr) continue;
+            
             while(cur->left != nullptr) {
                 parent = cur;
                 cur = cur->left;
             }
-
-            if(cur->right != nullptr && parent != nullptr) {
-                parent->left = cur->right;
+            
+            if(cur == buckets[i]) { //If cur is root
+                if(cur->next != nullptr) {
+                    buckets[i] = cur->next;
+                    buckets[i]->left = cur->left;
+                    buckets[i]->right = cur->right;
+                } 
+                else {
+                    // Normal BST removal
+                    if(cur->right != nullptr) {
+                        buckets[i] = cur->right;
+                    } else {
+                        buckets[i] = nullptr;
+                    }
+                }
+            } 
+            else { //If cur is not root
+                if(cur->right != nullptr) {
+                    parent->left = cur->right;
+                }
+                else {
+                    parent->left = nullptr;
+                }
             }
-            //cur must be root since parent is null
-            else if(cur->right != nullptr && parent == nullptr) {
-                buckets[i] = cur->right;
-            }
-            else {
-                buckets[i] = nullptr;
-            }
-
-            p = cur;
-            p->left = nullptr;
-            p->right = nullptr;
-            break;
+            
+            return cur;
         }
-        return p;
+        return nullptr;
     }
 
     PageInfo* getFreshPageForAllocator() noexcept
@@ -450,6 +509,8 @@ public:
                 prev->next = cur->next;
             }
             p->next = nullptr;
+            p->left = nullptr;
+            p->right = nullptr;
         }
     }
 
