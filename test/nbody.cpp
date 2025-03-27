@@ -309,7 +309,7 @@ int main(int argc, char** argv)
     Body** sys = createNBodySystem();
     double step = 0.01;
     
-    printf("energy: %g\n", energy(sys));
+    printf("energy: %.9g\n", energy(sys));
 
     //Lets collect every 10000 systems
     for(int i = 0; i < n; i++) {
@@ -319,7 +319,7 @@ int main(int argc, char** argv)
         }
     }
 
-    printf("energy: %g\n", energy(sys));
+    printf("energy: %.9g\n", energy(sys));
 
     return 0;
 }

@@ -4,7 +4,6 @@
 #include "../support/arraylist.h"
 #include "../support/pagetable.h"
 #include "gc.h"
-#include <array>
 
 //Can also use other values like 0xFFFFFFFFFFFFFFFFul
 #define ALLOC_DEBUG_MEM_INITIALIZE_VALUE 0x0ul
@@ -182,6 +181,8 @@ public:
 //<=1.0f is very crucial here because new pages start at 100.0f, wihout we just reprocess them until OOM
 #define IS_FULL(U) (U > 0.90f && U <= 1.0f)
 
+#define UTILIZATIONS_ARE_EQUAL(F1, F2) (-0.00001 <= (F1 - F2) && (F1 - F2) <= 0.00001)
+
 //Find proper bucket based on increments of 0.05f
 #define GET_BUCKET_INDEX(U, N, I, O)                \
 do {                                                \
@@ -242,13 +243,10 @@ private:
     
         PageInfo* current = root;
         while (current != nullptr) {
-            float diff = n_util - root->approx_utilization;
-            bool eq = -0.00001 <= diff && diff <= 0.00001;
-            
             //if current and our pages utilization are equal we add it to this pages list
             //a possible enhancement could be inserting at beginning of list, would mean
             //having to refactor this code though
-            if(eq) {
+            if(UTILIZATIONS_ARE_EQUAL(n_util, root->approx_utilization)) {
                 if(current->next == nullptr) {
                     current->next = new_page;
                 }
@@ -311,11 +309,7 @@ private:
             return; 
         }
     
-        //Used for determining if we have same approx util (since floats suck)
-        float diff = old_util - root->approx_utilization;
-        bool eq = -0.00001 <= diff && diff <= 0.00001;
-    
-        if (eq) {
+        if (UTILIZATIONS_ARE_EQUAL(old_util, root->approx_utilization)) {
             // Handle case where root itself is the node to delete
             if(root == old_page) {
                 if(root->next != nullptr) {
@@ -334,8 +328,11 @@ private:
                     else {
                         PageInfo* successor = getSuccessor(root);
 
-                        //TODO: Look for an alternative to std::swap (i am tired and will fix this tomorrow)
-                        std::swap(root->next, successor->next);
+                        //crucial to update sucessors ptrs
+                        successor->left = root->left;
+                        successor->right = root->right;
+                        successor->next = root->next;
+
                         root->approx_utilization = successor->approx_utilization;
                         deletePageFromBucket(&root->right, successor);
                     }
@@ -393,10 +390,11 @@ private:
                     buckets[i]->right = cur->right;
                 } 
                 else {
-                    // Normal BST removal
+                    //Normal BST removal
                     if(cur->right != nullptr) {
                         buckets[i] = cur->right;
-                    } else {
+                    } 
+                    else {
                         buckets[i] = nullptr;
                     }
                 }
@@ -444,7 +442,9 @@ private:
     {
         //if our evac page is full put it on filled pages list
         if(this->evac_page != nullptr && this->evac_page->freecount == 0) {
-            this->processPage(this->evac_page);
+            this->evac_page->approx_utilization = 1.0f;
+            this->evac_page->next = this->filled_pages;
+            this->filled_pages = this->evac_page;
         }
 
         this->evac_page = this->getFreshPageForEvacuation();
