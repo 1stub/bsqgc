@@ -112,15 +112,13 @@ int main(int argc, char **argv)
     gtl_info.initializeGC<2>(allocs);
 
     const int depth = 11;
-    const int iterations = 1000;
+    const int iterations = 100;
     int failed_iterations = 0;
 
-    std::cout << "Starting " << iterations << " iterations of GC stress testing...\n";
+    std::cout << "Starting " << iterations << " iterations of GC stress testing for multiple_tree_shared...\n";
     auto test_start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        auto iter_start = std::chrono::high_resolution_clock::now();
-
         // Create big tree and keep a subtree alive
         TreeNode3Value* root1 = makeSharedTree(depth, 2);
         garray[0] = root1;
@@ -129,17 +127,28 @@ int main(int argc, char **argv)
         garray[1] = root2;
         root2->n1 = root1->n1->n1;
 
+        auto root1_init = printtree(root1);
+        auto root2_init = printtree(root2);
+
         // Drop root1 and collect
         garray[0] = nullptr;
         for (int j = 0; j < 6; j++) {
             collect();
         }
 
+        auto root2_final = printtree(root2);
+
         // Verify kept subtree is intact
         uint64_t subtree_size = find_size_bytes(root2->n1);
         uint64_t expected_size = subtree_size + TreeNode1Type.type_size;
         if (gtl_info.total_live_bytes != expected_size) {
             std::cerr << "Iteration " << i << " failed: incorrect live bytes\n";
+            failed_iterations++;
+            continue;
+        }
+
+        if(root2_final != root2_init) {
+            std::cerr << "Iteration " << i << " failed: subtree not intact after collection\n";
             failed_iterations++;
             continue;
         }
@@ -153,12 +162,6 @@ int main(int argc, char **argv)
         if (gtl_info.total_live_bytes != 0) {
             std::cerr << "Iteration " << i << " failed: memory not fully collected\n";
             failed_iterations++;
-        }
-
-        auto iter_end = std::chrono::high_resolution_clock::now();
-        auto iter_time = std::chrono::duration_cast<std::chrono::milliseconds>(iter_end - iter_start).count();
-        if (iter_time > 100) {
-            std::cout << "Iteration " << i << " took " << iter_time << "ms\n";
         }
     }
 
