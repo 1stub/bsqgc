@@ -99,16 +99,23 @@ void GCAllocator::processPage(PageInfo* p) noexcept
     }
     else if(IS_LOW_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_LOW_UTIL_BUCKETS, bucket_index, 0);
-        this->insertPageInBucket(this->low_utilization_buckets, p, n_util, bucket_index);    
+        this->insertPageInBucket(&this->low_utilization_buckets[bucket_index], p, n_util);    
     }
     else if(IS_HIGH_UTIL(n_util)) {
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
-        this->insertPageInBucket(this->high_utilization_buckets, p, n_util, bucket_index);
+        this->insertPageInBucket(&this->high_utilization_buckets[bucket_index], p, n_util);
     }
     //if our page freshly became full we need to gc
     else if(IS_FULL(n_util) && !IS_FULL(old_util)) {
-        p->next = this->pendinggc_pages;
-        pendinggc_pages = p;
+        //We dont want to collect evac page
+        if(!(p == this->evac_page)) {
+            p->next = this->pendinggc_pages;
+            pendinggc_pages = p;
+        }
+        else {
+            p->next = this->filled_pages;
+            filled_pages = p;
+        }
     }
     //if our page was full before and still full put on filled pages
     else if(IS_FULL(n_util) && IS_FULL(old_util)) {
@@ -185,7 +192,13 @@ inline void process(PageInfo* page)
 void traverseBST(PageInfo* node) 
 {
     if (!node) return;
-    process(node);
+
+    PageInfo* current = node;
+    while (current != nullptr) {
+        process(current);
+        current = current->next;
+    }
+    
     traverseBST(node->left);
     traverseBST(node->right); 
 }

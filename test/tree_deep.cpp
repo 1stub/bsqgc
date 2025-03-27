@@ -84,8 +84,6 @@ TreeNodeValue* garray[3] = {nullptr, nullptr, nullptr};
 //Full tree of varrying depths
 //A possible improvement could be making tree for each depth up to a certain threshold (say n=14)
 //
-
-//TODO: figure out why we are off by exactly one treenode type size in our final calculation
 int main(int argc, char** argv) {
     INIT_LOCKS();
     GlobalDataStorage::g_global_data.initialize(sizeof(garray), (void**)garray);
@@ -96,7 +94,7 @@ int main(int argc, char** argv) {
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);
 
-    int depth = 13;
+    int depth = 15;
     TreeNodeValue* tree_root = makeTree(depth, 4);
     garray[0] = tree_root;
 
@@ -114,6 +112,13 @@ int main(int argc, char** argv) {
 
     gtl_info.disable_stack_refs_for_tests = true;
     garray[0] = nullptr;
+
+    //big tree, so collect a few times to clear up pending decs
+    collect();
+    collect();
+    collect();
+    collect();
+    collect();
     collect();
 
     assert(gtl_info.total_live_bytes == 0);
