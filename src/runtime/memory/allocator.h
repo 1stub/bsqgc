@@ -284,23 +284,6 @@ private:
         }
     }
 
-    //Actually this bug is fixed now but I am going to leave this big comment
-    //so i can review it thursday morning (i need sleep)
-
-    //
-    //IMPORTANT: Current bug is related to handling pages of same utilization 
-    //in insertion and deletion. Currently there is no proper manner of handing this
-    //which causes tree_shared to fail on larger trees. What appears to be a nice
-    //approach in this context is to just use the next pointer for each page
-    //to create a list if the eq condition holds. 
-    //
-    //ALSO: Make sure to properly use refernces when deleting nodes from the tree.
-    //current deletion logic appears fine in this aspect, but important to keep in mind.
-    //Proper usage of references allow us to get away of not needing to store the previous
-    //node when walking the tree.
-    //
-
-
     void deletePageFromBucket(PageInfo** root_ptr, PageInfo* old_page)
     {
         float old_util = old_page->approx_utilization;
