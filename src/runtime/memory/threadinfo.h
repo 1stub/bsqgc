@@ -2,6 +2,12 @@
 
 #include "allocator.h"
 
+//Seems that chrono is pretty fast and shouldn't mess with our metrics too much here
+#ifdef MEM_STATS
+#include <chrono>
+#define MAX_COLLECTION_TIMES_INDEX 512
+#endif
+
 #define InitBSQMemoryTheadLocalInfo() { ALLOC_LOCK_ACQUIRE(); register void** rbp asm("rbp"); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, rbp); ALLOC_LOCK_RELEASE(); }
 
 #define MARK_STACK_NODE_COLOR_GREY 0
@@ -78,6 +84,9 @@ struct BSQMemoryTheadLocalInfo
     uint64_t total_gc_pages = 0;
     uint64_t total_empty_gc_pages = 0;
     uint64_t total_live_bytes = 0; //doesnt include canary or metadata size
+
+    int collection_times_index = 0;
+    double collection_times[MAX_COLLECTION_TIMES_INDEX]; //store in ms how much time each collection takes
 #endif
 
 #ifdef BSQ_GC_CHECK_ENABLED
