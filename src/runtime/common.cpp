@@ -6,4 +6,3 @@ mtx_t g_gcrefctlock;
 
 size_t GlobalThreadAllocInfo::s_thread_counter = 0;
 void* GlobalThreadAllocInfo::s_current_page_address = ALLOC_BASE_ADDRESS;
-uint32_t GlobalThreadAllocInfo::newly_filled_pages_count = 0;

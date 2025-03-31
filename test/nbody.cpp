@@ -311,15 +311,19 @@ int main(int argc, char** argv)
     
     printf("energy: %.9g\n", energy(sys));
 
-    //Lets collect every 10000 systems
+    //Collections are pretty fast for nbody since there
+    //is hardly any decrements happening, everything is just garbage
     for(int i = 0; i < n; i++) {
         sys = advance(sys, step);
-        if(i % 10000 == 0) {
+        int filled_count = gtl_info.newly_filled_pages_count;
+        if(filled_count >= BSQ_COLLECTION_THRESHOLD) {
             collect();
         }
     }
 
     printf("energy: %.9g\n", energy(sys));
+
+    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
 
     return 0;
 }

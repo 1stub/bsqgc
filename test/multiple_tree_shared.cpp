@@ -92,6 +92,7 @@ uint64_t find_size_bytes(TreeNode3Value* n)
            find_size_bytes(n->n3);
 }
 
+
 void* garray[3] = {nullptr, nullptr, nullptr};
 
 //
@@ -111,12 +112,18 @@ int main(int argc, char **argv)
     GCAllocator* allocs[2] = { &alloc2, &alloc4 };
     gtl_info.initializeGC<2>(allocs);
 
-    const int depth = 11;
+    const int depth = 10;
     const int iterations = 100;
     int failed_iterations = 0;
 
+    //
+    //If we want to have this run higher workloads (completly full collections)
+    //we need to do depth=11 then call multiple collections instead of just one to 
+    //properly clear our old tree. If we do not we collect further and further behind
+    //schedule (1024 filled pages) and the collector falls apart.
+    //
+
     std::cout << "Starting " << iterations << " iterations of GC stress testing for multiple_tree_shared...\n";
-    auto test_start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
         // Create big tree and keep a subtree alive
@@ -130,17 +137,19 @@ int main(int argc, char **argv)
         auto root1_init = printtree(root1);
         auto root2_init = printtree(root2);
 
+        uint64_t subtree_size = find_size_bytes(root2->n1);
+        uint64_t expected_size = subtree_size + TreeNode1Type.type_size;
+
         // Drop root1 and collect
         garray[0] = nullptr;
-        for (int j = 0; j < 6; j++) {
-            collect();
-        }
+
+        //Collect root1's tree
+        collect();
+        collect();
 
         auto root2_final = printtree(root2);
 
         // Verify kept subtree is intact
-        uint64_t subtree_size = find_size_bytes(root2->n1);
-        uint64_t expected_size = subtree_size + TreeNode1Type.type_size;
         if (gtl_info.total_live_bytes != expected_size) {
             std::cerr << "Iteration " << i << " failed: incorrect live bytes\n";
             failed_iterations++;
@@ -155,22 +164,12 @@ int main(int argc, char **argv)
 
         // Drop everything and collect
         garray[1] = nullptr;
-        for (int j = 0; j < 6; j++) {
-            collect();
-        }
+        collect();
 
-        if (gtl_info.total_live_bytes != 0) {
-            std::cerr << "Iteration " << i << " failed: memory not fully collected\n";
-            failed_iterations++;
-        }
+        assert(gtl_info.total_live_bytes == 0);
     }
 
-    //Didn't do these calculations in other tests but fun to see
-    auto test_end = std::chrono::high_resolution_clock::now();
-    auto total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(test_end - test_start).count();
-    double total_time_seconds = total_time_ms / 1000.0;
-
-    std::cout << "\nTest completed in " << std::fixed << std::setprecision(3) << total_time_seconds << " seconds\n";
+    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
 
     std::cout << "Failed iterations: " << failed_iterations << "/" << iterations << "\n";
     return failed_iterations > 0 ? 1 : 0;

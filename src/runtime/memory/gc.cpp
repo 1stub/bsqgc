@@ -1,4 +1,3 @@
-
 #include "allocator.h"
 #include "gc.h"
 #include "../support/qsort.h"
@@ -347,6 +346,10 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void collect() noexcept
 {   
+#ifdef MEM_STATS
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
+
     static bool should_reset_pending_decs = true;
     gtl_info.pending_young.initialize();
     markingWalk(gtl_info);
@@ -355,7 +358,6 @@ void collect() noexcept
 
     xmem_zerofill(gtl_info.forward_table, gtl_info.forward_table_index);
     gtl_info.forward_table_index = 0;
-
 
     if(should_reset_pending_decs) {
         gtl_info.pending_decs.initialize();
@@ -389,5 +391,16 @@ void collect() noexcept
 
     xmem_zerofill(gtl_info.roots, gtl_info.roots_count);
     gtl_info.roots_count = 0;
-    GlobalThreadAllocInfo::newly_filled_pages_count = 0;
+    gtl_info.newly_filled_pages_count = 0;
+
+#ifdef MEM_STATS
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
+    
+    gtl_info.collection_times[gtl_info.collection_times_index++] = duration_ms;
+    if(gtl_info.collection_times_index == 512) {
+        gtl_info.collection_times_index = 0;
+    }
+#endif
 }
