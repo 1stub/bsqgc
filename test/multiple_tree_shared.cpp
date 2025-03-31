@@ -123,7 +123,6 @@ int main(int argc, char **argv)
     //
 
     std::cout << "Starting " << iterations << " iterations of GC stress testing for multiple_tree_shared...\n";
-    auto test_start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
         // Create big tree and keep a subtree alive
@@ -139,6 +138,7 @@ int main(int argc, char **argv)
 
         // Drop root1 and collect
         garray[0] = nullptr;
+        //std::cout << "filled_pages_count " << gtl_info.newly_filled_pages_count << std::endl;
         collect();
 
         auto root2_final = printtree(root2);
@@ -170,12 +170,7 @@ int main(int argc, char **argv)
         #endif
     }
 
-    //Didn't do these calculations in other tests but fun to see
-    auto test_end = std::chrono::high_resolution_clock::now();
-    auto total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(test_end - test_start).count();
-    double total_time_seconds = total_time_ms / 1000.0;
-
-    std::cout << "\nTest completed in " << std::fixed << std::setprecision(3) << total_time_seconds << " seconds\n";
+    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
 
     std::cout << "Failed iterations: " << failed_iterations << "/" << iterations << "\n";
     return failed_iterations > 0 ? 1 : 0;

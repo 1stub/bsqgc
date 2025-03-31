@@ -111,6 +111,26 @@ struct BSQMemoryTheadLocalInfo
         }
     }
 
+#ifdef MEM_STATS
+    double compute_average_collection_time() noexcept
+    {
+        double total_collection_time = 0;
+        int num_collections = 0;
+        for(int i = 0; i < MAX_COLLECTION_TIMES_INDEX; i++) {
+            double elapsed_time = collection_times[i];
+    
+            if(elapsed_time > 0.0) {
+                num_collections++;
+                total_collection_time += elapsed_time;
+            }
+        }
+    
+        return (total_collection_time / num_collections);
+    }
+#else
+    inline void compute_average_collection_time() = { };
+#endif
+
     void loadNativeRootSet() noexcept;
     void unloadNativeRootSet() noexcept;
 };

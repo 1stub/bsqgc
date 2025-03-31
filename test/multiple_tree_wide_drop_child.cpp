@@ -161,7 +161,6 @@ int main(int argc, char **argv)
     int failed_iterations = 0;
 
     std::cout << "Starting " << iterations << " iterations of GC stress testing for multiple_tree_wide_drop_child...\n";
-    auto test_start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {        
         TreeNodeValue* root = makeTree(depth, 2);
@@ -214,12 +213,7 @@ int main(int argc, char **argv)
         }
     }
 
-    //I may be having too much fun with these statistics
-    auto test_end = std::chrono::high_resolution_clock::now();
-    auto total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(test_end - test_start).count();
-    double total_time_seconds = total_time_ms / 1000.0;
-
-    std::cout << "\nTest completed in " << std::fixed << std::setprecision(3) << total_time_seconds << " seconds\n";
+    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
 
     std::cout << "Failed iterations: " << failed_iterations << "/" << iterations << "\n";
     return failed_iterations > 0 ? 1 : 0;
