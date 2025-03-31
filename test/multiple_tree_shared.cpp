@@ -92,6 +92,7 @@ uint64_t find_size_bytes(TreeNode3Value* n)
            find_size_bytes(n->n3);
 }
 
+
 void* garray[3] = {nullptr, nullptr, nullptr};
 
 //
@@ -136,16 +137,19 @@ int main(int argc, char **argv)
         auto root1_init = printtree(root1);
         auto root2_init = printtree(root2);
 
+        uint64_t subtree_size = find_size_bytes(root2->n1);
+        uint64_t expected_size = subtree_size + TreeNode1Type.type_size;
+
         // Drop root1 and collect
         garray[0] = nullptr;
-        //std::cout << "filled_pages_count " << gtl_info.newly_filled_pages_count << std::endl;
+
+        //Collect root1's tree
+        collect();
         collect();
 
         auto root2_final = printtree(root2);
 
         // Verify kept subtree is intact
-        uint64_t subtree_size = find_size_bytes(root2->n1);
-        uint64_t expected_size = subtree_size + TreeNode1Type.type_size;
         if (gtl_info.total_live_bytes != expected_size) {
             std::cerr << "Iteration " << i << " failed: incorrect live bytes\n";
             failed_iterations++;
@@ -162,12 +166,7 @@ int main(int argc, char **argv)
         garray[1] = nullptr;
         collect();
 
-        #if 0
-        if (gtl_info.total_live_bytes != 0) {
-            std::cerr << "Iteration " << i << " failed: memory not fully collected\n";
-            failed_iterations++;
-        }
-        #endif
+        assert(gtl_info.total_live_bytes == 0);
     }
 
     std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
