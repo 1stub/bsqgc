@@ -107,14 +107,18 @@ bool pageNeedsMoved(float old_util, float new_util)
 
 void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
+#ifdef MEM_STATS
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
+
     GC_REFCT_LOCK_ACQUIRE();
 
     size_t deccount = 0;
-    while(!tinfo.pending_decs.isEmpty() && deccount < tinfo.max_decrement_count) {
+    while(!tinfo.pending_decs.isEmpty() && (deccount < tinfo.max_decrement_count)) {
         void* obj = (void**)tinfo.pending_decs.pop_front();
         deccount++;
 
-        // Skip if the object is already freed or if we find a root object
+        // Skip if the object is already freed
         if (!GC_IS_ALLOCATED(obj)) {
             continue;
         }
@@ -131,9 +135,11 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
                 if(*slots != nullptr) {
                     //If this object is a root we dont want to explore its children (this deletes a subtree who is still alive)
                     if(mask == PTR_MASK_PTR && DEC_REF_COUNT(*slots) == 0  && !GC_IS_ROOT(*slots)) {
+                        PageInfo::extractPageFromPointer(*slots)->pending_decs_count++;
                         tinfo.pending_decs.push_back(*slots);
                     }
                     if(PTR_MASK_STRING_AND_SLOT_PTR_VALUED(mask, *slots) && DEC_REF_COUNT(*slots) == 0 && !GC_IS_ROOT(*slots)) {
+                        PageInfo::extractPageFromPointer(*slots)->pending_decs_count++;
                         tinfo.pending_decs.push_back(*slots);
                     }
                 }
@@ -147,23 +153,48 @@ void processDecrements(BSQMemoryTheadLocalInfo& tinfo) noexcept
         FreeListEntry* entry = (FreeListEntry*)((uint8_t*)obj - sizeof(MetaData));
         entry->next = objects_page->freelist;
         objects_page->freelist = entry;
+        if(objects_page->pending_decs_count != 0) {
+            objects_page->pending_decs_count--;
+        }
 
         // Mark the object as unallocated
         GC_IS_ALLOCATED(obj) = false;
 
         objects_page->freecount++;
+        tinfo.processing_stack[tinfo.processing_stack_it++] = objects_page;
+    }
 
-        //if a difference in utilization (>0.05f) or drop from filled pages detected reprocess
-        if(pageNeedsMoved(objects_page->approx_utilization, CALC_APPROX_UTILIZATION(objects_page))) {
-            reprocessPageInfo(objects_page, tinfo);
+    for(int i = 0; i < tinfo.processing_stack_it; i++) {
+        PageInfo* p = tinfo.processing_stack[i];
+        
+        //we need to avoid pages still moving a lot due to 
+        //decrements still needing to take place
+        if(p->pending_decs_count > 0) {
+            continue;
+        }
+
+        if(pageNeedsMoved(p->approx_utilization, CALC_APPROX_UTILIZATION(p))) {
+            reprocessPageInfo(p, tinfo);
         }
     }
+    tinfo.processing_stack_it = 0;
 
     GC_REFCT_LOCK_RELEASE();
 
     //
     //TODO: we want to do a bit of PID controller here on the max decrement count to ensure that we eventually make it back to stable but keep pauses small
     //
+
+#ifdef MEM_STATS
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
+    
+    gtl_info.decrement_times[gtl_info.decrement_times_index++] = duration_ms;
+    if(gtl_info.decrement_times_index == MAX_MEMSTAT_TIMES_INDEX) {
+        gtl_info.decrement_times_index = 0;
+    }
+#endif
 }
 
 //Update pointers using forward table
@@ -196,6 +227,9 @@ void updatePointers(void** obj, const BSQMemoryTheadLocalInfo& tinfo) noexcept
 //Move non root young objects to evacuation page (as needed) then forward pointers and inc ref counts
 void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept 
 {
+#ifdef MEM_STATS
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
     GC_REFCT_LOCK_ACQUIRE();
 
     while(!tinfo.pending_young.isEmpty()) {
@@ -222,12 +256,30 @@ void processMarkedYoungObjects(BSQMemoryTheadLocalInfo& tinfo) noexcept
     }
 
     GC_REFCT_LOCK_RELEASE();
+
+#ifdef MEM_STATS
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
+    
+    gtl_info.evacuation_times[gtl_info.evacuation_times_index++] = duration_ms;
+    if(gtl_info.evacuation_times_index == MAX_MEMSTAT_TIMES_INDEX) {
+        gtl_info.evacuation_times_index = 0;
+    }
+#endif
 }
 
 void checkPotentialPtr(void* addr, BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
+    uintptr_t page_offset = (uintptr_t)addr & 0xFFF;
+    //
+    //Make sure our page is in pagetable, our address is not a page itself,
+    //or a pointer into the page's metadata
+    //
     if(GlobalPageGCManager::g_gc_page_manager.pagetable_query(addr)
-        && ((uintptr_t)addr & 0xFFF) != 0) {
+        && page_offset != 0
+        && !(page_offset < sizeof(PageInfo))
+    ) {
         MetaData* meta = PageInfo::getObjectMetadataAligned(addr);
         void* obj = (void*)((uint8_t*)meta + sizeof(MetaData));
         
@@ -323,6 +375,10 @@ void walkSingleRoot(void* root, BSQMemoryTheadLocalInfo& tinfo) noexcept
 
 void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 {
+#ifdef MEM_STATS
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
+    
     gtl_info.pending_roots.initialize();
     gtl_info.visit_stack.initialize();
 
@@ -342,6 +398,17 @@ void markingWalk(BSQMemoryTheadLocalInfo& tinfo) noexcept
 
     gtl_info.visit_stack.clear();
     gtl_info.pending_roots.clear();
+
+#ifdef MEM_STATS
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
+    
+    gtl_info.marking_times[gtl_info.marking_times_index++] = duration_ms;
+    if(gtl_info.marking_times_index == MAX_MEMSTAT_TIMES_INDEX) {
+        gtl_info.marking_times_index = 0;
+    }
+#endif
 }
 
 void collect() noexcept
@@ -399,7 +466,7 @@ void collect() noexcept
     double duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
     
     gtl_info.collection_times[gtl_info.collection_times_index++] = duration_ms;
-    if(gtl_info.collection_times_index == 512) {
+    if(gtl_info.collection_times_index == MAX_MEMSTAT_TIMES_INDEX) {
         gtl_info.collection_times_index = 0;
     }
 #endif

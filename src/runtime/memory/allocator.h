@@ -76,6 +76,7 @@ public:
     uint16_t freecount;
 
     float approx_utilization;
+    uint16_t pending_decs_count;
 
     static PageInfo* initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept;
 

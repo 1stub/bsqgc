@@ -5,7 +5,7 @@
 //Seems that chrono is pretty fast and shouldn't mess with our metrics too much here
 #ifdef MEM_STATS
 #include <chrono>
-#define MAX_COLLECTION_TIMES_INDEX 512
+#define MAX_MEMSTAT_TIMES_INDEX 512
 #endif
 
 #define InitBSQMemoryTheadLocalInfo() { ALLOC_LOCK_ACQUIRE(); register void** rbp asm("rbp"); gtl_info.initialize(GlobalThreadAllocInfo::s_thread_counter++, rbp); ALLOC_LOCK_RELEASE(); }
@@ -74,6 +74,9 @@ struct BSQMemoryTheadLocalInfo
     ArrayList<void*> pending_young; //the list of young objects that need to be processed
     ArrayList<void*> pending_decs; //the list of objects that need to be decremented 
 
+    int processing_stack_it = 0;
+    PageInfo* processing_stack[BSQ_INITIAL_MAX_DECREMENT_COUNT];
+
     size_t max_decrement_count;
 
     //We may want this in prod, so i'll have it always be visible
@@ -86,7 +89,16 @@ struct BSQMemoryTheadLocalInfo
     uint64_t total_live_bytes = 0; //doesnt include canary or metadata size
 
     int collection_times_index = 0;
-    double collection_times[MAX_COLLECTION_TIMES_INDEX]; //store in ms how much time each collection takes
+    double collection_times[MAX_MEMSTAT_TIMES_INDEX]; //store in ms how much time each collection takes
+
+    int marking_times_index = 0;
+    double marking_times[MAX_MEMSTAT_TIMES_INDEX];
+
+    int evacuation_times_index = 0;
+    double evacuation_times[MAX_MEMSTAT_TIMES_INDEX];
+
+    int decrement_times_index = 0;
+    double decrement_times[MAX_MEMSTAT_TIMES_INDEX];
 #endif
 
 #ifdef BSQ_GC_CHECK_ENABLED
@@ -112,12 +124,12 @@ struct BSQMemoryTheadLocalInfo
     }
 
 #ifdef MEM_STATS
-    double compute_average_collection_time() noexcept
+    double compute_average_time(double* time) noexcept
     {
         double total_collection_time = 0;
         int num_collections = 0;
-        for(int i = 0; i < MAX_COLLECTION_TIMES_INDEX; i++) {
-            double elapsed_time = collection_times[i];
+        for(int i = 0; i < MAX_MEMSTAT_TIMES_INDEX; i++) {
+            double elapsed_time = time[i];
     
             if(elapsed_time > 0.0) {
                 num_collections++;

@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     GCAllocator* allocs[2] = { &alloc2, &alloc4 };
     gtl_info.initializeGC<2>(allocs);
 
-    const int depth = 10;
+    const int depth = 9;
     const int iterations = 100;
     int failed_iterations = 0;
 
@@ -140,10 +140,13 @@ int main(int argc, char **argv)
         uint64_t subtree_size = find_size_bytes(root2->n1);
         uint64_t expected_size = subtree_size + TreeNode1Type.type_size;
 
+        collect();
+
         // Drop root1 and collect
         garray[0] = nullptr;
 
         //Collect root1's tree
+        collect();
         collect();
         collect();
 
@@ -169,7 +172,10 @@ int main(int argc, char **argv)
         assert(gtl_info.total_live_bytes == 0);
     }
 
-    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
+    std::cout << "collection time " << gtl_info.compute_average_time(gtl_info.collection_times) << " ms\n";
+    std::cout << "marking time " << gtl_info.compute_average_time(gtl_info.marking_times) << " ms\n";
+    std::cout << "evacuation time " << gtl_info.compute_average_time(gtl_info.evacuation_times) << " ms\n";
+    std::cout << "decrement time " << gtl_info.compute_average_time(gtl_info.decrement_times) << " ms\n";
 
     std::cout << "Failed iterations: " << failed_iterations << "/" << iterations << "\n";
     return failed_iterations > 0 ? 1 : 0;

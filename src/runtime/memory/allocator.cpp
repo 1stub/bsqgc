@@ -13,6 +13,7 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     pp->data = ((uint8_t*)block + sizeof(PageInfo));
     pp->allocsize = allocsize;
     pp->realsize = realsize;
+    pp->pending_decs_count = 0;
     pp->approx_utilization = 100.0f; //approx util has not been calculated
     pp->left = nullptr;
     pp->right = nullptr;

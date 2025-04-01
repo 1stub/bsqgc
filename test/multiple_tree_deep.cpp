@@ -129,7 +129,6 @@ int main(int argc, char** argv) {
         uint64_t final = gtl_info.total_live_bytes;
         assert(init_total_bytes == final);
 
-        gtl_info.disable_stack_refs_for_tests = true;
         garray[0] = nullptr;
 
         //Clear out pending decs
@@ -137,9 +136,16 @@ int main(int argc, char** argv) {
             collect();
         }
 
-        assert(gtl_info.total_live_bytes == 0);
+        if(gtl_info.total_live_bytes != 0) {
+            std::cerr << "Iteration " << i << " failed: incorrect live bytes\n";
+            failed_iterations++;
+            continue;
+        }
     }
-    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
+    std::cout << "collection time " << gtl_info.compute_average_time(gtl_info.collection_times) << " ms\n";
+    std::cout << "marking time " << gtl_info.compute_average_time(gtl_info.marking_times) << " ms\n";
+    std::cout << "evacuation time " << gtl_info.compute_average_time(gtl_info.evacuation_times) << " ms\n";
+    std::cout << "decrement time " << gtl_info.compute_average_time(gtl_info.decrement_times) << " ms\n";
 
     std::cout << "Failed iterations: " << failed_iterations << "/" << iterations << "\n";
     return failed_iterations > 0 ? 1 : 0;
