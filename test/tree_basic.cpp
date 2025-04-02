@@ -61,6 +61,7 @@ int main(int argc, char** argv) {
 
     InitBSQMemoryTheadLocalInfo();
     gtl_info.disable_automatic_collections = true;
+    gtl_info.disable_stack_refs_for_tests = true;
 
     GCAllocator* allocs[1] = { &alloc3 };
     gtl_info.initializeGC<1>(allocs);

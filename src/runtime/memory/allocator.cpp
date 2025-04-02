@@ -14,7 +14,7 @@ PageInfo* PageInfo::initialize(void* block, uint16_t allocsize, uint16_t realsiz
     pp->allocsize = allocsize;
     pp->realsize = realsize;
     pp->pending_decs_count = 0;
-    pp->approx_utilization = 100.0f; //approx util has not been calculated
+    pp->approx_utilization = 100.0f; // Approx util has not been calculated
     pp->left = nullptr;
     pp->right = nullptr;
     pp->entrycount = (BSQ_BLOCK_ALLOCATION_SIZE - (pp->data - (uint8_t*)pp)) / realsize;
@@ -38,7 +38,7 @@ void PageInfo::rebuild() noexcept
         MetaData* meta = this->getMetaEntryAtIndex(i);
         
         if(GC_SHOULD_FREE_LIST_ADD(meta)) {
-            //just to be safe reset metadata
+            // Just to be safe reset metadata
             RESET_METADATA_FOR_OBJECT(meta, MAX_FWD_INDEX);
             FreeListEntry* entry = this->getFreelistEntryAtIndex(i);
             entry->next = this->freelist;
@@ -106,9 +106,9 @@ void GCAllocator::processPage(PageInfo* p) noexcept
         GET_BUCKET_INDEX(n_util, NUM_HIGH_UTIL_BUCKETS, bucket_index, 1);
         this->insertPageInBucket(&this->high_utilization_buckets[bucket_index], p, n_util);
     }
-    //if our page freshly became full we need to gc
+    // If our page freshly became full we need to gc
     else if(IS_FULL(n_util) && !IS_FULL(old_util)) {
-        //We dont want to collect evac page
+        // We dont want to collect evac page
         if(!(p == this->evac_page)) {
             p->next = this->pendinggc_pages;
             pendinggc_pages = p;
@@ -118,7 +118,7 @@ void GCAllocator::processPage(PageInfo* p) noexcept
             filled_pages = p;
         }
     }
-    //if our page was full before and still full put on filled pages
+    // If our page was full before and still full put on filled pages
     else if(IS_FULL(n_util) && IS_FULL(old_util)) {
         p->next = this->filled_pages;
         filled_pages = p;
@@ -161,21 +161,20 @@ void GCAllocator::allocatorRefreshPage() noexcept
         this->alloc_page = this->getFreshPageForAllocator();
     }
     else {
-        //rotate collection pages
+        // Rotate collection pages
         processPage(this->alloc_page);
         this->alloc_page = nullptr;
 
-        //use BSQ_COLLECTION_THRESHOLD; NOTE ONLY INCREMENT when we have a full page
+        //use BSQ_COLLECTION_THRESHOLD; NOTE: ONLY INCREMENT when we have a full page
         gtl_info.newly_filled_pages_count++;
 
-        //check if we need to collect and do so
+        // If we exceed our filled pages thresh collect
         if(gtl_info.newly_filled_pages_count == BSQ_COLLECTION_THRESHOLD) {
             if(!gtl_info.disable_automatic_collections) {
                 collect();
             }
         }
     
-        //get the new page
         this->alloc_page = this->getFreshPageForAllocator();
     }
 
@@ -213,12 +212,12 @@ void GCAllocator::updateMemStats()
         filled_it = filled_it->next;
     }
 
-    //compute stats for high util pages
+    // Compute stats for high util pages
     for(int i = 0; i < NUM_HIGH_UTIL_BUCKETS; i++) {
         traverseBST(this->high_utilization_buckets[i]);
     }
 
-    //compute stats for low util pages
+    // Compute stats for low util pages
     for(int i = 0; i < NUM_LOW_UTIL_BUCKETS; i++) {
         traverseBST(this->low_utilization_buckets[i]);
     }

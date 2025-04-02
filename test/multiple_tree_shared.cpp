@@ -146,9 +146,9 @@ int main(int argc, char **argv)
         garray[0] = nullptr;
 
         //Collect root1's tree
-        collect();
-        collect();
-        collect();
+        while(gtl_info.total_live_bytes > expected_size) {
+            collect();
+        }
 
         auto root2_final = printtree(root2);
 
