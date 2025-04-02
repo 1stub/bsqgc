@@ -22,9 +22,8 @@ CC=g++
 CSTDFLAGS=-Wall -Wextra -Wno-unused-parameter -Wuninitialized -Werror -std=gnu++20 -fno-exceptions -fno-rtti -fno-strict-aliasing -fno-omit-frame-pointer -fno-stack-protector
 
 CFLAGS_OPT.dev=-O0 -g -ggdb 
-CFLAGS_OPT.release=-O3 -march=x86-64-v3
+CFLAGS_OPT.release=-O2 -march=x86-64-v3
 CFLAGS=${CFLAGS_OPT.${BUILD}} ${CSTDFLAGS}
-CFLAGS_TEST=${CFLAGS_OPT.dev} ${CSTDFLAGS}
 
 SUPPORT_HEADERS=$(RUNTIME_DIR)common.h $(SUPPORT_DIR)xalloc.h $(SUPPORT_DIR)arraylist.h $(SUPPORT_DIR)pagetable.h $(SUPPORT_DIR)qsort.h 
 SUPPORT_SOURCES=$(RUNTIME_DIR)common.cpp $(SUPPORT_DIR)xalloc.cpp
@@ -42,7 +41,7 @@ test: $(SUPPORT_HEADERS) $(MEMORY_HEADERS) $(SUPPORT_OBJS) $(MEMORY_OBJS)
 		exit 1; \
 	fi
 	@mkdir -p $(OUT_EXE)
-	$(CC) $(CFLAGS_TEST) -o $(OUT_EXE)$(TEST) $(SUPPORT_OBJS) $(MEMORY_OBJS) $(TEST_DIR)$(TEST).cpp
+	$(CC) $(CFLAGS) -o $(OUT_EXE)$(TEST) $(SUPPORT_OBJS) $(MEMORY_OBJS) $(TEST_DIR)$(TEST).cpp
 	@echo "Running test: $(TEST)"
 	@$(OUT_EXE)$(TEST)
 

@@ -76,6 +76,7 @@ public:
     uint16_t freecount;
 
     float approx_utilization;
+    uint16_t pending_decs_count;
 
     static PageInfo* initialize(void* block, uint16_t allocsize, uint16_t realsize) noexcept;
 
@@ -243,9 +244,8 @@ private:
     
         PageInfo* current = root;
         while (current != nullptr) {
-            //if current and our pages utilization are equal we add it to this pages list
-            //a possible enhancement could be inserting at beginning of list, would mean
-            //having to refactor this code though
+            // If current and our pages utilization are equal we add it to this pages list
+            // TODO: Insert at beginning of list, means we need a reference from parent node
             if(UTILIZATIONS_ARE_EQUAL(n_util, root->approx_utilization)) {
                 if(current->next == nullptr) {
                     current->next = new_page;
@@ -260,10 +260,10 @@ private:
                 break;
             }
 
-            //traverse down left subtree
+            // Traverse down left subtree
             else if (n_util < current->approx_utilization) {
                 if (current->left == nullptr) {
-                    //Insert as the left child
+                    // Insert as the left child
                     current->left = new_page;
                     break;
                 } else {
@@ -271,10 +271,10 @@ private:
                 }
             } 
 
-            //traverse down right subtree
+            // Traverse down right subtree
             else {
                 if (current->right == nullptr) {
-                    //Insert as the right child
+                    // Insert as the right child
                     current->right = new_page;
                     break;
                 } else {
@@ -311,7 +311,7 @@ private:
                     else {
                         PageInfo* successor = getSuccessor(root);
 
-                        //crucial to update sucessors ptrs
+                        // Crucial to update sucessors ptrs
                         successor->left = root->left;
                         successor->right = root->right;
                         successor->next = root->next;
@@ -366,14 +366,14 @@ private:
                 cur = cur->left;
             }
             
-            if(cur == buckets[i]) { //If cur is root
+            if(cur == buckets[i]) { // If cur is root
                 if(cur->next != nullptr) {
                     buckets[i] = cur->next;
                     buckets[i]->left = cur->left;
                     buckets[i]->right = cur->right;
                 } 
                 else {
-                    //Normal BST removal
+                    // Normal BST removal
                     if(cur->right != nullptr) {
                         buckets[i] = cur->right;
                     } 
@@ -382,7 +382,7 @@ private:
                     }
                 }
             } 
-            else { //If cur is not root
+            else { // If cur is not root
                 if(cur->right != nullptr) {
                     parent->left = cur->right;
                 }
@@ -398,7 +398,6 @@ private:
 
     PageInfo* getFreshPageForAllocator() noexcept
     {
-        //find lowest util bucket with stuff, get lowest util page from bucket
         PageInfo* page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
         if(page == nullptr) {
             page = GlobalPageGCManager::g_gc_page_manager.allocateFreshPage(this->allocsize, this->realsize);
@@ -409,7 +408,6 @@ private:
 
     PageInfo* getFreshPageForEvacuation() noexcept
     {
-        //Try to grab high util, if fails go to low, fall thoguh making fresh page
         PageInfo* page = findLowestUtilPage(high_utilization_buckets, NUM_HIGH_UTIL_BUCKETS);
         if(page == nullptr) {
             page = findLowestUtilPage(low_utilization_buckets, NUM_LOW_UTIL_BUCKETS);
@@ -423,7 +421,7 @@ private:
 
     void allocatorRefreshEvacuationPage() noexcept
     {
-        //if our evac page is full put it on filled pages list
+        // If our evac page is full put directly on filled pages list
         if(this->evac_page != nullptr && this->evac_page->freecount == 0) {
             this->evac_page->approx_utilization = 1.0f;
             this->evac_page->next = this->filled_pages;
@@ -442,7 +440,7 @@ public:
         return this->allocsize;
     }
 
-    //Simple check to see if a page is in alloc/evac/pendinggc pages
+    // Simple check to see if a page is in alloc/evac/pendinggc pages
     bool checkNonAllocOrGCPage(PageInfo* p) {
         if(p == alloc_page || p == evac_page) {
             return false;
@@ -459,7 +457,7 @@ public:
         return true;
     }
 
-    //Used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
+    // Used in case where a page's utilization changed and it isnt being grabbed for evac/alloc
     void deleteOldPage(PageInfo* p) 
     {
         int bucket_index = 0;
@@ -476,7 +474,7 @@ public:
                 &this->high_utilization_buckets[bucket_index], p);
         }
 
-        //May want to make this traversal not O(n) worst case (sort?)
+        // May want to make this traversal not O(n) worst case (sort?)
         else {
             PageInfo* cur = this->filled_pages;
             PageInfo* prev = nullptr;

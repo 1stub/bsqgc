@@ -323,7 +323,9 @@ int main(int argc, char** argv)
 
     printf("energy: %.9g\n", energy(sys));
 
-    std::cout << "collection time " << gtl_info.compute_average_collection_time() << " ms\n";
-
+    std::cout << "collection time " << gtl_info.compute_average_time(gtl_info.collection_times) << " ms\n";
+    std::cout << "marking time " << gtl_info.compute_average_time(gtl_info.marking_times) << " ms\n";
+    std::cout << "evacuation time " << gtl_info.compute_average_time(gtl_info.evacuation_times) << " ms\n";
+    std::cout << "decrement time " << gtl_info.compute_average_time(gtl_info.decrement_times) << " ms\n";
     return 0;
 }
